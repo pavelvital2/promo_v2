@@ -131,6 +131,7 @@ Seed-набор утверждён решением заказчика и заф
 | Системные параметры | да | да | нет | нет | нет |
 | API-блок / подключения | да | да | да, только назначенные магазины/кабинеты | просмотр при праве, без secret edit по умолчанию | нет |
 | Аудит/техжурнал | да | да | ограниченно по назначенным магазинам/кабинетам | ограниченно по доступным операциям/магазинам | ограниченно по доступным объектам |
+| WB API Stage 2.1 | да | да | управление подключениями в назначенных магазинах; рабочие действия только при выдаче | рабочие download/calculate/upload при выдаче в доступных магазинах | просмотр только при выдаче |
 
 ## Seed-набор по правам
 
@@ -141,3 +142,33 @@ Seed-набор утверждён решением заказчика и заф
 | Локальный администратор | `users.*`, `permissions.assign`, `section_access.view`, `section_access.edit`, `stores.*`, `settings.store_params.*`, `settings.param_history.view`, `settings.param_source.view`, `audit.*`, `techlog.list.view`, `techlog.card.view`, `logs.scope.limited` только в назначенном store scope; без `roles.edit`, `settings.system_params.edit`, `techlog.sensitive.view`, `users.owner.manage` |
 | Менеджер маркетплейсов | `wb_discounts_excel.*`, `ozon_discounts_excel.*`, `stores.list.view`, `stores.card.view`, `stores.operations.view`, `settings.store_params.view`, `settings.store_params.edit`, `settings.param_history.view`, `settings.param_source.view`, file upload/download rights через scenario permissions, product view/update через Excel operations только в доступном store scope; без `users.*`, `roles.*`, `permissions.assign`, `settings.system_params.edit` |
 | Наблюдатель | view-only permissions для доступных stores, operations, check/process results, products, `settings.store_params.view`, `settings.param_history.view`, `audit.list.view`, `audit.card.view`, `techlog.list.view`, `techlog.card.view`, `logs.scope.limited`; без upload/run/process/edit/delete/download output/detail по умолчанию |
+
+## WB API Stage 2.1 права
+
+Трассировка: `tz_stage_2.1.txt` §4.4, §13.
+
+Все права ниже требуют object access к конкретному WB store/account. Отсутствие object access скрывает операции, файлы, акции, товары и API-подключение магазина.
+
+| Право | Code | Область |
+| --- | --- | --- |
+| просмотр WB API подключения | `wb.api.connection.view` | store |
+| управление WB API подключением | `wb.api.connection.manage` | store |
+| скачать цены WB по API | `wb.api.prices.download` | store |
+| скачать Excel цен | `wb.api.prices.file.download` | store |
+| скачать текущие акции WB | `wb.api.promotions.download` | store |
+| скачать Excel акций | `wb.api.promotions.file.download` | store |
+| рассчитать скидки по API-источникам | `wb.api.discounts.calculate` | store |
+| скачать итоговый Excel/detail | `wb.api.discounts.result.download` | store |
+| выполнить API upload скидок | `wb.api.discounts.upload` | store |
+| подтвердить API upload | `wb.api.discounts.upload.confirm` | store |
+| просмотреть WB API operations | `wb.api.operation.view` | store |
+
+`wb.api.connection.manage` не даёт право прочитать сохранённый token. Секрет можно только заменить/отключить по protected secret flow.
+
+Рекомендуемый seed Stage 2.1:
+
+- Владелец: все WB API права.
+- Глобальный администратор: все WB API права кроме owner-only protections.
+- Локальный администратор: `wb.api.connection.*`, `wb.api.operation.view` для назначенных stores; рабочие download/calculate/upload только при отдельной выдаче.
+- Менеджер маркетплейсов: `wb.api.prices.download`, `wb.api.prices.file.download`, `wb.api.promotions.download`, `wb.api.promotions.file.download`, `wb.api.discounts.calculate`, `wb.api.discounts.result.download`, `wb.api.operation.view`; upload права выдаются отдельно.
+- Наблюдатель: `wb.api.operation.view` only при отдельной выдаче; file download отдельно.

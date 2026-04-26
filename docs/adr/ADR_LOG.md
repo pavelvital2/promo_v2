@@ -22,6 +22,7 @@ ADR фиксирует архитектурное или проектное ре
 - Контекст: ТЗ требует единое приложение, единую БД, единый UI/API и жёсткие границы модулей
 - Решение: исполнительная документация фиксирует модульный монолит с отдельными доменными модулями identity, stores, operations, files, discounts, settings, audit, tech log
 - Последствия: будущие сервисы возможны без переписывания доменного ядра; на этапе 1 не вводятся отдельные базы или инсталляции
+
 - Трассировка: ТЗ §4
 
 ## ADR-0003: Excel является штатным режимом этапа 1 и не удаляется будущим API
@@ -179,3 +180,48 @@ ADR фиксирует архитектурное или проектное ре
 - Последствия: TASK-009 остаётся blocked до реализации этих решений. TASK-010 не принимает перенос этих экранов/workflows. Решение не расширяет WB/Ozon business logic, reason/result codes, approved WB defaults или поля `MarketplaceProduct` сверх профильной документации.
 - Закрывает: `GAP-0010`, `GAP-0011`, `GAP-0012`, `GAP-0013`
 - Трассировка: ТЗ §5, §6, §11, §17-§20, §27
+
+## ADR-0016: Stage 2 split - 2.1 WB API, 2.2 Ozon API
+
+- Статус: accepted
+- Дата: 2026-04-26
+- Контекст: `tz_stage_2.1.txt` требует подготовить Stage 2.1 только для WB API и не смешивать его с будущим Ozon API.
+- Решение: Stage 2 разделён на 2.1 WB API и 2.2 Ozon API. Документы и implementation tasks Stage 2.1 покрывают только WB.
+- Последствия: Ozon API не реализуется в TASK-011..TASK-017; Excel Stage 1 остаётся штатным/резервным режимом.
+- Трассировка: `docs/stages/stage-2/STAGE_2_SCOPE.md`
+
+## ADR-0017: WB API source-to-Excel flow before API upload
+
+- Статус: accepted
+- Дата: 2026-04-26
+- Контекст: ТЗ требует сохранить понятную модель ручной работы WB, заменить источники на API и добавить опциональную API-загрузку.
+- Решение: Stage 2.1 строится как 2.1.1 price export -> 2.1.2 current promotion exports -> 2.1.3 result Excel -> 2.1.4 upload. 2.1.1-2.1.3 не меняют WB.
+- Последствия: API-generated Excel files являются формальной basis; API upload не может обходить расчётный Excel/result operation.
+- Трассировка: `docs/product/WB_DISCOUNTS_API_SPEC.md`
+
+## ADR-0018: WB current promotions definition
+
+- Статус: accepted
+- Дата: 2026-04-26
+- Контекст: пользователь явно требует текущие акции, не ближайшие/будущие/все.
+- Решение: current promotion = `startDateTime <= now_utc < endDateTime`; API window покрывает `now_utc`, `allPromo=true`, затем применяется локальный строгий фильтр.
+- Последствия: auto promotions сохраняются без выдуманных nomenclature rows; current filter timestamp сохраняется в snapshot.
+- Трассировка: `docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md`
+
+## ADR-0019: WB API upload safety - confirmation + drift check
+
+- Статус: accepted
+- Дата: 2026-04-26
+- Контекст: 2.1.4 является единственным шагом, меняющим WB по API.
+- Решение: upload требует explicit confirmation, pre-upload drift check, batch size <= 1000, uploadID per batch, WB status polling. Price drift блокирует upload.
+- Последствия: HTTP 200 не считается успехом; partial errors маппятся в `completed_with_warnings`; quarantine errors показываются отдельно.
+- Трассировка: `docs/product/WB_DISCOUNTS_API_SPEC.md`
+
+## ADR-0020: WB API reason/result codes
+
+- Статус: accepted
+- Дата: 2026-04-26
+- Контекст: Stage 1 WB reason/result codes закрыты; Stage 2.1 требует API-specific detail rows.
+- Решение: Stage 2.1 получает отдельный закрытый каталог WB API codes в `docs/product/WB_DISCOUNTS_API_SPEC.md` и `docs/architecture/DATA_MODEL.md`.
+- Последствия: разработчики не добавляют/переименовывают codes без документации и ADR; Stage 1 Excel codes не смешиваются с API codes без явного правила.
+- Трассировка: `docs/product/WB_DISCOUNTS_API_SPEC.md`

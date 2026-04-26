@@ -26,7 +26,8 @@
 - module;
 - mode;
 - store/account;
-- type: `check` или `process`;
+- type: `check` или `process` только для check/process-сценариев; для Stage 2.1 API steps без check/process semantics поле nullable/blank/not_applicable по миграционному решению;
+- step_code: обязательный classifier для Stage 2.1 API steps and future non-check/process steps;
 - status;
 - initiator;
 - execution context;
@@ -135,12 +136,12 @@ Process:
 - visible_id;
 - marketplace/module/mode;
 - store/account;
-- type/status;
+- classifier/status: `type` for check/process operations or `step_code` for Stage 2.1 API operations;
 - initiator;
 - start/end time;
 - input files and versions;
 - output file if any;
-- check basis for process;
+- check basis for process, if applicable;
 - applied parameters and sources;
 - logic version;
 - summary;
@@ -165,3 +166,38 @@ Process:
 ## Сбои
 
 При сбое приложения, сервера, БД или файлового хранилища operation переводится в `interrupted_failed`. Автоматическое продолжение на этапе 1 запрещено. Новая попытка выполняется новой operation.
+
+## Stage 2.1 WB API operations
+
+Трассировка: `tz_stage_2.1.txt` §6-§11.
+
+Stage 2.1 добавляет `mode=api` для WB. Excel mode Stage 1 не заменяется.
+
+Для классификации API flow используется обязательный `Operation.step_code`. `Operation.type` не расширяется и не заполняется `check/process` для Stage 2.1 API steps; допустимое значение для этих operations - `NULL` / blank / `not_applicable` по выбранной миграции. 2.1.3 calculation не является Stage 1 check/process и также классифицируется через `step_code`.
+
+| Step code | Подэтап | Тип действия | Меняет WB |
+| --- | --- | --- | --- |
+| `wb_api_prices_download` | 2.1.1 | read/download + internal product update | нет |
+| `wb_api_promotions_download` | 2.1.2 | read/download + internal promotions save | нет |
+| `wb_api_discount_calculation` | 2.1.3 | internal calculation + Excel output | нет |
+| `wb_api_discount_upload` | 2.1.4 | API upload | да |
+
+Migration guidance:
+
+- сохранить Stage 1 `Operation.type=check/process` без изменения;
+- добавить `step_code` как явный indexed/immutable classifier для `mode=api`, `marketplace=wb`;
+- запретить `type=check/process` для `wb_api_prices_download`, `wb_api_promotions_download`, `wb_api_discount_calculation`, `wb_api_discount_upload`;
+- обновить filters/list/card/report serializers so API operations label/filter by `step_code`, while check/process views continue to use `type`.
+
+2.1.4 запрещён без successful 2.1.3, explicit confirmation, pre-upload drift check and active WB API connection.
+
+Status mapping 2.1.4:
+
+- WB status 3 -> `completed_success`;
+- WB status 5 -> `completed_with_warnings`;
+- WB status 6 -> `completed_with_error`;
+- WB status 4 -> `completed_with_error`;
+- API failure before uploadID -> `interrupted_failed`;
+- API failure after uploadID -> `completed_with_error` until status can be resolved.
+
+Повтор каждого Stage 2.1 step создаёт новую operation. UploadID хранится по каждому batch and operation remains immutable after completion.

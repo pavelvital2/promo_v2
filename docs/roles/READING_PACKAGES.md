@@ -146,6 +146,55 @@
 
 ТЗ: §5, §6, §11, §12, §17-§20, §27 только по указанию оркестратора. Любой UX/functionality gap веб-панели передаётся оркестратору для заказчика, не закрывается предположением.
 
+## Разработчик WB API Stage 2.1
+
+Обязательно:
+
+- `AGENTS.md`
+- `docs/orchestration/AGENTS.md`
+- конкретный task file из `docs/tasks/implementation/stage-2/`
+- `docs/stages/stage-2/STAGE_2_SCOPE.md`
+- `docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md`
+- профильная спецификация:
+  - TASK-011: `docs/architecture/API_CONNECTIONS_SPEC.md`
+  - TASK-012: `docs/product/WB_API_PRICE_EXPORT_SPEC.md`
+  - TASK-013: `docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md`
+  - TASK-014/TASK-015: `docs/product/WB_DISCOUNTS_API_SPEC.md`
+- `docs/product/WB_DISCOUNTS_EXCEL_SPEC.md` только для задач с shared WB calculation
+- `docs/product/OPERATIONS_SPEC.md`
+- `docs/architecture/DATA_MODEL.md`
+- `docs/architecture/FILE_CONTOUR.md`
+- `docs/architecture/AUDIT_AND_TECHLOG_SPEC.md`
+- `docs/product/PERMISSIONS_MATRIX.md`
+- `docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md`
+- `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md`
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+Условно: `docs/product/UI_SPEC.md` для UI-facing задач, `docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md` для audit/release задач.
+
+ТЗ: только разделы `tz_stage_2.1.txt`, указанные в конкретном TASK-011..TASK-017. Не читать всё итоговое ТЗ целиком. WB Stage 2.1 не смешивается с Ozon Stage 2.2.
+
+## Frontend/UI Агент WB API Stage 2.1
+
+Обязательно:
+
+- `AGENTS.md`
+- `docs/orchestration/AGENTS.md`
+- `docs/tasks/implementation/stage-2/TASK-016-wb-api-ui-stage-2-1.md`
+- `docs/product/UI_SPEC.md`
+- `docs/product/PERMISSIONS_MATRIX.md`
+- `docs/product/WB_DISCOUNTS_API_SPEC.md`
+- `docs/product/WB_API_PRICE_EXPORT_SPEC.md`
+- `docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md`
+- `docs/architecture/API_CONNECTIONS_SPEC.md`
+- `docs/product/OPERATIONS_SPEC.md`
+- `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md`
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+ТЗ: `tz_stage_2.1.txt` §13, §15-§16 только по указанию task. Любой новый UX/functionality gap веб-панели фиксируется в `docs/gaps/GAP_REGISTER.md` и передаётся оркестратору.
+
 ## Тестировщик
 
 Обязательно:
@@ -162,6 +211,16 @@
 Условно: `docs/audit/AUDIT_PROTOCOL.md`, `docs/product/UI_SPEC.md`, module specs, operations/file contour.
 
 ТЗ: §24 и профильные разделы сценария только по указанию оркестратора. Отсутствие контрольных файлов не заменяется синтетическими expected results; см. `GAP-0008` / ADR-0013 и `docs/stages/stage-1/ACCEPTANCE_TESTS.md`.
+
+Для Stage 2.1 WB API тестировщик читает вместо Stage 1 acceptance:
+
+- `docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md`
+- `docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md`
+- `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md`
+- `docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md`
+- проверяемый TASK-011..TASK-017
+
+ТЗ Stage 2.1: только разделы, указанные в task.
 
 ## Техрайтер
 

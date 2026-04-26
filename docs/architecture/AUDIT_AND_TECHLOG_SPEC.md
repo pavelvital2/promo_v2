@@ -109,8 +109,8 @@ Severity может уточняться реализацией только в 
 
 ## Видимость и чувствительные детали
 
-- `safe_message` должен быть пригоден для UI без раскрытия паролей, API-ключей, protected secret values, stack traces с секретами и внутренних путей, если они чувствительны.
-- `sensitive_details_ref` виден только при `techlog.sensitive.view`; наличие `logs.scope.full` или object access не заменяет это право.
+- `safe_message` должен быть пригоден для UI без раскрытия паролей, API-ключей, protected secret values, bearer values, authorization headers, stack traces с секретами и внутренних путей, если они чувствительны.
+- `sensitive_details_ref` виден только при `techlog.sensitive.view`; наличие `logs.scope.full` или object access не заменяет это право. Даже при наличии права `sensitive_details_ref` не содержит token, authorization header, API key, bearer value or secret-like value; такие значения хранятся только через `protected_secret_ref`.
 - Пользователь с limited scope видит store-linked и operation-linked audit/techlog records только в пределах доступных stores/accounts и доступных operations. Собственное авторство записи не даёт обход object access для записей, связанных с недоступным store/account или operation.
 - Пользователь с limited scope может видеть собственные global/non-store/non-operation audit/techlog records, если запись не раскрывает данные чужих stores/accounts или operations и не содержит sensitive details.
 - Full scope даёт видимость records в полном контуре при наличии соответствующего list/card права, но не отменяет запрет на sensitive details без `techlog.sensitive.view` и не разрешает редактирование или обычное удаление audit/techlog.
@@ -135,3 +135,47 @@ Severity может уточняться реализацией только в 
 - Audit/techlog card показывает link back to operation, если связь есть.
 - Detail row reason/result codes WB/Ozon не являются audit action codes. Они относятся к operation detail/report и системным словарям бизнес-результатов.
 - Закрытый перечень WB reason/result codes описан в `docs/product/WB_DISCOUNTS_EXCEL_SPEC.md` и `docs/architecture/DATA_MODEL.md`.
+- Закрытый перечень WB API Stage 2.1 reason/result codes описан в `docs/product/WB_DISCOUNTS_API_SPEC.md` и `docs/architecture/DATA_MODEL.md`.
+
+## Stage 2.1 WB API audit actions
+
+Трассировка: `tz_stage_2.1.txt` §10-§11; ADR-0019, ADR-0020.
+
+| Action code | Когда создаётся | Entity | Связи |
+| --- | --- | --- | --- |
+| `wb_api_connection_created` | создано WB API подключение или secret ref | ConnectionBlock | store, user |
+| `wb_api_connection_updated` | изменены metadata/status/secret ref подключения | ConnectionBlock | store, user |
+| `wb_api_connection_checked` | выполнена проверка подключения | ConnectionBlock | store, user |
+| `wb_api_prices_download_started` | запущено скачивание цен | Operation | operation, store, user |
+| `wb_api_prices_download_completed` | скачивание цен завершено | Operation | operation, store, files |
+| `wb_api_prices_file_downloaded` | пользователь скачал Excel цен | FileVersion | operation, file, user |
+| `wb_api_promotions_download_started` | запущено скачивание текущих акций | Operation | operation, store, user |
+| `wb_api_promotions_download_completed` | скачивание текущих акций завершено | Operation | operation, store, files |
+| `wb_api_promotions_file_downloaded` | пользователь скачал promo Excel | FileVersion | operation, file, promotion, user |
+| `wb_api_discount_calculation_started` | запущен расчёт по API источникам | Operation | operation, store, input files |
+| `wb_api_discount_calculation_completed` | расчёт завершён | Operation | operation, output file |
+| `wb_api_discount_result_downloaded` | пользователь скачал итоговый Excel/detail | FileVersion | operation, file, user |
+| `wb_api_discount_upload_confirmed` | пользователь явно подтвердил API upload | Operation | calculation operation, upload operation, user |
+| `wb_api_discount_upload_started` | upload отправлен или начал batch processing | Operation | operation, store, batches |
+| `wb_api_discount_upload_completed` | upload завершён без критического сбоя | Operation | operation, batches |
+| `wb_api_discount_upload_failed` | upload завершён ошибкой или прерван | Operation | operation, batches |
+
+Audit safe snapshots не содержат token, authorization headers, raw secret values.
+
+## Stage 2.1 WB API techlog event types
+
+| Event type | Severity baseline | Когда создаётся | Связи |
+| --- | --- | --- | --- |
+| `wb_api_auth_failed` | error | WB API вернул auth/access failure | operation/store/connection |
+| `wb_api_rate_limited` | warning | WB API вернул 429 или rate limiter exhausted | operation/store |
+| `wb_api_timeout` | warning | timeout внешнего WB API | operation/store |
+| `wb_api_response_invalid` | error | ответ WB API не соответствует ожидаемой schema | operation/store |
+| `wb_api_prices_download_failed` | error | 2.1.1 завершён ошибкой | operation/store |
+| `wb_api_promotions_download_failed` | error | 2.1.2 завершён ошибкой | operation/store |
+| `wb_api_upload_failed` | error | 2.1.4 upload failed | operation/store |
+| `wb_api_upload_status_poll_failed` | error | не удалось получить итоговый статус upload | operation/store/uploadID |
+| `wb_api_upload_partial_errors` | warning | WB status 5 или товарные partial errors | operation/store/uploadID |
+| `wb_api_quarantine_detected` | warning | обнаружен quarantine-related upload result | operation/store/product |
+| `wb_api_secret_redaction_violation` | critical | защита обнаружила secret в safe контуре | operation nullable |
+
+Sensitive diagnostics доступны только через `sensitive_details_ref` и право `techlog.sensitive.view`, но сами secrets не сохраняются даже туда.

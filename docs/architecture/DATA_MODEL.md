@@ -30,7 +30,7 @@
 | MarketplaceProduct | товар этапа 1 | marketplace, store_id, external_ids, title, sku/barcode, status, last_values | store, operations, files |
 | MarketplaceProductHistory | история появления/обновления товара | product_id, detected_at, operation_id, file_version_id, change_type, changed_fields, previous_values, new_values | product, operation, files |
 | Run | контейнер запуска | visible_id, marketplace, module, mode, store_id, initiated_by, status, created_at | files, checks, processes |
-| Operation | проверка/обработка | visible_id, marketplace, module, mode, type, status, run_id, store_id, initiator_user_id, execution_context, launch_method, started_at, finished_at, logic_version, check_basis_operation_id nullable, summary, error_count, warning_count | files, params snapshot, detail rows, warning confirmations, audit, techlog |
+| Operation | исполнимая бизнес-операция | visible_id, marketplace, module, mode, type, step_code, status, run_id, store_id, initiator_user_id, execution_context, launch_method, started_at, finished_at, logic_version, check_basis_operation_id nullable, summary, error_count, warning_count | files, params snapshot, detail rows, warning confirmations, audit, techlog |
 | FileObject | файл | visible_id, store_id, kind, scenario, marketplace, module, logical_name, original_name, status, created_by, created_at, updated_at | file_versions |
 | FileVersion | версия файла | file_id, version_no, original_name, content_type, storage_backend, storage_path, size, checksum_sha256, uploaded_by, created_at, retention_until, physical_status, physical_deleted_at, operation_ref, run_ref | operations, run |
 | OperationInputFile | связь operation с входными версиями файлов | operation_id, file_version_id, role_in_operation, ordinal_no | operation, file_version |
@@ -133,7 +133,8 @@
 - module;
 - mode: `excel`, future `api`;
 - store/account;
-- type: `check` или `process`;
+- type: `check` или `process` только для check/process-сценариев; для Stage 2.1 API steps без модели check/process поле nullable/blank/not_applicable по миграционному решению;
+- step_code: обязательный primary classifier для Stage 2.1 API steps и future non-check/process steps;
 - status;
 - initiator_user_id;
 - execution_context: от чьего имени и в каком контуре выполнялась operation;
@@ -194,7 +195,8 @@ Ozon на этапе 1 не имеет пользовательских пара
 
 Фиксируются как immutable codes:
 
-- operation_type: `check`, `process`;
+- operation_type: `check`, `process` только для check/process-сценариев;
+- operation_step_code Stage 2.1: `wb_api_prices_download`, `wb_api_promotions_download`, `wb_api_discount_calculation`, `wb_api_discount_upload`;
 - mode: `excel`, future `api`;
 - launch_method: `manual`, future `automatic`, `service`, `api`;
 - check statuses: `created`, `running`, `completed_no_errors`, `completed_with_warnings`, `completed_with_errors`, `interrupted_failed`;
@@ -217,6 +219,106 @@ WB reason/result codes этапа 1:
 - `wb_discount_out_of_range`.
 
 Расширение системных словарей выполняется только через утверждённое изменение документации/ADR и миграцию.
+
+## Stage 2.1 WB API additions
+
+Трассировка: `tz_stage_2.1.txt` §6-§14; ADR-0016..ADR-0020.
+
+Stage 2.1 использует ту же PostgreSQL БД и существующие инварианты immutable operations/files/audit. Excel mode Stage 1 не заменяется.
+
+### Operation classification
+
+Для Stage 2.1 выбран явный контракт: `Operation.step_code` является обязательным primary classifier для всех API steps 2.1.1-2.1.4. Поле должно быть отдельным DB-полем или immutable indexed/generated field из `execution_context`, но реализация обязана предоставить его как явное значение для фильтров UI, audit, tests and traceability.
+
+`Operation.type` не расширяется Stage 2.1 значениями и не используется для API download/upload/calculation steps. Для операций с `mode=api`, `marketplace=wb` и одним из Stage 2.1 `step_code` поле `type` должно быть `NULL` / blank / `not_applicable` согласно выбранной миграции, но не `check` и не `process`. `check/process` сохраняются без изменений для Stage 1 Excel и будущих сценариев, где это реально check/process.
+
+Migration guidance:
+
+- не менять семантику Stage 1 `Operation.type=check/process`;
+- добавить `Operation.step_code` или эквивалентный immutable indexed contract до реализации TASK-012..TASK-015;
+- добавить constraint/validation: Stage 2.1 WB API operation требует один из закрытых `step_code`;
+- добавить constraint/validation: Stage 2.1 WB API operation не должна иметь `type=check/process`;
+- списки, карточки, audit links, tests and traceability используют `step_code` как классификатор API steps.
+
+Закрытый перечень Stage 2.1 step codes:
+
+- `wb_api_prices_download`;
+- `wb_api_promotions_download`;
+- `wb_api_discount_calculation`;
+- `wb_api_discount_upload`.
+
+`Operation.mode=api`, `marketplace=wb`. `Operation.type=check/process` остаётся только для check/process-сценариев; все Stage 2.1 API steps, включая 2.1.3 calculation, классифицируются через `step_code` и не маскируются под Stage 1 Excel check/process.
+
+### New entities
+
+| Сущность | Назначение | Ключевые поля | Связи |
+| --- | --- | --- | --- |
+| WBApiRequestSnapshot | safe snapshot API запроса/ответа | operation_id, store_id, api_category, endpoint_code, method, request_safe, response_safe, status_code, checksum, created_at | operation, store |
+| WBPriceSnapshot | snapshot 2.1.1 | operation_id, store_id, fetched_at, page_count, goods_count, size_conflict_count, safe_snapshot_ref, source_checksum | operation, store |
+| WBPriceSnapshotRow | строка цены API | snapshot_id, nmID, vendorCode, derived_price, currency, discount, sizes_safe, editableSizePrice, isBadTurnover, row_status, reason_code | price snapshot, product |
+| WBPromotion | акция WB | store_id, wb_promotion_id, name, type, start_datetime, end_datetime, is_current_at_fetch, last_seen_at, snapshot_ref | store, products, export files |
+| WBPromotionSnapshot | snapshot 2.1.2 | operation_id, store_id, fetched_at, api_window_start, api_window_end, current_filter_timestamp, raw_response_safe_snapshot, promotions_count, current_promotions_count | operation, store |
+| WBPromotionProduct | товар акции | promotion_id, nmID, inAction, price, currencyCode, planPrice, discount, planDiscount, source_snapshot_id, row_status, reason_code | promotion, snapshot |
+| WBPromotionExportFile | связь акции и Excel export | promotion_id, operation_id, file_version_id | promotion, operation, file |
+| WBApiUploadBatch | batch 2.1.4 | operation_id, batch_no, payload_checksum, goods_count, uploadID, wb_status, status_checked_at, summary, safe_snapshot_ref | upload operation |
+| WBApiUploadDetail | строка результата upload | batch_id, nmID, requested_discount, result_status, reason_code, errorText_safe, quarantine_flag | batch, product |
+
+### MarketplaceProduct Stage 2.1 mapping
+
+2.1.1 обновляет `MarketplaceProduct` выбранного WB store:
+
+- `marketplace=wb`;
+- `sku=str(nmID)`;
+- `external_ids` включает `nmID`, `vendorCode`, `sizeIDs`, `techSizeNames`, `source=wb_prices_api`;
+- `last_values` включает price/discount/discountedPrice/clubDiscount/clubDiscountedPrice/currency/editableSizePrice/isBadTurnover;
+- `title` не выдумывается, если не приходит из официального источника;
+- `MarketplaceProductHistory` фиксирует create/update from `wb_api_prices_download`.
+
+### ConnectionBlock Stage 2.1
+
+`ConnectionBlock` становится рабочим для WB API по `docs/architecture/API_CONNECTIONS_SPEC.md`. `protected_secret_ref` остаётся единственным местом хранения token, authorization header, API key, bearer value and secret-like value. `metadata`, audit, techlog `safe_message`, techlog `sensitive_details_ref`, snapshots, UI, files and reports не содержат такие значения.
+
+### Stage 2.1 system dictionaries
+
+Operation step codes:
+
+- `wb_api_prices_download`;
+- `wb_api_promotions_download`;
+- `wb_api_discount_calculation`;
+- `wb_api_discount_upload`.
+
+WB API reason/result codes:
+
+- `wb_api_price_download_success`;
+- `wb_api_price_download_failed`;
+- `wb_api_price_row_valid`;
+- `wb_api_price_row_size_conflict`;
+- `wb_api_price_row_invalid`;
+- `wb_api_promotion_current`;
+- `wb_api_promotion_not_current_filtered`;
+- `wb_api_promotion_regular`;
+- `wb_api_promotion_auto_no_nomenclatures`;
+- `wb_api_promotion_product_valid`;
+- `wb_api_promotion_product_invalid`;
+- `wb_api_calculated_from_api_sources`;
+- `wb_api_upload_ready`;
+- `wb_api_upload_blocked_by_drift`;
+- `wb_api_upload_sent`;
+- `wb_api_upload_success`;
+- `wb_api_upload_partial_error`;
+- `wb_api_upload_all_error`;
+- `wb_api_upload_canceled`;
+- `wb_api_upload_quarantine`;
+- `wb_api_upload_status_unknown`.
+
+Connection statuses:
+
+- `not_configured`;
+- `configured`;
+- `active`;
+- `check_failed`;
+- `disabled`;
+- `archived`.
 
 ## Видимые идентификаторы
 

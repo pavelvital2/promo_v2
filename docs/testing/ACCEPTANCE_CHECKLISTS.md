@@ -2,6 +2,18 @@
 
 Трассировка: ТЗ §24-§27.
 
+## Stage 2.1 WB API
+
+Чек-листы Stage 2.1 WB API вынесены в `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md`.
+
+Acceptance Stage 2.1 не может быть закрыт, если:
+
+- Excel Stage 1 был удалён/заменён;
+- WB API upload считается успешным без status polling;
+- API token попал в metadata/audit/techlog/snapshot/UI/file;
+- WB Stage 2.1 смешан с Ozon Stage 2.2;
+- open spec-blocking GAP не передан оркестратору.
+
 ## Чек-лист документации фазы 1
 
 - Итоговое ТЗ указано как источник истины.

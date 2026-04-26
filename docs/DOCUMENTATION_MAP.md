@@ -38,6 +38,7 @@
 | `docs/architecture/FILE_CONTOUR.md` | Файлы, версии, хранение, retention |
 | `docs/architecture/DELETION_ARCHIVAL_POLICY.md` | Удаление, блокировка, деактивация, архивирование |
 | `docs/architecture/AUDIT_AND_TECHLOG_SPEC.md` | Audit actions, techlog events, поля и видимость |
+| `docs/architecture/API_CONNECTIONS_SPEC.md` | API-подключения, secrets, rate limits, snapshots Stage 2.1 |
 
 ## Product
 
@@ -47,6 +48,9 @@
 | `docs/product/PERMISSIONS_MATRIX.md` | Роли, права, object access, owner |
 | `docs/product/OPERATIONS_SPEC.md` | Операции, run, check/process, статусы |
 | `docs/product/WB_DISCOUNTS_EXCEL_SPEC.md` | WB Excel сценарий скидок |
+| `docs/product/WB_DISCOUNTS_API_SPEC.md` | WB API сценарий скидок Stage 2.1 |
+| `docs/product/WB_API_PRICE_EXPORT_SPEC.md` | WB API скачивание цен Stage 2.1 |
+| `docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md` | WB API текущие акции Stage 2.1 |
 | `docs/product/OZON_DISCOUNTS_EXCEL_SPEC.md` | Ozon Excel сценарий скидок |
 | `docs/product/modules/README.md` | Модульная карта stage 1 |
 
@@ -59,6 +63,19 @@
 | `docs/tasks/implementation/stage-1/IMPLEMENTATION_TASKS.md` | Индекс и правила задач реализации |
 | `docs/tasks/implementation/stage-1/README.md` | Формат отчёта и правила handoff по implementation tasks |
 | `docs/tasks/implementation/stage-1/` files `TASK-*` | Конкретные задачи реализации |
+
+## Stage 2
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/stages/stage-2/STAGE_2_SCOPE.md` | Split Stage 2: 2.1 WB API, 2.2 Ozon API |
+| `docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md` | Scope 2.1.1-2.1.4 WB API |
+| `docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md` | Приёмочные сценарии Stage 2.1 |
+| `docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md` | Индекс TASK-011..TASK-017 |
+| `docs/tasks/implementation/stage-2/TASK-011..TASK-017` | Task-scoped задачи Stage 2.1 |
+| `docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md` | Test protocol Stage 2.1 |
+| `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 2.1 |
+| `docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 2.1 |
 
 ## Control Documents
 

@@ -225,6 +225,84 @@
 | Сценарии | Ozon process completion. |
 | Критерии готовности | Изменены только K и L; K содержит только `Да` или пусто; L содержит число или пусто; output связан с file version. |
 
+## Маркетплейсы -> WB -> Скидки -> API
+
+Трассировка: `tz_stage_2.1.txt` §13; ADR-0017, ADR-0018, ADR-0019.
+
+Stage 2.1 UI выбирает единый мастер вместо четырёх независимых вкладок:
+
+```text
+WB -> Скидки -> API
+  Шаг 1: Скачать цены
+  Шаг 2: Скачать текущие акции
+  Шаг 3: Рассчитать итоговый Excel
+  Шаг 4: Загрузить по API
+```
+
+Excel route `WB -> Скидки -> Excel` остаётся доступным штатным/резервным режимом.
+
+### Экран мастера WB API
+
+| Поле | Спецификация |
+| --- | --- |
+| Назначение | Провести пользователя через Stage 2.1 WB API flow без смешивания read-only шагов и API upload. |
+| Раздел | Маркетплейсы -> WB -> Скидки -> API. |
+| Роли/права | View: `wb.api.operation.view`; действия по отдельным rights; object access к WB store/account. |
+| Входные точки | Навигация marketplace, карточка магазина, карточка operation, result screens. |
+| Данные | Store selector, состояние API-подключения, последние операции 2.1.1-2.1.4, выбранные price/promo/result basis, ссылки на файлы, warnings/errors. |
+| Действия | Скачать цены, скачать текущие акции, рассчитать, подтвердить и загрузить по API, скачать файлы, открыть operation/product/promotion details. |
+| Контролы | Store selector, connection status block, step cards, action buttons, file links, operation links, warning/error panels. |
+| Фильтры/поиск/сортировка/пагинация | Store selector search; latest operations list filters by step/status/date; detail rows paginate. |
+| Сообщения/статусы | Нет подключения, подключение не active, нет прав, нет object access, устаревшая basis, size conflicts, price drift, partial errors, quarantine. |
+| Переходы | Store card, API connection screen, operation card, product list/card, audit/techlog. |
+| Сценарии | 2.1.1-2.1.4. |
+| Критерии готовности | 2.1.1/2.1.2/2.1.3 визуально обозначены как не меняющие WB; upload отделён confirmation screen; пользователь видит выбранную basis и результаты каждого шага. |
+
+### Шаг 1: Цены
+
+| Поле | Спецификация |
+| --- | --- |
+| Назначение | Скачать цены WB по API и сформировать Excel цен. |
+| Роли/права | `wb.api.prices.download`, `wb.api.prices.file.download`, object access. |
+| Данные | Operation status, fetched_at, goods count, Excel rows count, size-conflict count, checksum, initiator, file retention state. |
+| Действия | Скачать цены по API, скачать Excel цен, открыть operation, открыть справочник товаров. |
+| Сообщения/статусы | Нет active connection, API auth/rate/timeout error, size conflicts found, file expired. |
+| Критерии готовности | Size conflicts видны; Excel download проверяет право; справочник товаров доступен только в object scope. |
+
+### Шаг 2: Текущие акции
+
+| Поле | Спецификация |
+| --- | --- |
+| Назначение | Скачать именно текущие акции WB и сформировать promo Excel files. |
+| Роли/права | `wb.api.promotions.download`, `wb.api.promotions.file.download`, object access. |
+| Данные | `current_filter_timestamp`, current/regular/auto counts, products count, actions without nomenclatures, file links. |
+| Действия | Скачать текущие акции, скачать Excel по акции, открыть operation. |
+| Сообщения/статусы | Нет current promotions, auto promotion without nomenclatures, invalid promo rows, API failures. |
+| Критерии готовности | UI показывает правило current через timestamp/result, не предлагает "все/будущие" как замену; auto promotions не имеют выдуманных строк. |
+
+### Шаг 3: Расчёт
+
+| Поле | Спецификация |
+| --- | --- |
+| Назначение | Рассчитать скидки по API-источникам через WB logic Stage 1 и сформировать итоговый Excel. |
+| Роли/права | `wb.api.discounts.calculate`, `wb.api.discounts.result.download`, object access. |
+| Данные | Selected price export, selected promo exports, applied WB params, calculation logic version, rows/errors/warnings, result Excel, detail report. |
+| Действия | Выбрать basis, рассчитать, скачать итоговый Excel, открыть operation. |
+| Сообщения/статусы | Нет price export, нет promo export, source mismatch, outdated basis, errors block upload. |
+| Критерии готовности | Выбранная basis видна явно; расчёт не меняет WB; результат можно скачать для ручной загрузки в ЛК WB. |
+
+### Шаг 4: API-загрузка
+
+| Поле | Спецификация |
+| --- | --- |
+| Назначение | Отправить рассчитанные скидки в WB по API только после confirmation и drift check. |
+| Роли/права | `wb.api.discounts.upload`, `wb.api.discounts.upload.confirm`, object access. |
+| Данные | Calculation operation, result file, товар count, excluded rows, drift check status, batch uploadIDs, success/error counts, partial/quarantine errors. |
+| Действия | Открыть confirmation, подтвердить, выполнить upload, открыть upload report. |
+| Контролы | Confirmation checkbox/button with exact phrase, cancel, upload action disabled until preconditions pass, batch/detail tables. |
+| Сообщения/статусы | Upload blocked by drift, size conflict, invalid rows, status polling pending/failed, partial errors, quarantine errors, WB canceled upload. |
+| Критерии готовности | Upload невозможен без explicit confirmation; успех не показывается до WB status polling; partial errors отображаются как `completed_with_warnings`; quarantine выделен отдельно. |
+
 ## Операции
 
 ### Списки операций
@@ -235,14 +313,14 @@
 | Раздел | Операции: все операции, мои операции, проверки, обработки, проблемные/требующие внимания, архив/история. |
 | Роли/права | Section access к Операциям; scenario-specific view rights; object access к stores/accounts. |
 | Входные точки | Верхняя навигация, Главная, карточки магазина/товара, result screens. |
-| Данные | visible_id, marketplace, module, mode, store/account, type, status, initiator, start/end, errors/warnings, file/output availability. |
+| Данные | visible_id, marketplace, module, mode, store/account, classifier (`type` для check/process, `step_code` для Stage 2.1 API), status, initiator, start/end, errors/warnings, file/output availability. |
 | Действия | Открыть карточку, скачать output/detail при праве, перейти к повторной проверке/обработке, открыть связанные store/files. |
 | Контролы | Tabs/views, table, filters, search, sort, pagination, export list. |
-| Фильтры/поиск/сортировка/пагинация | Marketplace, store/account, module, mode, type, status, user, period, errors/warnings; search by visible_id; сортировка по времени/status; пагинация. |
+| Фильтры/поиск/сортировка/пагинация | Marketplace, store/account, module, mode, type for check/process, API step_code for Stage 2.1, status, user, period, errors/warnings; search by visible_id; сортировка по времени/status; пагинация. |
 | Сообщения/статусы | Нет операций, скрыто по object access, output expired, interrupted_failed, process requires attention. |
 | Переходы | Operation card, WB/Ozon scenario, store card. |
 | Сценарии | Контроль, поиск, история и разбор проблем. |
-| Критерии готовности | Списки не показывают недоступные stores; check/process разделены; archive/history не удаляет metadata. |
+| Критерии готовности | Списки не показывают недоступные stores; check/process разделены по `type`; Stage 2.1 API steps разделены по `step_code` and not shown as check/process; archive/history не удаляет metadata. |
 
 ### Карточка операции
 
@@ -252,14 +330,14 @@
 | Раздел | Операции и переходы из WB/Ozon results. |
 | Роли/права | Operation view прав соответствующего сценария; detail/download rights по действиям; object access. |
 | Входные точки | Список operations, result screens, карточки store/product, audit/techlog links. |
-| Данные | visible_id, marketplace/module/mode, store, type/status, initiator, start/end, input file versions, output file, check basis, applied parameters, logic version, summary, errors/warnings, detail rows, warning confirmations, audit/techlog links. |
+| Данные | visible_id, marketplace/module/mode, store, classifier/status (`type` for check/process or `step_code` for Stage 2.1 API), initiator, start/end, input file versions, output file, check basis if applicable, applied parameters, logic version, summary, errors/warnings, detail rows, warning confirmations if applicable, audit/techlog links. |
 | Действия | Скачать output/detail, открыть file/store/product/audit/techlog, повторить check/process новой operation. |
 | Контролы | Summary blocks, file/version links, parameter snapshot, detail table, links, download buttons. |
 | Фильтры/поиск/сортировка/пагинация | Detail rows: row number/product/reason/status/problem field; sort by row/status/reason; pagination. |
 | Сообщения/статусы | Operation immutable, file expired, technical details hidden, process blocked/failed/interrupted. |
 | Переходы | Related check/process, store card, product card, audit record, techlog record. |
 | Сценарии | Explainability, support, repeat operations. |
-| Критерии готовности | Все обязательные поля ТЗ §17.3 отображены; завершённая operation не редактируется; links сохраняют конкретные versions. |
+| Критерии готовности | Все обязательные поля ТЗ §17.3 отображены; Stage 2.1 API operation card shows `step_code` instead of forcing check/process type; завершённая operation не редактируется; links сохраняют конкретные versions. |
 
 ## Справочники
 
@@ -522,7 +600,7 @@
 | Сообщения/статусы | Record immutable; details hidden by scope if applicable; ordinary UI deletion unavailable. |
 | Переходы | Related operation/store/user/role/file. |
 | Сценарии | Audit investigation. |
-| Критерии готовности | Sensitive secrets are not exposed; object access restrictions applied. |
+| Критерии готовности | Token, authorization header, API key, bearer value and secret-like values are not exposed; object access restrictions applied. |
 
 ### Технический журнал / системные ошибки
 
@@ -556,7 +634,7 @@
 | Сообщения/статусы | Sensitive details hidden, record immutable, no related operation. |
 | Переходы | Operation card, store card, notification. |
 | Сценарии | Technical diagnostics. |
-| Критерии готовности | Safe message is usable without exposing secrets; sensitive area respects rights. |
+| Критерии готовности | Safe message and sensitive area never expose token, authorization header, API key, bearer value or secret-like values; sensitive area respects rights. |
 
 ## Базовые экспорты
 

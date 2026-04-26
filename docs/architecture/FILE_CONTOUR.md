@@ -95,3 +95,35 @@ Backup policy этапа 1:
 - удалять metadata operation при удалении физического файла по сроку;
 - использовать файл без проверки объектного доступа;
 - считать имя файла уникальным идентификатором версии.
+
+## Stage 2.1 WB API file scenarios
+
+Трассировка: `tz_stage_2.1.txt` §12.
+
+Stage 2.1 использует тот же `FileObject/FileVersion/OperationInputFile/OperationOutputFile`, checksum, retention и download rights. Физические файлы остаются 3 дня, metadata и operation history сохраняются.
+
+| Scenario | Kind | Создаётся | Используется как input |
+| --- | --- | --- | --- |
+| `wb_discounts_api_price_export` | output | 2.1.1 | 2.1.3 calculation |
+| `wb_discounts_api_promotion_export` | output | 2.1.2, отдельный file per regular current promotion | 2.1.3 calculation |
+| `wb_discounts_api_result_excel` | output | 2.1.3 | 2.1.4 upload basis и manual download |
+| `wb_discounts_api_detail_report` | output | 2.1.1-2.1.4 when detail export requested | не является business input |
+| `wb_discounts_api_upload_report` | output | 2.1.4 | не является business input |
+
+Связи:
+
+- 2.1.1 output связывается с 2.1.3 через `OperationInputFile` role `api_price_export`.
+- 2.1.2 outputs связываются с 2.1.3 через `OperationInputFile` role `api_promotion_export`.
+- 2.1.3 result связывается с 2.1.4 через `OperationInputFile` role `api_result_excel`.
+- 2.1.4 upload report связывается с upload operation as output.
+
+Promo files Stage 2.1 создаются отдельными `.xlsx` по акции. Zip/package не входит в обязательный scope и требует отдельного file scenario before implementation.
+
+Download rights:
+
+- price export: `wb.api.prices.file.download`;
+- promotion export: `wb.api.promotions.file.download`;
+- result Excel/detail: `wb.api.discounts.result.download`;
+- upload report: `wb.api.operation.view` plus explicit download right if added.
+
+Файлы и snapshots не содержат WB API tokens, authorization headers или secret-like values.
