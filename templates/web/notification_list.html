@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Системные уведомления{% endblock %}
+{% block content %}
+<h1>Системные уведомления</h1>
+<section class="panel">
+  <table><thead><tr><th>Время</th><th>Severity</th><th>Topic</th><th>Status</th><th>Store</th><th>Operation</th><th>Message</th></tr></thead><tbody>
+    {% for item in page.object_list %}
+      <tr><td>{{ item.created_at }}</td><td>{{ item.severity }}</td><td>{{ item.topic }}</td><td>{{ item.status }}</td><td>{{ item.related_store }}</td><td>{% if item.related_operation %}<a href="{% url 'web:operation_card' item.related_operation.visible_id %}">{{ item.related_operation.visible_id }}</a>{% endif %}</td><td>{{ item.message }}</td></tr>
+    {% empty %}<tr><td colspan="7" class="empty">Нет активных уведомлений.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

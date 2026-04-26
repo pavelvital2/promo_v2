@@ -1,0 +1,13 @@
+[Unit]
+Description=Promo V2 daily PostgreSQL and media backup
+Wants=postgresql.service
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/promo_v2
+EnvironmentFile=/etc/promo_v2/env
+ExecStart=/opt/promo_v2/scripts/backup_postgres.sh
+ExecStart=/opt/promo_v2/scripts/backup_media.sh

@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Marketplace Operations{% endblock %}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #f5f7fa;
+        color: #172033;
+      }
+
+      a {
+        color: #174ea6;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .topbar {
+        background: #ffffff;
+        border-bottom: 1px solid #d9e0ea;
+      }
+
+      .topbar-inner {
+        align-items: center;
+        box-sizing: border-box;
+        display: flex;
+        gap: 24px;
+        margin: 0 auto;
+        max-width: 1180px;
+        padding: 14px 24px;
+      }
+
+      .brand {
+        color: #172033;
+        font-size: 17px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .nav a,
+      .button,
+      button {
+        border: 1px solid #c7d1df;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #172033;
+        display: inline-block;
+        font: inherit;
+        padding: 8px 12px;
+      }
+
+      .nav a.active,
+      .button.primary,
+      button.primary {
+        background: #174ea6;
+        border-color: #174ea6;
+        color: #ffffff;
+      }
+
+      main {
+        box-sizing: border-box;
+        min-height: calc(100vh - 58px);
+        padding: 28px 24px;
+      }
+
+      .shell {
+        margin: 0 auto;
+        max-width: 1180px;
+      }
+
+      .status {
+        color: #42526e;
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .panel,
+      .card {
+        background: #ffffff;
+        border: 1px solid #d9e0ea;
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .toolbar {
+        align-items: end;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 0 0 16px;
+      }
+
+      label {
+        display: grid;
+        gap: 5px;
+        font-size: 13px;
+      }
+
+      input,
+      select {
+        border: 1px solid #bac6d6;
+        border-radius: 6px;
+        box-sizing: border-box;
+        font: inherit;
+        min-height: 36px;
+        padding: 7px 9px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid #e3e9f2;
+        padding: 10px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: #42526e;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .badge {
+        background: #eef3f8;
+        border-radius: 999px;
+        display: inline-block;
+        font-size: 12px;
+        padding: 3px 8px;
+      }
+
+      .badge.warning {
+        background: #fff3cd;
+      }
+
+      .badge.error,
+      .error {
+        color: #9b1c1c;
+      }
+
+      .badge.error {
+        background: #fde7e9;
+      }
+
+      .messages {
+        display: grid;
+        gap: 8px;
+        margin: 0 0 16px;
+      }
+
+      .message {
+        background: #fff;
+        border: 1px solid #d9e0ea;
+        border-left: 4px solid #174ea6;
+        border-radius: 6px;
+        padding: 10px 12px;
+      }
+
+      .message.error {
+        border-left-color: #9b1c1c;
+      }
+
+      .empty {
+        color: #5d6b82;
+        padding: 18px 0;
+      }
+
+      .kv {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .pre {
+        background: #f2f5f9;
+        border-radius: 6px;
+        overflow: auto;
+        padding: 10px;
+        white-space: pre-wrap;
+      }
+
+      @media (max-width: 760px) {
+        .topbar-inner {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .grid.two,
+        .grid.three {
+          grid-template-columns: 1fr;
+        }
+
+        .kv {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="{% url 'web:home' %}">Marketplace Operations</a>
+        {% if request.user.is_authenticated %}
+          <nav class="nav" aria-label="Главная навигация">
+            {% for item in nav_items %}
+              <a href="{% url item.url_name %}" class="{% if active_section and active_section in item.url_name %}active{% endif %}">{{ item.label }}</a>
+            {% endfor %}
+          </nav>
+        {% endif %}
+      </div>
+    </header>
+    <main>
+      <div class="shell">
+        {% if messages %}
+          <div class="messages">
+            {% for message in messages %}
+              <div class="message {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </body>
+</html>

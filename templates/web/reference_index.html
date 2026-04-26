@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Справочники{% endblock %}
+{% block content %}
+<h1>Справочники</h1>
+<div class="grid two">
+  {% if can_stores %}
+  <section class="panel">
+    <h2>Магазины / кабинеты</h2>
+    <p class="status">Карточки, подключения, история и связанные операции.</p>
+    <a class="button primary" href="{% url 'stores:store_list' %}">Открыть магазины</a>
+  </section>
+  {% endif %}
+  {% if can_products %}
+  <section class="panel">
+    <h2>Товары</h2>
+    <p class="status">Товары, найденные в Excel-операциях доступных магазинов.</p>
+    <a class="button" href="{% url 'web:product_list' %}">Открыть товары</a>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

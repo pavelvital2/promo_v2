@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Techlog {{ record.pk }}{% endblock %}
+{% block content %}
+<h1>Techlog record {{ record.pk }}</h1>
+<section class="panel">
+  <div class="kv">
+    <strong>Occurred at</strong><span>{{ record.occurred_at }}</span>
+    <strong>Severity</strong><span>{{ record.severity }}</span>
+    <strong>Event type</strong><span>{{ record.event_type }}</span>
+    <strong>Source</strong><span>{{ record.source_component }}</span>
+    <strong>Store</strong><span>{{ record.store }}</span>
+    <strong>Operation</strong><span>{% if record.operation %}<a href="{% url 'web:operation_card' record.operation.visible_id %}">{{ record.operation.visible_id }}</a>{% else %}-{% endif %}</span>
+    <strong>Handled status</strong><span>{{ record.handled_status }}</span>
+    <strong>Retention until</strong><span>{{ record.retention_until }}</span>
+  </div>
+  <h2>Safe message</h2>
+  <div class="pre">{{ record.safe_message }}</div>
+  <h2>Sensitive details</h2>
+  {% if can_view_sensitive and record.sensitive_details_ref %}
+    <div class="pre">{{ record.sensitive_details_ref }}</div>
+  {% else %}
+    <div class="empty">Чувствительные технические детали скрыты правами доступа или отсутствуют.</div>
+  {% endif %}
+</section>
+{% endblock %}

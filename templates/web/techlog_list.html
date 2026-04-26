@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Техжурнал{% endblock %}
+{% block content %}
+<h1>Технический журнал</h1>
+<form class="toolbar panel" method="get">
+  <label>Период с<input type="date" name="period_from" value="{{ filters.period_from }}"></label>
+  <label>Период по<input type="date" name="period_to" value="{{ filters.period_to }}"></label>
+  <label>User<select name="user"><option value="">Все</option>{% for item in users %}<option value="{{ item.pk }}" {% if filters.user == item.pk|stringformat:"s" %}selected{% endif %}>{{ item.visible_id }} {{ item.login }}</option>{% endfor %}</select></label>
+  <label>Event<input name="event" value="{{ filters.event }}"></label>
+  <label>Store<select name="store"><option value="">Все</option>{% for store in stores %}<option value="{{ store.pk }}" {% if filters.store == store.pk|stringformat:"s" %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>{% endfor %}</select></label>
+  <label>Operation<input name="operation" value="{{ filters.operation }}"></label>
+  <label>Severity<input name="severity" value="{{ filters.severity }}"></label>
+  <label>Поиск<input name="q" value="{{ filters.q }}"></label>
+  <button>Фильтровать</button>
+</form>
+<section class="panel">
+  <table><thead><tr><th>Время</th><th>Severity</th><th>Event</th><th>Store</th><th>Operation</th><th>Message</th><th>Status</th></tr></thead><tbody>
+    {% for record in page.object_list %}
+      <tr>
+        <td><a href="{% url 'web:techlog_card' record.pk %}">{{ record.occurred_at }}</a></td>
+        <td><span class="badge {% if record.severity == 'critical' or record.severity == 'error' %}error{% elif record.severity == 'warning' %}warning{% endif %}">{{ record.severity }}</span></td>
+        <td>{{ record.event_type }}</td><td>{{ record.store }}</td><td>{% if record.operation %}<a href="{% url 'web:operation_card' record.operation.visible_id %}">{{ record.operation.visible_id }}</a>{% endif %}</td><td>{{ record.safe_message }}</td><td>{{ record.handled_status }}</td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="empty">Нет techlog records или они скрыты правами доступа.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

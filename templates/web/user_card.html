@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Пользователь {{ target_user.visible_id }}{% endblock %}
+{% block content %}
+<h1>{{ target_user.visible_id }} {{ target_user.login }}</h1>
+<section class="panel">
+  <div class="kv">
+    <strong>Имя</strong><span>{{ target_user.display_name }}</span>
+    <strong>Статус</strong><span>{{ target_user.status }}</span>
+    <strong>Primary role</strong><span>{{ target_user.primary_role }}</span>
+    <strong>Owner protected</strong><span>{{ target_user.is_owner }}</span>
+  </div>
+</section>
+{% if can_edit_user %}
+<section class="panel" style="margin-top:16px">
+  <h2>Изменить пользователя</h2>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_user">
+    <label>Имя<input name="display_name" value="{{ target_user.display_name }}"></label>
+    <label>Primary role<select name="primary_role"><option value="">-</option>{% for role in all_roles %}<option value="{{ role.pk }}" {% if target_user.primary_role_id == role.pk %}selected{% endif %}>{{ role.code }}</option>{% endfor %}</select></label>
+    <button class="primary">Сохранить</button>
+  </form>
+</section>
+{% endif %}
+{% if can_change_status or can_archive %}
+<section class="panel" style="margin-top:16px">
+  <h2>Статус</h2>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <label>Причина<input name="reason"></label>
+    {% if can_change_status %}<button name="action" value="block">Заблокировать</button><button name="action" value="unblock">Разблокировать</button>{% endif %}
+    {% if can_archive %}<button name="action" value="archive">Архивировать</button>{% endif %}
+  </form>
+</section>
+{% endif %}
+<div class="grid two" style="margin-top:16px">
+  <section class="panel"><h2>Роли</h2>{% for role in roles %}<p>{{ role.code }} - {{ role.name }}</p>{% empty %}<div class="empty">Нет дополнительных ролей.</div>{% endfor %}</section>
+  <section class="panel"><h2>Store access</h2>{% for item in store_access %}<p>{{ item.store.visible_id }} {{ item.store.name }}: {{ item.access_level }} / {{ item.effect }} / active={{ item.is_active }}</p>{% empty %}<div class="empty">Нет назначений.</div>{% endfor %}</section>
+</div>
+<section class="panel" style="margin-top:16px">
+  <h2>Individual permissions</h2>
+  {% if can_assign_permissions %}
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="permission_override">
+    <label>Permission<select name="permission">{% for item in permissions_all %}<option value="{{ item.code }}">{{ item.code }}</option>{% endfor %}</select></label>
+    <label>Effect<select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select></label>
+    <label>Store<select name="store"><option value="">global</option>{% for store in stores %}<option value="{{ store.pk }}">{{ store.visible_id }} {{ store.name }}</option>{% endfor %}</select></label>
+    <label><input type="checkbox" name="is_active" checked> Active</label>
+    <button>Сохранить override</button>
+  </form>
+  {% endif %}
+  {% for item in overrides %}<p>{{ item.permission.code }} / {{ item.effect }} / {{ item.store|default:"global" }} / active={{ item.is_active }}</p>{% empty %}<div class="empty">Нет overrides.</div>{% endfor %}
+</section>
+{% if can_assign_store_access %}
+<section class="panel" style="margin-top:16px">
+  <h2>Назначить store access</h2>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="store_access">
+    <label>Store<select name="store">{% for store in stores %}<option value="{{ store.pk }}">{{ store.visible_id }} {{ store.name }}</option>{% endfor %}</select></label>
+    <label>Level<select name="access_level"><option value="view">view</option><option value="work">work</option><option value="admin">admin</option><option value="full">full</option></select></label>
+    <label>Effect<select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select></label>
+    <label><input type="checkbox" name="is_active" checked> Active</label>
+    <button>Сохранить access</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Операция {{ operation.visible_id }}{% endblock %}
+{% block content %}
+<h1>Операция {{ operation.visible_id }}</h1>
+<div class="toolbar">
+  <a class="button" href="{% url 'web:operation_list' %}">К списку</a>
+  {% if can_confirm_warnings %}
+    <a class="button" href="{% url 'web:warning_confirmation' operation.visible_id %}">Подтверждение warnings</a>
+  {% endif %}
+</div>
+<section class="panel">
+  <div class="kv">
+    <strong>Маркетплейс</strong><span>{{ operation.marketplace }}</span>
+    <strong>Модуль / режим</strong><span>{{ operation.module }} / {{ operation.mode }}</span>
+    <strong>Тип / статус</strong><span>{{ operation.operation_type }} / {{ operation.status }}</span>
+    <strong>Магазин</strong><span>{{ operation.store.visible_id }} {{ operation.store.name }}</span>
+    <strong>Инициатор</strong><span>{{ operation.initiator_user.visible_id }} {{ operation.initiator_user.login }}</span>
+    <strong>Старт / финиш</strong><span>{{ operation.started_at }} / {{ operation.finished_at }}</span>
+    <strong>Check basis</strong><span>{% if operation.check_basis_operation %}<a href="{% url 'web:operation_card' operation.check_basis_operation.visible_id %}">{{ operation.check_basis_operation.visible_id }}</a>{% else %}-{% endif %}</span>
+    <strong>Logic version</strong><span>{{ operation.logic_version }}</span>
+    <strong>Errors / warnings</strong><span>{{ operation.error_count }} / {{ operation.warning_count }}</span>
+  </div>
+</section>
+
+<div class="grid two" style="margin-top:16px">
+  <section class="panel">
+    <h2>Входные файлы</h2>
+    {% if input_files %}
+      <table><thead><tr><th>Роль</th><th>Файл</th><th>Версия</th><th>Checksum</th><th>Retention</th></tr></thead><tbody>
+        {% for link in input_files %}
+          <tr><td>{{ link.role_in_operation }}</td><td>{{ link.file_version.file.visible_id }} {{ link.file_version.original_name }}</td><td>v{{ link.file_version.version_no }}</td><td>{{ link.file_version.checksum_sha256 }}</td><td>{{ link.file_version.retention_until }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    {% else %}<div class="empty">Нет связанных входных файлов.</div>{% endif %}
+  </section>
+  <section class="panel">
+    <h2>Выходные файлы</h2>
+    {% if output_links %}
+      <table><thead><tr><th>Тип</th><th>Файл</th><th>Версия</th><th>Действие</th></tr></thead><tbody>
+        {% for link in output_links %}
+          <tr>
+            <td>{{ link.output_kind }}</td>
+            <td>{{ link.file_version.file.visible_id }} {{ link.file_version.original_name }}</td>
+            <td>v{{ link.file_version.version_no }}</td>
+            <td>
+              {% if link.output_kind == "detail_report" %}
+                {% if link.file_version.is_physically_available and can_download_detail %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not can_download_detail %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Срок хранения истёк или файл недоступен</span>{% endif %}
+              {% else %}
+                {% if link.file_version.is_physically_available and can_download_output %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not can_download_output %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Срок хранения истёк или файл недоступен</span>{% endif %}
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody></table>
+    {% else %}<div class="empty">Output workbook не создан для этой операции.</div>{% endif %}
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Applied parameters snapshot</h2>
+  {% if parameter_snapshots %}
+    <table><thead><tr><th>Код</th><th>Значение</th><th>Источник</th><th>Версия</th><th>Effective</th></tr></thead><tbody>
+      {% for item in parameter_snapshots %}
+        <tr><td>{{ item.parameter_code }}</td><td>{{ item.applied_value }}</td><td>{{ item.source }}</td><td>{{ item.parameter_version }}</td><td>{{ item.effective_at }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  {% else %}<div class="empty">Для операции нет пользовательских параметров.</div>{% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Summary</h2>
+  {% if summary_items %}
+    <table><tbody>{% for key, value in summary_items %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<div class="empty">Summary не заполнен.</div>{% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Детализация строк</h2>
+  {% if can_view_details %}
+    <form method="get" class="toolbar">
+      <label>Поиск<input name="q" value="{{ filters.q }}"></label>
+      <label>Row status<input name="row_status" value="{{ filters.row_status }}"></label>
+      <label>Reason code<input name="reason" value="{{ filters.reason }}"></label>
+      <button>Фильтровать</button>
+    </form>
+    {% if detail_page.object_list %}
+      <table><thead><tr><th>Строка</th><th>Product</th><th>Status</th><th>Reason</th><th>Level</th><th>Field</th><th>Value</th><th>Message</th></tr></thead><tbody>
+        {% for row in detail_page.object_list %}
+          <tr><td>{{ row.row_no }}</td><td>{{ row.product_ref }}</td><td>{{ row.row_status }}</td><td>{{ row.reason_code }}</td><td>{{ row.message_level }}</td><td>{{ row.problem_field }}</td><td>{{ row.final_value }}</td><td>{{ row.message }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+      {% include "web/_pagination.html" with page=detail_page %}
+    {% else %}<div class="empty">Нет строк детализации.</div>{% endif %}
+  {% else %}
+    <div class="empty">Детализация скрыта правами доступа.</div>
+  {% endif %}
+</section>
+
+<div class="grid two" style="margin-top:16px">
+  <section class="panel">
+    <h2>Audit links</h2>
+    {% if audit_records %}{% for record in audit_records %}<p><a href="{% url 'web:audit_card' record.pk %}">{{ record.action_code }}</a> <span class="status">{{ record.occurred_at }}</span></p>{% endfor %}{% else %}<div class="empty">Нет audit links.</div>{% endif %}
+  </section>
+  <section class="panel">
+    <h2>Techlog links</h2>
+    {% if techlog_records %}{% for record in techlog_records %}<p><a href="{% url 'web:techlog_card' record.pk %}">{{ record.event_type }}</a> <span class="status">{{ record.occurred_at }}</span></p>{% endfor %}{% else %}<div class="empty">Нет techlog links.</div>{% endif %}
+  </section>
+</div>
+{% endblock %}

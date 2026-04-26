@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Главная{% endblock %}
+{% block content %}
+<h1>Главная</h1>
+<div class="grid three">
+  <section class="panel">
+    <h2>Доступные разделы</h2>
+    {% if sections %}
+      <div class="grid">
+        {% for section in sections %}
+          <a class="button" href="{% url section.url_name %}">{{ section.label }}</a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">Нет доступных разделов.</div>
+    {% endif %}
+  </section>
+  <section class="panel">
+    <h2>Быстрые действия</h2>
+    {% if quick_actions %}
+      <div class="grid">
+        {% for action in quick_actions %}
+          <a class="button primary" href="{% url action.url_name %}">{{ action.label }}</a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">Нет доступных сценариев запуска.</div>
+    {% endif %}
+  </section>
+  <section class="panel">
+    <h2>Системные уведомления</h2>
+    {% if system_notifications %}
+      {% for item in system_notifications %}
+        <p><span class="badge warning">{{ item.severity }}</span> {{ item.topic }}<br><span class="status">{{ item.created_at }}</span></p>
+      {% endfor %}
+      <a href="{% url 'web:notification_list' %}">Открыть все</a>
+    {% else %}
+      <div class="empty">Нет активных системных уведомлений.</div>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid two" style="margin-top:16px">
+  <section class="panel">
+    <h2>Последние операции</h2>
+    {% include "web/_operation_table.html" with operations=latest_operations %}
+  </section>
+  <section class="panel">
+    <h2>Требуют внимания</h2>
+    {% include "web/_operation_table.html" with operations=problem_operations %}
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Сроки хранения файлов</h2>
+  {% if file_notifications %}
+    <table>
+      <thead><tr><th>Файл</th><th>Магазин</th><th>Версия</th><th>Доступен до</th><th>Статус</th></tr></thead>
+      <tbody>
+        {% for version in file_notifications %}
+          <tr>
+            <td>{{ version.file.visible_id }} {{ version.original_name }}</td>
+            <td>{{ version.file.store.visible_id }} {{ version.file.store.name }}</td>
+            <td>v{{ version.version_no }}</td>
+            <td>{{ version.retention_until }}</td>
+            <td>{{ version.physical_status }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">Нет файлов в доступном контуре.</div>
+  {% endif %}
+</section>
+{% endblock %}

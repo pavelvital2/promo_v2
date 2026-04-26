@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Операции{% endblock %}
+{% block content %}
+<h1>Операции</h1>
+<form method="get" class="toolbar panel">
+  <label>Поиск visible_id<input name="q" value="{{ filters.q }}"></label>
+  <label>Маркетплейс
+    <select name="marketplace">
+      <option value="">Все</option>
+      <option value="wb" {% if filters.marketplace == "wb" %}selected{% endif %}>WB</option>
+      <option value="ozon" {% if filters.marketplace == "ozon" %}selected{% endif %}>Ozon</option>
+    </select>
+  </label>
+  <label>Тип
+    <select name="type">
+      <option value="">Все</option>
+      <option value="check" {% if filters.type == "check" %}selected{% endif %}>check</option>
+      <option value="process" {% if filters.type == "process" %}selected{% endif %}>process</option>
+    </select>
+  </label>
+  <label>Статус<input name="status" value="{{ filters.status }}"></label>
+  <label>Магазин
+    <select name="store">
+      <option value="">Все доступные</option>
+      {% for store in stores %}
+        <option value="{{ store.pk }}" {% if filters.store == store.pk|stringformat:"s" %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="primary">Применить</button>
+</form>
+<section class="panel">
+  {% include "web/_operation_table.html" with operations=page.object_list %}
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

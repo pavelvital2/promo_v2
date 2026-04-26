@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Stores / cabinets{% endblock %}
+
+{% block content %}
+  <h1>Магазины / кабинеты</h1>
+
+  <form method="get">
+    <input type="search" name="q" value="{{ search }}" placeholder="Name or visible ID">
+    <select name="marketplace">
+      <option value="">Marketplace</option>
+      {% for value, label in marketplace_choices %}
+        <option value="{{ value }}"{% if marketplace == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="status">
+      <option value="">Status</option>
+      {% for value, label in status_choices %}
+        <option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="api_block">
+      <option value="">API block</option>
+      <option value="present"{% if api_block == "present" %} selected{% endif %}>Present</option>
+      <option value="absent"{% if api_block == "absent" %} selected{% endif %}>Absent</option>
+    </select>
+    <button type="submit">Filter</button>
+    {% if can_create %}
+      <a href="{% url 'stores:store_create' %}">Create</a>
+    {% endif %}
+  </form>
+
+  <p class="status">API block: {{ api_stage_2_notice }}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Visible ID</th>
+        <th>Name</th>
+        <th>Group / brand</th>
+        <th>Marketplace</th>
+        <th>Cabinet type</th>
+        <th>Status</th>
+        <th>API block</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for store in page.object_list %}
+        <tr>
+          <td><a href="{% url 'stores:store_card' store.visible_id %}">{{ store.visible_id }}</a></td>
+          <td>{{ store.name }}</td>
+          <td>{{ store.group|default:"" }}</td>
+          <td>{{ store.get_marketplace_display }}</td>
+          <td>{{ store.get_cabinet_type_display }}</td>
+          <td>{{ store.get_status_display }}</td>
+          <td>{% if store.connection_blocks.exists %}Prepared{% else %}None{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7">Нет доступных магазинов / кабинетов.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page.has_other_pages %}
+    <nav>
+      {% if page.has_previous %}
+        <a href="?page={{ page.previous_page_number }}">Previous</a>
+      {% endif %}
+      <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a href="?page={{ page.next_page_number }}">Next</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

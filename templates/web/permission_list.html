@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Права доступа{% endblock %}
+{% block content %}
+<h1>Права доступа</h1>
+<form class="toolbar panel" method="get"><label>Поиск<input name="q" value="{{ q }}"></label><button>Найти</button></form>
+<section class="panel">
+  <h2>Action rights</h2>
+  <table><thead><tr><th>Code</th><th>Название</th><th>Scope</th><th>System</th></tr></thead><tbody>
+    {% for item in page.object_list %}<tr><td>{{ item.code }}</td><td>{{ item.name }}</td><td>{{ item.scope_type }}</td><td>{{ item.is_system }}</td></tr>{% empty %}<tr><td colspan="4" class="empty">Нет прав.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+<section class="panel" style="margin-top:16px">
+  <h2>Section access</h2>
+  <table><thead><tr><th>Code</th><th>Section</th><th>Mode</th><th>Name</th></tr></thead><tbody>
+    {% for item in sections %}<tr><td>{{ item.code }}</td><td>{{ item.section }}</td><td>{{ item.mode }}</td><td>{{ item.name }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "create" %}Create store{% else %}Edit {{ store.visible_id }}{% endif %}{% endblock %}
+
+{% block content %}
+  <p><a href="{% if store %}{% url 'stores:store_card' store.visible_id %}{% else %}{% url 'stores:store_list' %}{% endif %}">Back</a></p>
+  <h1>{% if mode == "create" %}Create store / cabinet{% else %}Edit {{ store.visible_id }}{% endif %}</h1>
+
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save</button>
+    {% if store %}
+      <a href="{% url 'stores:store_card' store.visible_id %}">Cancel</a>
+    {% else %}
+      <a href="{% url 'stores:store_list' %}">Cancel</a>
+    {% endif %}
+  </form>
+{% endblock %}

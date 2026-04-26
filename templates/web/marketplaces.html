@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Маркетплейсы{% endblock %}
+{% block content %}
+<h1>Маркетплейсы</h1>
+<div class="grid two">
+  <section class="panel">
+    <h2>WB -> Скидки -> Excel</h2>
+    <p class="status">Доступных WB магазинов: {{ wb_stores|length }}</p>
+    {% if wb_stores %}<a class="button primary" href="{% url 'web:wb_excel' %}">Открыть WB Excel</a>{% endif %}
+  </section>
+  <section class="panel">
+    <h2>Ozon -> Скидки -> Excel</h2>
+    <p class="status">Доступных Ozon магазинов: {{ ozon_stores|length }}</p>
+    {% if ozon_stores %}<a class="button primary" href="{% url 'web:ozon_excel' %}">Открыть Ozon Excel</a>{% endif %}
+  </section>
+</div>
+{% endblock %}

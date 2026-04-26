@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}History {{ store.visible_id }}{% endblock %}
+
+{% block content %}
+  <p><a href="{% url 'stores:store_card' store.visible_id %}">Back to store</a></p>
+  <h1>History {{ store.visible_id }}</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Changed at</th>
+        <th>User</th>
+        <th>Field</th>
+        <th>Old value</th>
+        <th>New value</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in page.object_list %}
+        <tr>
+          <td>{{ item.changed_at }}</td>
+          <td>{{ item.changed_by|default:"system" }}</td>
+          <td>{{ item.field_code }}</td>
+          <td>{{ item.old_value }}</td>
+          <td>{{ item.new_value }}</td>
+          <td>{{ item.source }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="6">No history records.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

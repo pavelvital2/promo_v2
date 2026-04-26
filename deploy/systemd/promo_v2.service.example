@@ -1,0 +1,14 @@
+[Unit]
+Description=Promo V2 Django application
+After=network.target postgresql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/promo_v2
+EnvironmentFile=/etc/promo_v2/env
+ExecStart=/opt/promo_v2/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 120
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

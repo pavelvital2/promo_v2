@@ -1,0 +1,11 @@
+{% if page and page.paginator.num_pages > 1 %}
+  <div class="toolbar">
+    {% if page.has_previous %}
+      <a class="button" href="?page={{ page.previous_page_number }}">Назад</a>
+    {% endif %}
+    <span class="status">Страница {{ page.number }} из {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}
+      <a class="button" href="?page={{ page.next_page_number }}">Вперёд</a>
+    {% endif %}
+  </div>
+{% endif %}

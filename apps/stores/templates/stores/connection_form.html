@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Connection {{ store.visible_id }}{% endblock %}
+
+{% block content %}
+  <p><a href="{% url 'stores:store_card' store.visible_id %}">Back to store</a></p>
+  <h1>Connection block {{ store.visible_id }}</h1>
+  <p class="status">{{ api_stage_2_notice }}</p>
+
+  {% if not can_edit_secret_ref %}
+    <p class="status">No right to edit protected secret reference.</p>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save</button>
+    <a href="{% url 'stores:store_card' store.visible_id %}">Cancel</a>
+  </form>
+{% endblock %}

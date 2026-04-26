@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block content %}
+<h1>Настройки</h1>
+<div class="toolbar">
+  <a class="button" href="{% url 'web:parameter_history' %}">История параметров</a>
+</div>
+<div class="grid two">
+  <section class="panel">
+    <h2>Системные параметры</h2>
+    {% if system_params %}
+      <table><thead><tr><th>Код</th><th>Значение</th><th>Active from</th></tr></thead><tbody>
+        {% for item in system_params %}
+          <tr><td>{{ item.parameter_code }}</td><td>{{ item.value }}</td><td>{{ item.active_from }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    {% else %}<div class="empty">Нет права просмотра или параметров.</div>{% endif %}
+  </section>
+  <section class="panel">
+    <h2>WB параметры магазина</h2>
+    <form method="post">
+      {% csrf_token %}
+      <div class="toolbar">
+        <label>Магазин
+          <select name="store" onchange="this.form.method='get'; this.form.submit()">
+            {% for store in stores %}<option value="{{ store.pk }}" {% if selected_store.pk == store.pk %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      {% if effective_params %}
+        <table><thead><tr><th>Код</th><th>Effective</th><th>Source</th><th>Store value</th><th>Новое значение</th><th>Clear</th></tr></thead><tbody>
+          {% for item in effective_params %}
+            <tr>
+              <td>{{ item.code }}</td>
+              <td>{{ item.effective_value }}</td>
+              <td>{{ item.source }}</td>
+              <td>{{ item.store_value|default:"-" }}</td>
+              <td><input name="{{ item.code }}" type="number" min="0" max="100" {% if not can_edit_store_params %}disabled{% endif %}></td>
+              <td><input name="clear" value="{{ item.code }}" type="checkbox" {% if not can_edit_store_params %}disabled{% endif %}></td>
+            </tr>
+          {% endfor %}
+        </tbody></table>
+        <div class="toolbar" style="margin-top:16px">
+          <button class="primary" {% if not can_edit_store_params %}disabled{% endif %}>Сохранить</button>
+        </div>
+      {% else %}<div class="empty">Нет доступного WB магазина или прав просмотра параметров.</div>{% endif %}
+    </form>
+  </section>
+</div>
+{% endblock %}

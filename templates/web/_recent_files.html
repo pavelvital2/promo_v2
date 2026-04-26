@@ -1,0 +1,22 @@
+<section class="panel" style="margin-top:16px">
+  <h2>Последние версии файлов</h2>
+  {% if recent_files %}
+    <table>
+      <thead><tr><th>Файл</th><th>Версия</th><th>Тип</th><th>Размер</th><th>Срок хранения</th><th>Статус</th></tr></thead>
+      <tbody>
+        {% for version in recent_files %}
+          <tr>
+            <td>{{ version.file.visible_id }} {{ version.original_name }}</td>
+            <td>v{{ version.version_no }}</td>
+            <td>{{ version.file.kind }}</td>
+            <td>{{ version.size }}</td>
+            <td>{{ version.retention_until }}</td>
+            <td>{{ version.physical_status }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">Нет загруженных файлов в выбранном контуре.</div>
+  {% endif %}
+</section>

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Администрирование{% endblock %}
+{% block content %}
+<h1>Администрирование</h1>
+<div class="grid three">
+  {% if links.users %}
+  <a class="card" href="{% url 'web:user_list' %}"><h2>Пользователи</h2><span class="status">Роли, overrides, store access</span></a>
+  {% endif %}
+  {% if links.roles %}
+  <a class="card" href="{% url 'web:role_list' %}"><h2>Роли</h2><span class="status">Шаблоны прав</span></a>
+  {% endif %}
+  {% if links.permissions %}
+  <a class="card" href="{% url 'web:permission_list' %}"><h2>Права доступа</h2><span class="status">Системные коды</span></a>
+  {% endif %}
+  {% if links.store_access %}
+  <a class="card" href="{% url 'web:store_access_list' %}"><h2>Доступы к магазинам</h2><span class="status">Object access</span></a>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}{{ store.visible_id }}{% endblock %}
+
+{% block content %}
+  <p><a href="{% url 'stores:store_list' %}">Back to stores</a></p>
+  <h1>{{ store.visible_id }} {{ store.name }}</h1>
+  <p class="status">{{ store.get_status_display }} · {{ store.get_marketplace_display }} · {{ store.get_cabinet_type_display }}</p>
+
+  {% if can_edit %}
+    <p><a href="{% url 'stores:store_edit' store.visible_id %}">Edit store</a></p>
+  {% endif %}
+
+  <section>
+    <h2>Details</h2>
+    <dl>
+      <dt>Group / brand / business direction</dt>
+      <dd>{{ store.group|default:"" }}</dd>
+      <dt>Service comments</dt>
+      <dd>{{ store.comments|linebreaksbr }}</dd>
+      <dt>Created</dt>
+      <dd>{{ store.created_at }}</dd>
+      <dt>Updated</dt>
+      <dd>{{ store.updated_at }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Connection</h2>
+    <p class="status">{{ api_stage_2_notice }}</p>
+    {% if can_view_connection %}
+      {% if can_edit_connection %}
+        <p><a href="{% url 'stores:connection_create' store.visible_id %}">Add connection block</a></p>
+      {% endif %}
+      <table>
+        <thead>
+          <tr>
+            <th>Module</th>
+            <th>Connection type</th>
+            <th>Status</th>
+            <th>Secret reference</th>
+            <th>Metadata</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for connection in connections %}
+            <tr>
+              <td>{{ connection.module }}</td>
+              <td>{{ connection.connection_type }}</td>
+              <td>{{ connection.get_status_display }}</td>
+              <td>{% if connection.protected_secret_ref %}[ref-set]{% else %}[empty]{% endif %}</td>
+              <td>{{ connection.metadata_display }}</td>
+              <td>
+                {% if can_edit_connection %}
+                  <a href="{% url 'stores:connection_edit' store.visible_id connection.pk %}">Edit</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6">Connection block is not configured.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="status">No right to view connection block.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Access and history</h2>
+    {% if can_view_history %}
+      <p><a href="{% url 'stores:store_history' store.visible_id %}">Open change history</a></p>
+    {% endif %}
+  </section>
+{% endblock %}

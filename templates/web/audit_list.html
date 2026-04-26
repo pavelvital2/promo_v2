@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Аудит{% endblock %}
+{% block content %}
+<h1>Аудит действий</h1>
+<form class="toolbar panel" method="get">
+  <label>Период с<input type="date" name="period_from" value="{{ filters.period_from }}"></label>
+  <label>Период по<input type="date" name="period_to" value="{{ filters.period_to }}"></label>
+  <label>User<select name="user"><option value="">Все</option>{% for item in users %}<option value="{{ item.pk }}" {% if filters.user == item.pk|stringformat:"s" %}selected{% endif %}>{{ item.visible_id }} {{ item.login }}</option>{% endfor %}</select></label>
+  <label>Action code<input name="action" value="{{ filters.action }}"></label>
+  <label>Store<select name="store"><option value="">Все</option>{% for store in stores %}<option value="{{ store.pk }}" {% if filters.store == store.pk|stringformat:"s" %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>{% endfor %}</select></label>
+  <label>Operation<input name="operation" value="{{ filters.operation }}"></label>
+  <label>Поиск<input name="q" value="{{ filters.q }}"></label>
+  <button>Фильтровать</button>
+</form>
+<section class="panel">
+  <table><thead><tr><th>Время</th><th>User</th><th>Action</th><th>Entity</th><th>Store</th><th>Operation</th><th>Message</th></tr></thead><tbody>
+    {% for record in page.object_list %}
+      <tr>
+        <td><a href="{% url 'web:audit_card' record.pk %}">{{ record.occurred_at }}</a></td>
+        <td>{{ record.user }}</td><td>{{ record.action_code }}</td><td>{{ record.entity_type }} {{ record.entity_id }}</td><td>{{ record.store }}</td><td>{% if record.operation %}<a href="{% url 'web:operation_card' record.operation.visible_id %}">{{ record.operation.visible_id }}</a>{% endif %}</td><td>{{ record.safe_message }}</td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="empty">Нет audit records или они скрыты правами доступа.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

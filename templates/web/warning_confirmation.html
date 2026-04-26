@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Подтверждение warnings{% endblock %}
+{% block content %}
+<h1>Подтверждение warnings: {{ operation.visible_id }}</h1>
+<section class="panel">
+  <p>Обработка по этой check-основе требует явного подтверждения предупреждений.</p>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <label><input type="checkbox" name="confirm" value="yes"> Подтверждаю warnings для запуска process</label>
+    <button class="primary">Подтвердить и обработать</button>
+    <a class="button" href="{% url 'web:operation_card' operation.visible_id %}">Отменить</a>
+  </form>
+  {% if page.object_list %}
+    <table><thead><tr><th>Строка</th><th>Code</th><th>Field</th><th>Message</th></tr></thead><tbody>
+      {% for row in page.object_list %}
+        <tr><td>{{ row.row_no }}</td><td>{{ row.reason_code }}</td><td>{{ row.problem_field }}</td><td>{{ row.message }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+    {% include "web/_pagination.html" %}
+  {% else %}
+    <div class="empty">Список warnings пуст.</div>
+  {% endif %}
+</section>
+{% endblock %}

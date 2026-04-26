@@ -1,0 +1,60 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# Python / Django
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+db.sqlite3
+/staticfiles/
+/collected_static/
+/media/
+media/uploads/
+
+# Test, lint, type-check and coverage caches
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Node / frontend tooling
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs, backups and temporary output
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+backups/
+backup/
+*.bak
+
+# Local databases and dumps
+*.dump
+*.sql
+*.psql
+
+# IDE / OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

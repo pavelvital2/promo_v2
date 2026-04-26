@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Audit {{ record.pk }}{% endblock %}
+{% block content %}
+<h1>Audit record {{ record.pk }}</h1>
+<section class="panel">
+  <div class="kv">
+    <strong>Occurred at</strong><span>{{ record.occurred_at }}</span>
+    <strong>User</strong><span>{{ record.user }}</span>
+    <strong>Action</strong><span>{{ record.action_code }}</span>
+    <strong>Entity</strong><span>{{ record.entity_type }} {{ record.entity_id }}</span>
+    <strong>Store</strong><span>{{ record.store }}</span>
+    <strong>Operation</strong><span>{% if record.operation %}<a href="{% url 'web:operation_card' record.operation.visible_id %}">{{ record.operation.visible_id }}</a>{% else %}-{% endif %}</span>
+    <strong>Scope</strong><span>{{ record.visible_scope }}</span>
+    <strong>Retention until</strong><span>{{ record.retention_until }}</span>
+  </div>
+  <h2>Safe message</h2>
+  <div class="pre">{{ record.safe_message }}</div>
+  <h2>Snapshots</h2>
+  <div class="pre">before={{ record.before_snapshot }}
+after={{ record.after_snapshot }}</div>
+</section>
+{% endblock %}

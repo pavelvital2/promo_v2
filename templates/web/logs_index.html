@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Аудит и журналы{% endblock %}
+{% block content %}
+<h1>Аудит и журналы</h1>
+<div class="grid three">
+  {% if links.audit %}
+  <a class="card" href="{% url 'web:audit_list' %}"><h2>Аудит действий</h2><span class="status">Immutable user/admin records</span></a>
+  {% endif %}
+  {% if links.techlog %}
+  <a class="card" href="{% url 'web:techlog_list' %}"><h2>Технический журнал</h2><span class="status">System events and failures</span></a>
+  {% endif %}
+  {% if links.notifications %}
+  <a class="card" href="{% url 'web:notification_list' %}"><h2>Системные уведомления</h2><span class="status">Open/acknowledged notifications</span></a>
+  {% endif %}
+</div>
+{% endblock %}

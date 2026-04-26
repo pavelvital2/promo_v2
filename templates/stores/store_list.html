@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Магазины{% endblock %}
+{% block content %}
+<h1>Магазины / кабинеты</h1>
+<form class="toolbar panel" method="get">
+  <label>Поиск<input name="q" value="{{ search }}"></label>
+  <label>Маркетплейс<select name="marketplace"><option value="">Все</option>{% for value, label in marketplace_choices %}<option value="{{ value }}" {% if marketplace == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label>Статус<select name="status"><option value="">Все</option>{% for value, label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label>API block<select name="api_block"><option value="">Все</option><option value="present" {% if api_block == "present" %}selected{% endif %}>Есть</option><option value="absent" {% if api_block == "absent" %}selected{% endif %}>Нет</option></select></label>
+  <button>Фильтровать</button>
+  {% if can_create %}<a class="button primary" href="{% url 'stores:store_create' %}">Создать</a>{% endif %}
+</form>
+<section class="panel">
+  <p class="status">API block: {{ api_stage_2_notice }}</p>
+  <table><thead><tr><th>ID</th><th>Название</th><th>Группа</th><th>Маркетплейс</th><th>Тип</th><th>Статус</th></tr></thead><tbody>
+    {% for store in page.object_list %}
+      <tr><td><a href="{% url 'stores:store_card' store.visible_id %}">{{ store.visible_id }}</a></td><td>{{ store.name }}</td><td>{{ store.group }}</td><td>{{ store.marketplace }}</td><td>{{ store.cabinet_type }}</td><td>{{ store.status }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="empty">Нет доступных магазинов.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Роль {{ role.code }}{% endblock %}
+{% block content %}
+<h1>{{ role.code }} - {{ role.name }}</h1>
+<section class="panel">
+  <p><span class="badge">{{ role.status }}</span> {% if role.is_system %}<span class="badge warning">system dictionary</span>{% endif %}</p>
+  {% if can_edit %}
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_role">
+    <label>Название<input name="name" value="{{ role.name }}"></label>
+    <label>Status<select name="status"><option value="active" {% if role.status == "active" %}selected{% endif %}>active</option><option value="inactive" {% if role.status == "inactive" %}selected{% endif %}>inactive</option><option value="archived" {% if role.status == "archived" %}selected{% endif %}>archived</option></select></label>
+    <button class="primary">Сохранить</button>
+    <button name="action" value="deactivate">Деактивировать</button>
+    <button name="action" value="archive">Архивировать</button>
+  </form>
+  {% endif %}
+</section>
+{% if can_edit %}
+<section class="panel" style="margin-top:16px">
+  <h2>Назначить права и разделы</h2>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="set_permissions">
+    <div class="grid two">
+      <div>{% for item in all_permissions %}<label><input type="checkbox" name="permissions" value="{{ item.code }}" {% if item in permissions %}checked{% endif %}> {{ item.code }}</label>{% endfor %}</div>
+      <div>{% for item in all_sections %}<label><input type="checkbox" name="sections" value="{{ item.code }}" {% if item in sections %}checked{% endif %}> {{ item.code }}</label>{% endfor %}</div>
+    </div>
+    <div class="toolbar" style="margin-top:16px"><button class="primary">Сохранить состав</button></div>
+  </form>
+</section>
+{% endif %}
+<div class="grid two" style="margin-top:16px">
+  <section class="panel"><h2>Права</h2>{% for item in permissions %}<p>{{ item.code }} <span class="status">{{ item.scope_type }}</span></p>{% empty %}<div class="empty">Нет прав.</div>{% endfor %}</section>
+  <section class="panel"><h2>Разделы</h2>{% for item in sections %}<p>{{ item.code }} <span class="status">{{ item.section }}</span></p>{% empty %}<div class="empty">Нет разделов.</div>{% endfor %}</section>
+</div>
+{% endblock %}

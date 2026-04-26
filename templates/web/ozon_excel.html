@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Ozon Excel{% endblock %}
+{% block content %}
+<h1>Ozon -> Скидки -> Excel</h1>
+<section class="panel">
+  <form method="post" enctype="multipart/form-data" class="grid">
+    {% csrf_token %}
+    <div class="toolbar">
+      <label>Магазин / кабинет
+        <select name="store" onchange="this.form.method='get'; this.form.submit()">
+          {% for store in stores %}
+            <option value="{{ store.pk }}" {% if selected_store.pk == store.pk %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    {% if selected_store %}
+      <label>Файл Ozon (.xlsx, лист "Товары и цены")
+        <input type="file" name="input_file" accept=".xlsx" {% if not can_upload %}disabled{% endif %}>
+      </label>
+      <div class="toolbar">
+        <button type="submit" name="action" value="upload_input" {% if not can_upload %}disabled{% endif %}>Загрузить/заменить файл</button>
+      </div>
+      <section class="panel">
+        <h2>Черновой контекст</h2>
+        <table><thead><tr><th>Файл</th><th>Версия</th><th>Размер</th><th>Действие</th></tr></thead><tbody>
+          {% if draft.input %}
+            <tr>
+              <td>{{ draft.input.file.visible_id }} {{ draft.input.original_name }}</td>
+              <td>v{{ draft.input.version_no }}</td>
+              <td>{{ draft.input.size }}</td>
+              <td><button name="action" value="delete_file" {% if not can_upload %}disabled{% endif %}>Удалить</button><input type="hidden" name="version_id" value="{{ draft.input.pk }}"></td>
+            </tr>
+            {% if draft.input_chain|length > 1 %}
+              <tr><td colspan="4">{% for version in draft.input_chain %}{{ version.file.visible_id }} v{{ version.version_no }} {{ version.original_name }}{% if not forloop.last %}; {% endif %}{% endfor %}</td></tr>
+            {% endif %}
+          {% else %}
+            <tr><td colspan="4" class="empty">Файл ещё не загружен.</td></tr>
+          {% endif %}
+        </tbody></table>
+      </section>
+      <p class="status">Ozon не использует WB-параметры. Обработка изменяет только K и L.</p>
+      <div class="toolbar">
+        <button class="primary" type="submit" name="action" value="check" {% if not can_check %}disabled{% endif %}>Проверить</button>
+        <button type="submit" name="action" value="process" {% if not can_process %}disabled{% endif %}>Обработать</button>
+      </div>
+    {% else %}
+      <div class="empty">Нет доступных Ozon магазинов/кабинетов.</div>
+    {% endif %}
+  </form>
+</section>
+{% include "web/_recent_files.html" %}
+{% endblock %}

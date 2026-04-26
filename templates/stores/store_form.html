@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Магазин{% endblock %}
+{% block content %}
+<h1>{% if mode == "create" %}Создать магазин{% else %}Изменить магазин{% endif %}</h1>
+<section class="panel">
+  <form method="post" class="grid">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="toolbar"><button class="primary">Сохранить</button>{% if store %}<a class="button" href="{% url 'stores:store_card' store.visible_id %}">Отмена</a>{% else %}<a class="button" href="{% url 'stores:store_list' %}">Отмена</a>{% endif %}</div>
+  </form>
+</section>
+{% endblock %}

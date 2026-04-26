@@ -1,0 +1,20 @@
+{% if operations %}
+  <table>
+    <thead><tr><th>ID</th><th>Маркетплейс</th><th>Тип</th><th>Статус</th><th>Магазин</th><th>Ошибки</th><th>Warnings</th></tr></thead>
+    <tbody>
+      {% for operation in operations %}
+        <tr>
+          <td><a href="{% url 'web:operation_card' operation.visible_id %}">{{ operation.visible_id }}</a></td>
+          <td>{{ operation.marketplace }}</td>
+          <td>{{ operation.operation_type }}</td>
+          <td><span class="badge {% if operation.error_count %}error{% elif operation.warning_count %}warning{% endif %}">{{ operation.status }}</span></td>
+          <td>{{ operation.store.visible_id }} {{ operation.store.name }}</td>
+          <td>{{ operation.error_count }}</td>
+          <td>{{ operation.warning_count }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="empty">Нет операций в доступном контуре.</div>
+{% endif %}

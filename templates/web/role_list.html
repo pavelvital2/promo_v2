@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Роли{% endblock %}
+{% block content %}
+<h1>Роли</h1>
+{% if can_edit_roles %}
+<section class="panel" style="margin-bottom:16px">
+  <h2>Создать роль</h2>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <label>Code<input name="code" required></label>
+    <label>Название<input name="name" required></label>
+    <button class="primary">Создать</button>
+  </form>
+</section>
+{% endif %}
+<section class="panel">
+  <table><thead><tr><th>Code</th><th>Название</th><th>Статус</th><th>System</th></tr></thead><tbody>
+    {% for role in page.object_list %}
+      <tr><td><a href="{% url 'web:role_card' role.code %}">{{ role.code }}</a></td><td>{{ role.name }}</td><td>{{ role.status }}</td><td>{{ role.is_system }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="empty">Нет ролей.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

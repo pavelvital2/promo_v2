@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Магазин {{ store.visible_id }}{% endblock %}
+{% block content %}
+<h1>{{ store.visible_id }} {{ store.name }}</h1>
+<div class="toolbar">
+  <a class="button" href="{% url 'stores:store_list' %}">К списку</a>
+  {% if can_edit %}<a class="button" href="{% url 'stores:store_edit' store.visible_id %}">Изменить</a>{% endif %}
+  {% if can_view_history %}<a class="button" href="{% url 'stores:store_history' store.visible_id %}">История</a>{% endif %}
+</div>
+<section class="panel">
+  <div class="kv">
+    <strong>Группа</strong><span>{{ store.group }}</span>
+    <strong>Маркетплейс</strong><span>{{ store.marketplace }}</span>
+    <strong>Тип кабинета</strong><span>{{ store.cabinet_type }}</span>
+    <strong>Статус</strong><span>{{ store.status }}</span>
+    <strong>Комментарий</strong><span>{{ store.comments }}</span>
+  </div>
+</section>
+<section class="panel" style="margin-top:16px">
+  <h2>Connection blocks</h2>
+  <p class="status">{{ api_stage_2_notice }}</p>
+  {% if can_view_connection and connections %}
+    <table><thead><tr><th>Module</th><th>Type</th><th>Status</th><th>Secret ref</th><th>Metadata</th><th></th></tr></thead><tbody>
+      {% for item in connections %}
+        <tr><td>{{ item.module }}</td><td>{{ item.connection_type }}</td><td>{{ item.status }}</td><td>{% if item.protected_secret_ref %}[ref-set]{% else %}[empty]{% endif %}</td><td>{{ item.metadata_display }}</td><td>{% if can_edit_connection %}<a href="{% url 'stores:connection_edit' store.visible_id item.pk %}">Изменить</a>{% endif %}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  {% else %}<div class="empty">Нет блоков подключения или права просмотра.</div>{% endif %}
+  {% if can_edit_connection %}<a class="button" href="{% url 'stores:connection_create' store.visible_id %}">Добавить connection block</a>{% endif %}
+</section>
+{% endblock %}

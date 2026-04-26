@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Доступы к магазинам{% endblock %}
+{% block content %}
+<h1>Доступы к магазинам</h1>
+{% if can_assign %}
+<section class="panel" style="margin-bottom:16px">
+  <h2>Назначить доступ</h2>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <label>User<select name="user">{% for user in users %}<option value="{{ user.pk }}">{{ user.visible_id }} {{ user.login }}</option>{% endfor %}</select></label>
+    <label>Store<select name="store">{% for store in stores %}<option value="{{ store.pk }}">{{ store.visible_id }} {{ store.name }}</option>{% endfor %}</select></label>
+    <label>Level<select name="access_level"><option value="view">view</option><option value="work">work</option><option value="admin">admin</option><option value="full">full</option></select></label>
+    <label>Effect<select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select></label>
+    <label><input type="checkbox" name="is_active" checked> Active</label>
+    <button class="primary">Сохранить</button>
+  </form>
+</section>
+{% endif %}
+<section class="panel">
+  <table><thead><tr><th>User</th><th>Store</th><th>Level</th><th>Effect</th><th>Active</th></tr></thead><tbody>
+    {% for item in page.object_list %}<tr><td>{{ item.user.visible_id }} {{ item.user.login }}</td><td>{{ item.store.visible_id }} {{ item.store.name }}</td><td>{{ item.access_level }}</td><td>{{ item.effect }}</td><td>{{ item.is_active }}</td></tr>{% empty %}<tr><td colspan="5" class="empty">Нет назначений.</td></tr>{% endfor %}
+  </tbody></table>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}
