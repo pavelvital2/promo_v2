@@ -32,7 +32,7 @@ from apps.stores.services import WB_API_CONNECTION_TYPE, WB_API_MODULE
 from apps.techlog.models import TechLogRecord
 
 from .models import WBPromotion, WBPromotionExportFile, WBPromotionProduct, WBPromotionSnapshot
-from .normalizers import REASON_PRODUCT_INVALID, normalize_promotion
+from .normalizers import REASON_PRODUCT_INVALID, REASON_REGULAR, normalize_promotion
 from .services import DETAILS_BATCH_SIZE, NOMENCLATURES_LIMIT, PROMOTIONS_LIMIT, download_wb_current_promotions
 
 
@@ -309,6 +309,41 @@ class WBApiPromotionsTask013Tests(TestCase):
                 ],
             ).exists(),
         )
+
+    def test_regular_promotions_without_products_do_not_create_empty_excel_files(self):
+        factory = FakeClientFactory(
+            pages=[[self._promotion(301), self._promotion(302)], []],
+            nomenclatures={
+                (301, True): [[],],
+                (301, False): [[],],
+                (302, True): [[self._product(701)], []],
+                (302, False): [[],],
+            },
+        )
+
+        operation = download_wb_current_promotions(
+            actor=self.user,
+            store=self.store,
+            client_factory=factory,
+            secret_resolver=self._secret_resolver,
+            now_utc=self.now,
+        )
+
+        snapshot = WBPromotionSnapshot.objects.get(operation=operation)
+        self.assertEqual(snapshot.regular_current_promotions_count, 2)
+        self.assertEqual(snapshot.promotion_products_count, 1)
+        self.assertEqual(OperationOutputFile.objects.filter(operation=operation).count(), 1)
+        self.assertEqual(WBPromotionExportFile.objects.filter(operation=operation).count(), 1)
+        self.assertEqual(operation.summary["output_file_version_ids"], [OperationOutputFile.objects.get(operation=operation).file_version_id])
+
+        empty_detail = OperationDetailRow.objects.get(
+            operation=operation,
+            product_ref="301",
+            reason_code=REASON_REGULAR,
+        )
+        self.assertEqual(empty_detail.final_value["products_count"], 0)
+        self.assertIsNone(empty_detail.final_value["output_file_version_id"])
+        self.assertIn("no empty Excel export", empty_detail.message)
 
     def test_nomenclatures_are_requested_for_true_and_false_until_empty_page(self):
         factory = FakeClientFactory(

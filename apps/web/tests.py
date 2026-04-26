@@ -30,6 +30,7 @@ from apps.operations.models import (
 )
 from apps.platform_settings.models import StoreParameterChangeHistory, StoreParameterValue
 from apps.stores.models import ConnectionBlock, StoreAccount
+from apps.web.views import _summary_items
 
 
 class BootstrapSmokeTests(SimpleTestCase):
@@ -38,6 +39,12 @@ class BootstrapSmokeTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+    def test_summary_items_hide_safe_snapshot_from_user_summary(self) -> None:
+        self.assertEqual(
+            _summary_items({"result_code": "ok", "safe_snapshot": {"technical": "payload"}}),
+            [("result_code", "ok")],
+        )
 
 
 class DeploymentReadinessTests(SimpleTestCase):

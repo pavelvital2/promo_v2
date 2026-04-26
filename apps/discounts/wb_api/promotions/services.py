@@ -397,31 +397,33 @@ def _persist_success(
 
         regular_count += 1
         products = products_by_regular_promotion.get(promotion.wb_promotion_id, [])
-        workbook = build_promotion_export_workbook(products)
-        filename = f"wb_promo_{promotion.wb_promotion_id}_{timestamp}.xlsx"
-        file_version = create_file_version(
-            store=store,
-            uploaded_by=actor,
-            uploaded_file=ContentFile(workbook.getvalue(), name=filename),
-            scenario=FileObject.Scenario.WB_DISCOUNTS_API_PROMOTION_EXPORT,
-            kind=FileObject.Kind.OUTPUT,
-            logical_name=f"wb_promo_{promotion.wb_promotion_id}",
-            module=OperationModule.WB_API,
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            operation_ref=operation.visible_id,
-            run_ref=operation.run.visible_id,
-        )
-        OperationOutputFile.objects.create(
-            operation=operation,
-            file_version=file_version,
-            output_kind=OutputKind.PROMOTION_EXPORT,
-        )
-        WBPromotionExportFile.objects.create(
-            promotion=persisted_promotion,
-            operation=operation,
-            file_version=file_version,
-        )
-        output_file_ids.append(file_version.pk)
+        file_version = None
+        if products:
+            workbook = build_promotion_export_workbook(products)
+            filename = f"wb_promo_{promotion.wb_promotion_id}_{timestamp}.xlsx"
+            file_version = create_file_version(
+                store=store,
+                uploaded_by=actor,
+                uploaded_file=ContentFile(workbook.getvalue(), name=filename),
+                scenario=FileObject.Scenario.WB_DISCOUNTS_API_PROMOTION_EXPORT,
+                kind=FileObject.Kind.OUTPUT,
+                logical_name=f"wb_promo_{promotion.wb_promotion_id}",
+                module=OperationModule.WB_API,
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                operation_ref=operation.visible_id,
+                run_ref=operation.run.visible_id,
+            )
+            OperationOutputFile.objects.create(
+                operation=operation,
+                file_version=file_version,
+                output_kind=OutputKind.PROMOTION_EXPORT,
+            )
+            WBPromotionExportFile.objects.create(
+                promotion=persisted_promotion,
+                operation=operation,
+                file_version=file_version,
+            )
+            output_file_ids.append(file_version.pk)
         OperationDetailRow.objects.create(
             operation=operation,
             row_no=row_no,
@@ -429,12 +431,16 @@ def _persist_success(
             row_status="valid",
             reason_code=REASON_REGULAR,
             message_level=MessageLevel.INFO,
-            message="WB API regular promotion was processed with nomenclatures and Excel export.",
+            message=(
+                "WB API regular promotion was processed with nomenclatures and Excel export."
+                if products
+                else "WB API regular promotion has no product rows; no empty Excel export was created."
+            ),
             problem_field="",
             final_value={
                 "wb_promotion_id": promotion.wb_promotion_id,
                 "products_count": len(products),
-                "output_file_version_id": file_version.pk,
+                "output_file_version_id": file_version.pk if file_version else None,
                 "details": redact(details_by_id.get(promotion.wb_promotion_id, {})),
             },
         )

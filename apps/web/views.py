@@ -377,7 +377,8 @@ def _delete_draft_version(request: HttpRequest, *, marketplace: str, store: Stor
 def _summary_items(value) -> list[tuple[str, object]]:
     if not isinstance(value, dict):
         return []
-    return [(key, child) for key, child in value.items()]
+    hidden_keys = {"safe_snapshot"}
+    return [(key, child) for key, child in value.items() if key not in hidden_keys]
 
 
 def _operation_classifier(operation: Operation) -> str:
