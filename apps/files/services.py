@@ -56,6 +56,11 @@ class PreOperationDeleteResult:
 def scenario_marketplace(scenario: str) -> str:
     mapping = {
         FileObject.Scenario.WB_DISCOUNTS_EXCEL: FileObject.Marketplace.WB,
+        FileObject.Scenario.WB_DISCOUNTS_API_PRICE_EXPORT: FileObject.Marketplace.WB,
+        FileObject.Scenario.WB_DISCOUNTS_API_PROMOTION_EXPORT: FileObject.Marketplace.WB,
+        FileObject.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL: FileObject.Marketplace.WB,
+        FileObject.Scenario.WB_DISCOUNTS_API_DETAIL_REPORT: FileObject.Marketplace.WB,
+        FileObject.Scenario.WB_DISCOUNTS_API_UPLOAD_REPORT: FileObject.Marketplace.WB,
         FileObject.Scenario.OZON_DISCOUNTS_EXCEL: FileObject.Marketplace.OZON,
     }
     try:
@@ -150,6 +155,7 @@ def create_file_version(
     scenario: str,
     kind: str,
     logical_name: str = "",
+    module: str = "discounts_excel",
     file_object: FileObject | None = None,
     content_type: str = "",
     operation_ref: str = "",
@@ -165,6 +171,7 @@ def create_file_version(
             kind=kind,
             scenario=scenario,
             marketplace=marketplace,
+            module=module,
             logical_name=logical_name or original_name,
             original_name=original_name,
             created_by=uploaded_by,
@@ -202,6 +209,15 @@ def create_file_version(
 
 
 def download_permission_code(file_object: FileObject) -> str:
+    scenario_permissions = {
+        FileObject.Scenario.WB_DISCOUNTS_API_PRICE_EXPORT: "wb.api.prices.file.download",
+        FileObject.Scenario.WB_DISCOUNTS_API_PROMOTION_EXPORT: "wb.api.promotions.file.download",
+        FileObject.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL: "wb.api.discounts.result.download",
+        FileObject.Scenario.WB_DISCOUNTS_API_DETAIL_REPORT: "wb.api.discounts.result.download",
+        FileObject.Scenario.WB_DISCOUNTS_API_UPLOAD_REPORT: "wb.api.discounts.result.download",
+    }
+    if file_object.scenario in scenario_permissions:
+        return scenario_permissions[file_object.scenario]
     action = DOWNLOAD_PERMISSION_BY_KIND.get(file_object.kind)
     if action is None:
         raise ValidationError("Unsupported file kind for download.")

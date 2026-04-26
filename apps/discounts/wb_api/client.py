@@ -90,6 +90,13 @@ class WBApiClient:
             api_category="prices_and_discounts",
         )
 
+    def list_goods_filter(self, *, limit: int = 1000, offset: int = 0) -> dict:
+        return self.get_json(
+            WB_CONNECTION_CHECK_PATH,
+            params={"limit": limit, "offset": offset},
+            api_category="prices_and_discounts",
+        )
+
     def get_json(self, path: str, *, params: dict | None = None, api_category: str) -> dict:
         safe_params = redact(params or {})
         assert_no_secret_like_values(safe_params, field_name="request params")

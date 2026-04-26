@@ -67,6 +67,7 @@ class Marketplace(models.TextChoices):
 
 class OperationModule(models.TextChoices):
     DISCOUNTS_EXCEL = "discounts_excel", "Discounts Excel"
+    WB_API = "wb_api", "WB API"
 
 
 class OperationMode(models.TextChoices):
@@ -84,6 +85,14 @@ class LaunchMethod(models.TextChoices):
 class OperationType(models.TextChoices):
     CHECK = "check", "Check"
     PROCESS = "process", "Process"
+    NOT_APPLICABLE = "not_applicable", "Not applicable"
+
+
+class OperationStepCode(models.TextChoices):
+    WB_API_PRICES_DOWNLOAD = "wb_api_prices_download", "WB API prices download"
+    WB_API_PROMOTIONS_DOWNLOAD = "wb_api_promotions_download", "WB API promotions download"
+    WB_API_DISCOUNT_CALCULATION = "wb_api_discount_calculation", "WB API discount calculation"
+    WB_API_DISCOUNT_UPLOAD = "wb_api_discount_upload", "WB API discount upload"
 
 
 class CheckStatus(models.TextChoices):
@@ -106,6 +115,7 @@ class ProcessStatus(models.TextChoices):
 
 CHECK_STATUS_VALUES = tuple(choice.value for choice in CheckStatus)
 PROCESS_STATUS_VALUES = tuple(choice.value for choice in ProcessStatus)
+API_OPERATION_STATUS_VALUES = PROCESS_STATUS_VALUES
 OPERATION_STATUS_CHOICES = (
     tuple(CheckStatus.choices)
     + tuple(
@@ -170,6 +180,31 @@ WB_REASON_CODES = {
     "wb_output_write_error",
     "wb_discount_out_of_range",
 }
+WB_API_REASON_CODES = {
+    "wb_api_price_download_success",
+    "wb_api_price_download_failed",
+    "wb_api_price_row_valid",
+    "wb_api_price_row_size_conflict",
+    "wb_api_price_row_invalid",
+    "wb_api_promotion_current",
+    "wb_api_promotion_not_current_filtered",
+    "wb_api_promotion_regular",
+    "wb_api_promotion_auto_no_nomenclatures",
+    "wb_api_promotion_product_valid",
+    "wb_api_promotion_product_invalid",
+    "wb_api_calculated_from_api_sources",
+    "wb_api_upload_ready",
+    "wb_api_upload_blocked_by_drift",
+    "wb_api_upload_sent",
+    "wb_api_upload_success",
+    "wb_api_upload_partial_error",
+    "wb_api_upload_all_error",
+    "wb_api_upload_canceled",
+    "wb_api_upload_quarantine",
+    "wb_api_upload_status_unknown",
+}
+WB_ALL_REASON_CODES = WB_REASON_CODES | WB_API_REASON_CODES
+WB_API_STEP_CODES = tuple(choice.value for choice in OperationStepCode)
 OZON_REASON_CODES = {
     "missing_min_price",
     "no_stock",
@@ -186,6 +221,8 @@ def is_terminal_status(operation_type: str, status: str) -> bool:
         return status in CHECK_TERMINAL_STATUSES
     if operation_type == OperationType.PROCESS:
         return status in PROCESS_TERMINAL_STATUSES
+    if operation_type == OperationType.NOT_APPLICABLE:
+        return status in PROCESS_TERMINAL_STATUSES
     return False
 
 
@@ -194,6 +231,8 @@ def is_valid_operation_status(operation_type: str, status: str) -> bool:
         return status in CHECK_STATUS_VALUES
     if operation_type == OperationType.PROCESS:
         return status in PROCESS_STATUS_VALUES
+    if operation_type == OperationType.NOT_APPLICABLE:
+        return status in API_OPERATION_STATUS_VALUES
     return False
 
 
@@ -228,9 +267,17 @@ class OperationQuerySet(GuardedDeleteQuerySet):
                     operation_type=OperationType.PROCESS,
                 ).exists():
                     raise ValidationError("Operation status does not match operation type.")
+                if status not in API_OPERATION_STATUS_VALUES and self.filter(
+                    operation_type=OperationType.NOT_APPLICABLE,
+                ).exists():
+                    raise ValidationError("Operation status does not match operation type.")
         if self.filter(
             models.Q(operation_type=OperationType.CHECK, status__in=CHECK_TERMINAL_STATUSES)
             | models.Q(operation_type=OperationType.PROCESS, status__in=PROCESS_TERMINAL_STATUSES)
+            | models.Q(
+                operation_type=OperationType.NOT_APPLICABLE,
+                status__in=PROCESS_TERMINAL_STATUSES,
+            )
         ).exists():
             raise ValidationError("Terminal operations are immutable.")
         return super().update(**kwargs)
@@ -245,6 +292,10 @@ class OperationRelatedQuerySet(GuardedDeleteQuerySet):
             models.Q(operation__operation_type=OperationType.CHECK, operation__status__in=CHECK_TERMINAL_STATUSES)
             | models.Q(
                 operation__operation_type=OperationType.PROCESS,
+                operation__status__in=PROCESS_TERMINAL_STATUSES,
+            )
+            | models.Q(
+                operation__operation_type=OperationType.NOT_APPLICABLE,
                 operation__status__in=PROCESS_TERMINAL_STATUSES,
             )
         ).exists():
@@ -364,6 +415,12 @@ class Operation(models.Model):
     )
     mode = models.CharField(max_length=16, choices=OperationMode.choices, default=OperationMode.EXCEL)
     operation_type = models.CharField(max_length=16, choices=OperationType.choices)
+    step_code = models.CharField(
+        max_length=64,
+        choices=OperationStepCode.choices,
+        blank=True,
+        db_index=True,
+    )
     status = models.CharField(max_length=64, choices=OPERATION_STATUS_CHOICES)
     run = models.ForeignKey(Run, on_delete=models.PROTECT, related_name="operations")
     store = models.ForeignKey(
@@ -404,6 +461,7 @@ class Operation(models.Model):
         ordering = ["-created_at", "-id"]
         indexes = [
             models.Index(fields=["marketplace", "module", "mode", "store", "operation_type"]),
+            models.Index(fields=["marketplace", "mode", "step_code"]),
             models.Index(fields=["status"]),
             models.Index(fields=["created_at"]),
         ]
@@ -412,8 +470,24 @@ class Operation(models.Model):
                 condition=(
                     models.Q(operation_type=OperationType.CHECK, status__in=CHECK_STATUS_VALUES)
                     | models.Q(operation_type=OperationType.PROCESS, status__in=PROCESS_STATUS_VALUES)
+                    | models.Q(
+                        operation_type=OperationType.NOT_APPLICABLE,
+                        status__in=API_OPERATION_STATUS_VALUES,
+                    )
                 ),
                 name="operation_status_matches_type",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        marketplace=Marketplace.WB,
+                        mode=OperationMode.API,
+                        step_code__in=WB_API_STEP_CODES,
+                        operation_type=OperationType.NOT_APPLICABLE,
+                    )
+                    | ~models.Q(marketplace=Marketplace.WB, mode=OperationMode.API)
+                ),
+                name="wb_api_operation_has_step_and_non_check_type",
             ),
         ]
 
@@ -449,6 +523,17 @@ class Operation(models.Model):
                 raise ValidationError("Operation scenario must match run scenario.")
         if self.operation_type == OperationType.CHECK and self.check_basis_operation_id:
             raise ValidationError("Check operation cannot have check basis.")
+        if self.marketplace == Marketplace.WB and self.mode == OperationMode.API:
+            if self.step_code not in WB_API_STEP_CODES:
+                raise ValidationError("WB API operation requires a supported step code.")
+            if self.operation_type in {OperationType.CHECK, OperationType.PROCESS}:
+                raise ValidationError("WB API operation must not use check/process type.")
+        elif self.step_code:
+            raise ValidationError("Step code is reserved for documented API operations.")
+        if self.operation_type == OperationType.NOT_APPLICABLE and not (
+            self.marketplace == Marketplace.WB and self.mode == OperationMode.API
+        ):
+            raise ValidationError("Not applicable operation type is reserved for documented API operations.")
         if self.operation_type == OperationType.PROCESS:
             if not self.check_basis_operation_id:
                 raise ValidationError("Process operation must reference a check basis.")
@@ -756,7 +841,7 @@ class OperationDetailRow(OperationLinkGuardMixin, models.Model):
 
     def clean(self):
         super().clean()
-        if self.reason_code and self.reason_code.startswith("wb_") and self.reason_code not in WB_REASON_CODES:
+        if self.reason_code and self.reason_code.startswith("wb_") and self.reason_code not in WB_ALL_REASON_CODES:
             raise ValidationError("Unsupported WB reason/result code.")
         if (
             self.reason_code

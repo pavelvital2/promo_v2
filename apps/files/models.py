@@ -82,6 +82,26 @@ class FileObject(models.Model):
     class Scenario(models.TextChoices):
         WB_DISCOUNTS_EXCEL = "wb_discounts_excel", "WB discounts Excel"
         OZON_DISCOUNTS_EXCEL = "ozon_discounts_excel", "Ozon discounts Excel"
+        WB_DISCOUNTS_API_PRICE_EXPORT = (
+            "wb_discounts_api_price_export",
+            "WB discounts API price export",
+        )
+        WB_DISCOUNTS_API_PROMOTION_EXPORT = (
+            "wb_discounts_api_promotion_export",
+            "WB discounts API promotion export",
+        )
+        WB_DISCOUNTS_API_RESULT_EXCEL = (
+            "wb_discounts_api_result_excel",
+            "WB discounts API result Excel",
+        )
+        WB_DISCOUNTS_API_DETAIL_REPORT = (
+            "wb_discounts_api_detail_report",
+            "WB discounts API detail report",
+        )
+        WB_DISCOUNTS_API_UPLOAD_REPORT = (
+            "wb_discounts_api_upload_report",
+            "WB discounts API upload report",
+        )
 
     class Marketplace(models.TextChoices):
         WB = "wb", "WB"
@@ -122,6 +142,7 @@ class FileObject(models.Model):
             models.CheckConstraint(
                 check=(
                     models.Q(scenario="wb_discounts_excel", marketplace="wb")
+                    | models.Q(scenario__startswith="wb_discounts_api_", marketplace="wb")
                     | models.Q(scenario="ozon_discounts_excel", marketplace="ozon")
                 ),
                 name="file_object_scenario_marketplace_match",
@@ -135,6 +156,11 @@ class FileObject(models.Model):
         super().clean()
         expected_marketplace = {
             self.Scenario.WB_DISCOUNTS_EXCEL: self.Marketplace.WB,
+            self.Scenario.WB_DISCOUNTS_API_PRICE_EXPORT: self.Marketplace.WB,
+            self.Scenario.WB_DISCOUNTS_API_PROMOTION_EXPORT: self.Marketplace.WB,
+            self.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL: self.Marketplace.WB,
+            self.Scenario.WB_DISCOUNTS_API_DETAIL_REPORT: self.Marketplace.WB,
+            self.Scenario.WB_DISCOUNTS_API_UPLOAD_REPORT: self.Marketplace.WB,
             self.Scenario.OZON_DISCOUNTS_EXCEL: self.Marketplace.OZON,
         }.get(self.scenario)
         if expected_marketplace and self.marketplace != expected_marketplace:

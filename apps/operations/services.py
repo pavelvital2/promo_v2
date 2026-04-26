@@ -24,6 +24,7 @@ from .models import (
     OperationMode,
     OperationModule,
     OperationOutputFile,
+    OperationStepCode,
     OperationType,
     OutputKind,
     ProcessResult,
@@ -72,6 +73,16 @@ class PressProcessResult:
     check_was_created: bool
 
 
+@dataclass(frozen=True)
+class ApiOperationResult:
+    summary: dict
+    status: str = ProcessStatus.COMPLETED_SUCCESS
+    error_count: int = 0
+    warning_count: int = 0
+    output_file_version: FileVersion | None = None
+    output_kind: str = OutputKind.OUTPUT_WORKBOOK
+
+
 def scenario_code(*, marketplace: str, module: str, mode: str) -> str:
     try:
         return SCENARIO_BY_CONTEXT[(marketplace, module, mode)]
@@ -83,6 +94,18 @@ def assert_can_run_operation(user, *, marketplace: str, module: str, mode: str, 
     scenario = scenario_code(marketplace=marketplace, module=module, mode=mode)
     if not has_permission(user, f"{scenario}.{action}", store):
         raise PermissionDenied("No permission or object access for this operation.")
+
+
+def assert_can_run_wb_api_step(user, *, step_code: str, store) -> None:
+    permission_by_step = {
+        OperationStepCode.WB_API_PRICES_DOWNLOAD: "wb.api.prices.download",
+        OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD: "wb.api.promotions.download",
+        OperationStepCode.WB_API_DISCOUNT_CALCULATION: "wb.api.discounts.calculate",
+        OperationStepCode.WB_API_DISCOUNT_UPLOAD: "wb.api.discounts.upload",
+    }
+    permission_code = permission_by_step.get(step_code)
+    if not permission_code or not has_permission(user, permission_code, store):
+        raise PermissionDenied("No permission or object access for this WB API operation.")
 
 
 def _normalize_input_specs(input_files: Iterable[InputFileSpec | dict]) -> list[InputFileSpec]:
@@ -467,6 +490,47 @@ def create_process_operation(
 
 
 @transaction.atomic
+def create_api_operation(
+    *,
+    marketplace: str,
+    store,
+    initiator_user,
+    step_code: str,
+    logic_version: str,
+    run: Run | None = None,
+    module: str = OperationModule.WB_API,
+    execution_context: dict | None = None,
+    launch_method: str = LaunchMethod.MANUAL,
+    enforce_permissions: bool = False,
+) -> Operation:
+    if enforce_permissions:
+        assert_can_run_wb_api_step(initiator_user, step_code=step_code, store=store)
+    run = run or create_run(
+        marketplace=marketplace,
+        module=module,
+        mode=OperationMode.API,
+        store=store,
+        initiated_by=initiator_user,
+        execution_context=execution_context,
+        launch_method=launch_method,
+    )
+    return Operation.objects.create(
+        marketplace=marketplace,
+        module=module,
+        mode=OperationMode.API,
+        operation_type=OperationType.NOT_APPLICABLE,
+        step_code=step_code,
+        status=ProcessStatus.CREATED,
+        run=run,
+        store=store,
+        initiator_user=initiator_user,
+        execution_context=execution_context or run.execution_context,
+        launch_method=launch_method,
+        logic_version=logic_version,
+    )
+
+
+@transaction.atomic
 def start_operation(operation: Operation) -> Operation:
     operation = Operation.objects.select_for_update().get(pk=operation.pk)
     if operation.operation_type == OperationType.CHECK:
@@ -566,6 +630,48 @@ def complete_process_operation(
 
 
 @transaction.atomic
+def complete_api_operation(
+    operation: Operation,
+    *,
+    result: ApiOperationResult,
+) -> Operation:
+    operation = Operation.objects.select_for_update().get(pk=operation.pk)
+    if operation.operation_type != OperationType.NOT_APPLICABLE:
+        raise ValidationError("Only non-check/process API operations can be completed as API.")
+    if result.status not in {
+        ProcessStatus.COMPLETED_SUCCESS,
+        ProcessStatus.COMPLETED_WITH_WARNINGS,
+        ProcessStatus.COMPLETED_WITH_ERROR,
+        ProcessStatus.INTERRUPTED_FAILED,
+    }:
+        raise ValidationError("Unsupported API operation terminal status.")
+    _validate_output_file_version_is_new(result.output_file_version)
+    operation.summary = result.summary
+    operation.error_count = result.error_count
+    operation.warning_count = result.warning_count
+    if result.output_file_version:
+        OperationOutputFile.objects.create(
+            operation=operation,
+            file_version=result.output_file_version,
+            output_kind=result.output_kind,
+        )
+    operation.status = result.status
+    operation.finished_at = timezone.now()
+    operation.save(
+        update_fields=[
+            "summary",
+            "error_count",
+            "warning_count",
+            "status",
+            "finished_at",
+            "updated_at",
+        ],
+    )
+    _close_run_if_all_operations_terminal(operation.run)
+    return operation
+
+
+@transaction.atomic
 def mark_operation_interrupted_failed(operation: Operation, *, summary: dict | None = None) -> Operation:
     operation = Operation.objects.select_for_update().get(pk=operation.pk)
     operation.status = CheckStatus.INTERRUPTED_FAILED if operation.operation_type == OperationType.CHECK else ProcessStatus.INTERRUPTED_FAILED
@@ -602,6 +708,18 @@ def run_process_sync(
     operation = start_operation(operation)
     try:
         return complete_process_operation(operation, result=executor(operation))
+    except Exception:
+        mark_operation_interrupted_failed(operation, summary={"failure": "interrupted_failed"})
+        raise
+
+
+def run_api_sync(
+    operation: Operation,
+    executor: Callable[[Operation], ApiOperationResult],
+) -> Operation:
+    operation = start_operation(operation)
+    try:
+        return complete_api_operation(operation, result=executor(operation))
     except Exception:
         mark_operation_interrupted_failed(operation, summary={"failure": "interrupted_failed"})
         raise
