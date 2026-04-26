@@ -77,6 +77,61 @@ class AuditActionCode(models.TextChoices):
         "system.dictionary_changed_by_migration",
         "System dictionary changed by migration",
     )
+    WB_API_CONNECTION_CREATED = "wb_api_connection_created", "WB API connection created"
+    WB_API_CONNECTION_UPDATED = "wb_api_connection_updated", "WB API connection updated"
+    WB_API_CONNECTION_CHECKED = "wb_api_connection_checked", "WB API connection checked"
+    WB_API_PRICES_DOWNLOAD_STARTED = (
+        "wb_api_prices_download_started",
+        "WB API prices download started",
+    )
+    WB_API_PRICES_DOWNLOAD_COMPLETED = (
+        "wb_api_prices_download_completed",
+        "WB API prices download completed",
+    )
+    WB_API_PRICES_FILE_DOWNLOADED = (
+        "wb_api_prices_file_downloaded",
+        "WB API prices file downloaded",
+    )
+    WB_API_PROMOTIONS_DOWNLOAD_STARTED = (
+        "wb_api_promotions_download_started",
+        "WB API promotions download started",
+    )
+    WB_API_PROMOTIONS_DOWNLOAD_COMPLETED = (
+        "wb_api_promotions_download_completed",
+        "WB API promotions download completed",
+    )
+    WB_API_PROMOTIONS_FILE_DOWNLOADED = (
+        "wb_api_promotions_file_downloaded",
+        "WB API promotions file downloaded",
+    )
+    WB_API_DISCOUNT_CALCULATION_STARTED = (
+        "wb_api_discount_calculation_started",
+        "WB API discount calculation started",
+    )
+    WB_API_DISCOUNT_CALCULATION_COMPLETED = (
+        "wb_api_discount_calculation_completed",
+        "WB API discount calculation completed",
+    )
+    WB_API_DISCOUNT_RESULT_DOWNLOADED = (
+        "wb_api_discount_result_downloaded",
+        "WB API discount result downloaded",
+    )
+    WB_API_DISCOUNT_UPLOAD_CONFIRMED = (
+        "wb_api_discount_upload_confirmed",
+        "WB API discount upload confirmed",
+    )
+    WB_API_DISCOUNT_UPLOAD_STARTED = (
+        "wb_api_discount_upload_started",
+        "WB API discount upload started",
+    )
+    WB_API_DISCOUNT_UPLOAD_COMPLETED = (
+        "wb_api_discount_upload_completed",
+        "WB API discount upload completed",
+    )
+    WB_API_DISCOUNT_UPLOAD_FAILED = (
+        "wb_api_discount_upload_failed",
+        "WB API discount upload failed",
+    )
 
 
 class AuditSourceContext(models.TextChoices):

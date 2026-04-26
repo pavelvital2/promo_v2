@@ -12,6 +12,7 @@ from django.utils import timezone
 from apps.identity_access.models import AccessEffect, StoreAccess
 from apps.identity_access.services import has_full_object_scope, has_permission
 from apps.stores.models import StoreAccount
+from apps.discounts.wb_api.redaction import assert_no_secret_like_values
 
 from .models import (
     AuditRecord,
@@ -48,6 +49,9 @@ def create_audit_record(
 ) -> AuditRecord:
     if store is None and operation is not None:
         store = operation.store
+    assert_no_secret_like_values(safe_message, field_name="audit safe_message")
+    assert_no_secret_like_values(before_snapshot or {}, field_name="audit before_snapshot")
+    assert_no_secret_like_values(after_snapshot or {}, field_name="audit after_snapshot")
     return AuditRecord.objects.create(
         occurred_at=occurred_at or timezone.now(),
         user=user,

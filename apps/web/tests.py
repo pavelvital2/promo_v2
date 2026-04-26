@@ -93,12 +93,18 @@ class DeploymentReadinessTests(SimpleTestCase):
         registry = self.read_text("docs/testing/CONTROL_FILE_REGISTRY.md")
         plan = self.read_text("docs/testing/STAGE_1_ACCEPTANCE_EXECUTION_PLAN.md")
 
+        self.assertRegex(registry, r"\| WB-REAL-001 \| WB \| .* \| accepted \|")
+        self.assertRegex(registry, r"\| OZ-REAL-001 \| Ozon \| .* \| accepted \|")
+        self.assertIn("Status: accepted.", registry)
+        self.assertIn("Для будущих новых обязательных customer artifacts", registry)
         self.assertIn("blocked_by_artifact_gate", registry)
-        self.assertIn("pending customer delivery", registry)
         self.assertIn("Агенты не создают фиктивные customer files", registry)
         self.assertIn("WB formal comparison", plan)
         self.assertIn("Ozon formal comparison", plan)
-        self.assertIn("blocked_by_artifact_gate", plan)
+        self.assertIn("WB-REAL-001` registered and compared", plan)
+        self.assertIn("OZ-REAL-001` registered and compared", plan)
+        self.assertIn("accepted", plan)
+        self.assertIn("Formal acceptance for `WB-REAL-001` and `OZ-REAL-001` is complete", plan)
 
 
 class HomeSmokeTests(TestCase):

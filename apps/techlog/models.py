@@ -75,6 +75,35 @@ class TechLogEventType(models.TextChoices):
         "backup.restore_check_failed",
         "Backup restore check failed",
     )
+    WB_API_AUTH_FAILED = "wb_api_auth_failed", "WB API auth failed"
+    WB_API_RATE_LIMITED = "wb_api_rate_limited", "WB API rate limited"
+    WB_API_TIMEOUT = "wb_api_timeout", "WB API timeout"
+    WB_API_RESPONSE_INVALID = "wb_api_response_invalid", "WB API response invalid"
+    WB_API_PRICES_DOWNLOAD_FAILED = (
+        "wb_api_prices_download_failed",
+        "WB API prices download failed",
+    )
+    WB_API_PROMOTIONS_DOWNLOAD_FAILED = (
+        "wb_api_promotions_download_failed",
+        "WB API promotions download failed",
+    )
+    WB_API_UPLOAD_FAILED = "wb_api_upload_failed", "WB API upload failed"
+    WB_API_UPLOAD_STATUS_POLL_FAILED = (
+        "wb_api_upload_status_poll_failed",
+        "WB API upload status poll failed",
+    )
+    WB_API_UPLOAD_PARTIAL_ERRORS = (
+        "wb_api_upload_partial_errors",
+        "WB API upload partial errors",
+    )
+    WB_API_QUARANTINE_DETECTED = (
+        "wb_api_quarantine_detected",
+        "WB API quarantine detected",
+    )
+    WB_API_SECRET_REDACTION_VIOLATION = (
+        "wb_api_secret_redaction_violation",
+        "WB API secret redaction violation",
+    )
 
 
 TECHLOG_EVENT_SEVERITY_BASELINE = {
@@ -91,6 +120,17 @@ TECHLOG_EVENT_SEVERITY_BASELINE = {
     TechLogEventType.CONNECTION_FUTURE_API_ERROR: TechLogSeverity.ERROR,
     TechLogEventType.NOTIFICATION_CRITICAL_CREATED: TechLogSeverity.WARNING,
     TechLogEventType.BACKUP_RESTORE_CHECK_FAILED: TechLogSeverity.CRITICAL,
+    TechLogEventType.WB_API_AUTH_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.WB_API_RATE_LIMITED: TechLogSeverity.WARNING,
+    TechLogEventType.WB_API_TIMEOUT: TechLogSeverity.WARNING,
+    TechLogEventType.WB_API_RESPONSE_INVALID: TechLogSeverity.ERROR,
+    TechLogEventType.WB_API_PRICES_DOWNLOAD_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.WB_API_PROMOTIONS_DOWNLOAD_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.WB_API_UPLOAD_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.WB_API_UPLOAD_STATUS_POLL_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.WB_API_UPLOAD_PARTIAL_ERRORS: TechLogSeverity.WARNING,
+    TechLogEventType.WB_API_QUARANTINE_DETECTED: TechLogSeverity.WARNING,
+    TechLogEventType.WB_API_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
 }
 
 

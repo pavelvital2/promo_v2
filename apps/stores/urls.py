@@ -21,4 +21,9 @@ urlpatterns = [
         views.connection_edit,
         name="connection_edit",
     ),
+    path(
+        "stores/<str:visible_id>/connections/<int:pk>/check/",
+        views.connection_check,
+        name="connection_check",
+    ),
 ]

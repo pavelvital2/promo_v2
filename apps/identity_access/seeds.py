@@ -95,6 +95,23 @@ PERMISSION_DEFINITIONS = {
     "logs.scope.limited": ("ограниченный контур записей", Permission.ScopeType.GLOBAL_STORE),
     "logs.scope.full": ("полный контур записей", Permission.ScopeType.GLOBAL),
     "techlog.sensitive.view": ("чувствительные технические детали", Permission.ScopeType.GLOBAL),
+    "wb.api.connection.view": ("WB API: просмотр подключения", Permission.ScopeType.STORE),
+    "wb.api.connection.manage": ("WB API: управление подключением", Permission.ScopeType.STORE),
+    "wb.api.prices.download": ("WB API: скачать цены", Permission.ScopeType.STORE),
+    "wb.api.prices.file.download": ("WB API: скачать Excel цен", Permission.ScopeType.STORE),
+    "wb.api.promotions.download": ("WB API: скачать текущие акции", Permission.ScopeType.STORE),
+    "wb.api.promotions.file.download": ("WB API: скачать Excel акций", Permission.ScopeType.STORE),
+    "wb.api.discounts.calculate": ("WB API: рассчитать скидки", Permission.ScopeType.STORE),
+    "wb.api.discounts.result.download": (
+        "WB API: скачать итоговый Excel/detail",
+        Permission.ScopeType.STORE,
+    ),
+    "wb.api.discounts.upload": ("WB API: выполнить upload скидок", Permission.ScopeType.STORE),
+    "wb.api.discounts.upload.confirm": (
+        "WB API: подтвердить upload скидок",
+        Permission.ScopeType.STORE,
+    ),
+    "wb.api.operation.view": ("WB API: просмотр операций", Permission.ScopeType.STORE),
 }
 
 SECTION_DEFINITIONS = {
@@ -112,6 +129,7 @@ SECTION_DEFINITIONS = {
     "store_access.view": ("store_access", "view", "Доступы к магазинам"),
     "audit.view": ("audit", "view", "Аудит"),
     "techlog.view": ("techlog", "view", "Техжурнал"),
+    "wb_discounts_api.view": ("wb_discounts_api", "view", "WB API"),
 }
 
 
@@ -140,12 +158,27 @@ SCENARIO_CODES = {
     for code in ALL_PERMISSION_CODES
     if code.startswith(("wb_discounts_excel.", "ozon_discounts_excel."))
 }
+WB_API_CONNECTION_CODES = {
+    "wb.api.connection.view",
+    "wb.api.connection.manage",
+    "wb.api.operation.view",
+}
+WB_API_MANAGER_CODES = {
+    "wb.api.prices.download",
+    "wb.api.prices.file.download",
+    "wb.api.promotions.download",
+    "wb.api.promotions.file.download",
+    "wb.api.discounts.calculate",
+    "wb.api.discounts.result.download",
+    "wb.api.operation.view",
+}
 
 LOCAL_ADMIN_PERMISSION_CODES = (
     {code for code in ADMIN_PERMISSION_CODES if not code.startswith("roles.")}
     | STORE_CODES
     | STORE_SETTINGS_CODES
     | AUDIT_TECHLOG_CODES
+    | WB_API_CONNECTION_CODES
 ) - {
     "users.owner.manage",
     "roles.edit",
@@ -155,6 +188,7 @@ LOCAL_ADMIN_PERMISSION_CODES = (
 
 MANAGER_PERMISSION_CODES = (
     SCENARIO_CODES
+    | WB_API_MANAGER_CODES
     | {
         "stores.list.view",
         "stores.card.view",
@@ -206,6 +240,7 @@ ROLE_SECTION_CODES = {
     ROLE_LOCAL_ADMIN: {
         "home.view",
         "stores.view",
+        "wb_discounts_api.view",
         "settings_store.view",
         "users.view",
         "permissions.view",
@@ -216,6 +251,7 @@ ROLE_SECTION_CODES = {
     ROLE_MARKETPLACE_MANAGER: {
         "home.view",
         "wb_discounts_excel.view",
+        "wb_discounts_api.view",
         "ozon_discounts_excel.view",
         "operations.view",
         "stores.view",

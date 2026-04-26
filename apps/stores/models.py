@@ -11,7 +11,15 @@ from django.db import models
 from django.db.models.deletion import ProtectedError
 
 
-SENSITIVE_METADATA_KEY_MARKERS = ("secret", "token", "password", "api_key", "key")
+SENSITIVE_METADATA_KEY_MARKERS = (
+    "secret",
+    "token",
+    "password",
+    "api_key",
+    "key",
+    "authorization",
+    "bearer",
+)
 _store_visible_id_service_update_allowed = ContextVar(
     "store_visible_id_service_update_allowed",
     default=False,
@@ -51,6 +59,16 @@ def contains_sensitive_metadata_key(value) -> bool:
     if isinstance(value, list):
         return any(contains_sensitive_metadata_key(child) for child in value)
     return False
+
+
+def contains_sensitive_metadata_value(value) -> bool:
+    from apps.discounts.wb_api.redaction import contains_secret_like_value
+
+    if isinstance(value, dict):
+        return any(contains_sensitive_metadata_value(child) for child in value.values())
+    if isinstance(value, list):
+        return any(contains_sensitive_metadata_value(child) for child in value)
+    return contains_secret_like_value(value)
 
 
 class GuardedDeleteQuerySet(models.QuerySet):
@@ -206,8 +224,11 @@ class StoreAccount(models.Model):
 
 class ConnectionBlock(models.Model):
     class Status(models.TextChoices):
-        PREPARED = "prepared", "Prepared for stage 2"
-        INACTIVE = "inactive", "Inactive"
+        NOT_CONFIGURED = "not_configured", "Not configured"
+        CONFIGURED = "configured", "Configured"
+        ACTIVE = "active", "Active"
+        CHECK_FAILED = "check_failed", "Check failed"
+        DISABLED = "disabled", "Disabled"
         ARCHIVED = "archived", "Archived"
 
     store = models.ForeignKey(
@@ -220,11 +241,15 @@ class ConnectionBlock(models.Model):
     status = models.CharField(
         max_length=32,
         choices=Status.choices,
-        default=Status.PREPARED,
+        default=Status.NOT_CONFIGURED,
     )
     protected_secret_ref = models.CharField(max_length=255, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     is_stage1_used = models.BooleanField(default=False, editable=False)
+    is_stage2_1_used = models.BooleanField(default=False)
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    last_check_status = models.CharField(max_length=32, blank=True)
+    last_check_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -250,7 +275,9 @@ class ConnectionBlock(models.Model):
         super().clean()
         if self.is_stage1_used:
             raise ValidationError("Connection blocks are stage 2 preparation and are not used in stage 1.")
-        if contains_sensitive_metadata_key(self.metadata):
+        if contains_sensitive_metadata_key(self.metadata) or contains_sensitive_metadata_value(
+            self.metadata,
+        ):
             raise ValidationError("Connection metadata must not contain secret-like values.")
 
     def save(self, *args, **kwargs):

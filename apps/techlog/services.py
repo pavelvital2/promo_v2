@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.identity_access.models import AccessEffect, StoreAccess
 from apps.identity_access.services import has_full_object_scope, has_permission
 from apps.stores.models import StoreAccount
+from apps.discounts.wb_api.redaction import assert_no_secret_like_values
 
 from .models import (
     SystemNotification,
@@ -74,6 +75,11 @@ def create_techlog_record(
 ) -> TechLogRecord:
     if store is None and operation is not None:
         store = operation.store
+    assert_no_secret_like_values(safe_message, field_name="techlog safe_message")
+    assert_no_secret_like_values(
+        sensitive_details_ref,
+        field_name="techlog sensitive_details_ref",
+    )
     severity = _normalized_severity(event_type=event_type, severity=severity)
     if severity == TechLogSeverity.CRITICAL:
         handled_status = TechLogHandledStatus.NOTIFICATION_CREATED

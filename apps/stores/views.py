@@ -13,8 +13,12 @@ from .forms import ConnectionBlockForm, StoreAccountForm
 from .models import ConnectionBlock, StoreAccount
 from .services import (
     API_STAGE_2_NOTICE,
+    WB_API_CONNECTION_TYPE,
+    WB_API_MODULE,
+    check_wb_api_connection,
     connection_metadata_display,
     create_store_account,
+    require_wb_store_for_wb_api,
     require_store_permission,
     save_connection_block,
     update_store_account,
@@ -85,8 +89,9 @@ def store_card(request, visible_id: str):
     for connection in connections:
         connection.metadata_display = connection_metadata_display(connection.metadata)
     can_edit = has_permission(request.user, "stores.edit", store)
-    can_view_connection = has_permission(request.user, "stores.connection.view", store)
-    can_edit_connection = has_permission(request.user, "stores.connection.edit", store)
+    is_wb_store = store.marketplace == StoreAccount.Marketplace.WB
+    can_view_connection = is_wb_store and has_permission(request.user, "wb.api.connection.view", store)
+    can_edit_connection = is_wb_store and has_permission(request.user, "wb.api.connection.manage", store)
     can_view_history = has_permission(request.user, "stores.history.view", store)
     return render(
         request,
@@ -98,6 +103,7 @@ def store_card(request, visible_id: str):
             "can_view_connection": can_view_connection,
             "can_edit_connection": can_edit_connection,
             "can_view_history": can_view_history,
+            "is_wb_store": is_wb_store,
             "api_stage_2_notice": API_STAGE_2_NOTICE,
         },
     )
@@ -130,19 +136,30 @@ def store_history(request, visible_id: str):
 @login_required
 def connection_edit(request, visible_id: str, pk: int | None = None):
     store = get_object_or_404(StoreAccount, visible_id=visible_id)
-    require_store_permission(request.user, "stores.connection.edit", store)
+    require_wb_store_for_wb_api(store)
+    require_store_permission(request.user, "wb.api.connection.manage", store)
     if pk is None:
-        connection = ConnectionBlock(store=store)
+        connection = ConnectionBlock(
+            store=store,
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+        )
     else:
         connection = get_object_or_404(ConnectionBlock, pk=pk, store=store)
 
+    existing_protected_secret_ref = connection.protected_secret_ref
     form = ConnectionBlockForm(request.POST or None, instance=connection)
-    can_edit_secret_ref = has_permission(request.user, "stores.connection.secret_edit", store)
+    can_edit_secret_ref = has_permission(request.user, "wb.api.connection.manage", store)
     if not can_edit_secret_ref:
         form.fields.pop("protected_secret_ref", None)
 
     if request.method == "POST" and form.is_valid():
         fields = {field: form.cleaned_data[field] for field in form.fields}
+        fields["module"] = WB_API_MODULE
+        fields["connection_type"] = WB_API_CONNECTION_TYPE
+        if connection.pk and not fields.get("protected_secret_ref"):
+            connection.protected_secret_ref = existing_protected_secret_ref
+            fields.pop("protected_secret_ref", None)
         save_connection_block(request.user, connection, **fields)
         messages.success(request, "Connection block updated.")
         return redirect("stores:store_card", visible_id=store.visible_id)
@@ -158,3 +175,15 @@ def connection_edit(request, visible_id: str, pk: int | None = None):
             "api_stage_2_notice": API_STAGE_2_NOTICE,
         },
     )
+
+
+@login_required
+def connection_check(request, visible_id: str, pk: int):
+    if request.method != "POST":
+        raise PermissionDenied("Connection check must be started by POST.")
+    store = get_object_or_404(StoreAccount, visible_id=visible_id)
+    require_wb_store_for_wb_api(store)
+    connection = get_object_or_404(ConnectionBlock, pk=pk, store=store)
+    check_wb_api_connection(request.user, connection)
+    messages.info(request, connection.last_check_message)
+    return redirect("stores:store_card", visible_id=store.visible_id)

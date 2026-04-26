@@ -25,49 +25,57 @@
     </dl>
   </section>
 
-  <section>
-    <h2>Connection</h2>
-    <p class="status">{{ api_stage_2_notice }}</p>
-    {% if can_view_connection %}
-      {% if can_edit_connection %}
-        <p><a href="{% url 'stores:connection_create' store.visible_id %}">Add connection block</a></p>
+  {% if is_wb_store %}
+    <section>
+      <h2>Connection</h2>
+      <p class="status">{{ api_stage_2_notice }}</p>
+      {% if can_view_connection %}
+        {% if can_edit_connection %}
+          <p><a href="{% url 'stores:connection_create' store.visible_id %}">Add connection block</a></p>
+        {% endif %}
+        <table>
+          <thead>
+            <tr>
+              <th>Module</th>
+              <th>Connection type</th>
+              <th>Status</th>
+              <th>Last check</th>
+              <th>Secret reference</th>
+              <th>Metadata</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for connection in connections %}
+              <tr>
+                <td>{{ connection.module }}</td>
+                <td>{{ connection.connection_type }}</td>
+                <td>{{ connection.get_status_display }}</td>
+                <td>{{ connection.last_checked_at|default:"" }} {{ connection.last_check_status }}</td>
+                <td>{% if connection.protected_secret_ref %}[ref-set]{% else %}[empty]{% endif %}</td>
+                <td>{{ connection.metadata_display }}</td>
+                <td>
+                  {% if can_edit_connection %}
+                    <a href="{% url 'stores:connection_edit' store.visible_id connection.pk %}">Edit</a>
+                    <form method="post" action="{% url 'stores:connection_check' store.visible_id connection.pk %}" style="display:inline">
+                      {% csrf_token %}
+                      <button type="submit">Check</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7">Connection block is not configured.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="status">No right to view connection block.</p>
       {% endif %}
-      <table>
-        <thead>
-          <tr>
-            <th>Module</th>
-            <th>Connection type</th>
-            <th>Status</th>
-            <th>Secret reference</th>
-            <th>Metadata</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for connection in connections %}
-            <tr>
-              <td>{{ connection.module }}</td>
-              <td>{{ connection.connection_type }}</td>
-              <td>{{ connection.get_status_display }}</td>
-              <td>{% if connection.protected_secret_ref %}[ref-set]{% else %}[empty]{% endif %}</td>
-              <td>{{ connection.metadata_display }}</td>
-              <td>
-                {% if can_edit_connection %}
-                  <a href="{% url 'stores:connection_edit' store.visible_id connection.pk %}">Edit</a>
-                {% endif %}
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="6">Connection block is not configured.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="status">No right to view connection block.</p>
-    {% endif %}
-  </section>
+    </section>
+  {% endif %}
 
   <section>
     <h2>Access and history</h2>

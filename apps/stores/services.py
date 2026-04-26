@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.utils import timezone
 
+from apps.audit.models import AuditActionCode, AuditSourceContext
+from apps.audit.services import create_audit_record
+from apps.discounts.wb_api.client import WBApiError, WBApiClient, WBApiInvalidResponseError
+from apps.discounts.wb_api.redaction import assert_no_secret_like_values, redact
 from apps.identity_access.models import AccessEffect, StoreAccess
 from apps.identity_access.services import has_permission
+from apps.techlog.models import TechLogSeverity
+from apps.techlog.services import create_techlog_record
 
 from .models import (
     ConnectionBlock,
@@ -37,6 +46,10 @@ CONNECTION_HISTORY_FIELDS = (
     "protected_secret_ref",
     "metadata",
 )
+WB_API_MODULE = "wb_api"
+WB_API_CONNECTION_TYPE = "wb_header_api_key"
+LOCAL_ENV_SECRET_REF_PREFIX = "env://"
+LOCAL_ENV_SECRET_REF_PATTERN = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 _history_context = ContextVar("store_history_context", default=(None, "system"))
 
@@ -153,6 +166,11 @@ def require_store_permission(user, permission_code: str, store: StoreAccount):
         raise PermissionDenied("No permission or object access for this store/cabinet.")
 
 
+def require_wb_store_for_wb_api(store: StoreAccount):
+    if store.marketplace != StoreAccount.Marketplace.WB:
+        raise PermissionDenied("WB API connection is available only for WB stores.")
+
+
 @transaction.atomic
 def create_store_account(actor, **fields) -> StoreAccount:
     if not has_permission(actor, "stores.create"):
@@ -189,9 +207,20 @@ def update_store_account(actor, store: StoreAccount, **fields) -> StoreAccount:
 @transaction.atomic
 def save_connection_block(actor, connection: ConnectionBlock, **fields) -> ConnectionBlock:
     permission_store = connection.store
-    require_store_permission(actor, "stores.connection.edit", permission_store)
+    target_module = fields.get("module", connection.module)
+    if target_module == WB_API_MODULE:
+        require_wb_store_for_wb_api(permission_store)
+    if fields.get("status") == ConnectionBlock.Status.ACTIVE:
+        raise ValidationError("Active status is service-owned and can be set only by a successful check.")
+
+    manage_permission = (
+        "wb.api.connection.manage"
+        if target_module == WB_API_MODULE
+        else "stores.connection.edit"
+    )
+    require_store_permission(actor, manage_permission, permission_store)
     if "protected_secret_ref" in fields:
-        require_store_permission(actor, "stores.connection.secret_edit", permission_store)
+        require_store_permission(actor, manage_permission, permission_store)
 
     before = None
     if connection.pk:
@@ -203,9 +232,19 @@ def save_connection_block(actor, connection: ConnectionBlock, **fields) -> Conne
         old_values = {field: "" for field in CONNECTION_HISTORY_FIELDS}
         old_values["protected_secret_ref"] = "[empty]"
 
+    protected_secret_ref_changed = False
     for field, value in fields.items():
+        if field == "protected_secret_ref":
+            protected_secret_ref_changed = connection.protected_secret_ref != value
         setattr(connection, field, value)
     connection.is_stage1_used = False
+    if connection.module == WB_API_MODULE:
+        connection.connection_type = connection.connection_type or WB_API_CONNECTION_TYPE
+        connection.is_stage2_1_used = True
+        if protected_secret_ref_changed and connection.protected_secret_ref:
+            connection.status = ConnectionBlock.Status.CONFIGURED
+        elif connection.protected_secret_ref and connection.status == ConnectionBlock.Status.NOT_CONFIGURED:
+            connection.status = ConnectionBlock.Status.CONFIGURED
     connection.save()
     connection.refresh_from_db()
 
@@ -227,6 +266,202 @@ def save_connection_block(actor, connection: ConnectionBlock, **fields) -> Conne
             actor=actor,
             source="service",
         )
+    action_code = (
+        AuditActionCode.WB_API_CONNECTION_CREATED
+        if before is None and connection.module == WB_API_MODULE
+        else AuditActionCode.WB_API_CONNECTION_UPDATED
+        if connection.module == WB_API_MODULE
+        else None
+    )
+    if action_code:
+        create_audit_record(
+            action_code=action_code,
+            entity_type="ConnectionBlock",
+            entity_id=connection.pk,
+            user=actor,
+            store=connection.store,
+            safe_message="WB API connection saved without exposing protected secret.",
+            before_snapshot=redact({"status": old_values.get("status", "")}),
+            after_snapshot=redact(
+                {
+                    "module": connection.module,
+                    "connection_type": connection.connection_type,
+                    "status": connection.status,
+                    "has_protected_ref": bool(connection.protected_secret_ref),
+                    "metadata": connection.metadata,
+                },
+            ),
+            source_context=AuditSourceContext.UI,
+        )
+    return connection
+
+
+def default_secret_resolver(protected_secret_ref: str) -> str:
+    """Resolve local TASK-011 protected refs in the deterministic env://ENV_VAR_NAME format."""
+    if not protected_secret_ref.startswith(LOCAL_ENV_SECRET_REF_PREFIX):
+        raise WBApiInvalidResponseError("Protected secret reference cannot be resolved by the local resolver.")
+    env_name = protected_secret_ref.removeprefix(LOCAL_ENV_SECRET_REF_PREFIX)
+    if not LOCAL_ENV_SECRET_REF_PATTERN.fullmatch(env_name):
+        raise WBApiInvalidResponseError("Protected secret reference has an invalid local resolver format.")
+    token = os.environ.get(env_name, "")
+    if not token:
+        raise WBApiInvalidResponseError("Protected secret reference is not configured.")
+    return token
+
+
+@transaction.atomic
+def check_wb_api_connection(
+    actor,
+    connection: ConnectionBlock,
+    *,
+    client_factory=None,
+    secret_resolver=default_secret_resolver,
+):
+    require_store_permission(actor, "wb.api.connection.manage", connection.store)
+    require_wb_store_for_wb_api(connection.store)
+    if connection.module != WB_API_MODULE:
+        raise PermissionDenied("Only WB API connection can be checked by this flow.")
+    if connection.status in {ConnectionBlock.Status.DISABLED, ConnectionBlock.Status.ARCHIVED}:
+        raise PermissionDenied("Disabled or archived connection cannot be checked.")
+    if not connection.protected_secret_ref:
+        connection.status = ConnectionBlock.Status.NOT_CONFIGURED
+        connection.last_checked_at = timezone.now()
+        connection.last_check_status = "not_configured"
+        connection.last_check_message = "Protected secret reference is not configured."
+        connection.save(
+            update_fields=[
+                "status",
+                "last_checked_at",
+                "last_check_status",
+                "last_check_message",
+                "updated_at",
+            ],
+        )
+        create_audit_record(
+            action_code=AuditActionCode.WB_API_CONNECTION_CHECKED,
+            entity_type="ConnectionBlock",
+            entity_id=connection.pk,
+            user=actor,
+            store=connection.store,
+            safe_message=connection.last_check_message,
+            after_snapshot={
+                "status": connection.status,
+                "last_check_status": connection.last_check_status,
+                "has_protected_ref": False,
+            },
+            source_context=AuditSourceContext.UI,
+        )
+        return connection
+
+    try:
+        token = secret_resolver(connection.protected_secret_ref)
+    except WBApiError as exc:
+        checked_at = timezone.now()
+        connection.status = ConnectionBlock.Status.CHECK_FAILED
+        connection.last_checked_at = checked_at
+        connection.last_check_status = "failed"
+        connection.last_check_message = exc.safe_message
+        connection.save(
+            update_fields=[
+                "status",
+                "last_checked_at",
+                "last_check_status",
+                "last_check_message",
+                "updated_at",
+            ],
+        )
+        create_techlog_record(
+            severity=TechLogSeverity.ERROR,
+            event_type=exc.techlog_event_type,
+            source_component="apps.stores.wb_api_connection",
+            store=connection.store,
+            user=actor,
+            entity_type="ConnectionBlock",
+            entity_id=connection.pk,
+            safe_message=exc.safe_message,
+            sensitive_details_ref="redacted:wba-connection-check",
+        )
+        create_audit_record(
+            action_code=AuditActionCode.WB_API_CONNECTION_CHECKED,
+            entity_type="ConnectionBlock",
+            entity_id=connection.pk,
+            user=actor,
+            store=connection.store,
+            safe_message=connection.last_check_message,
+            after_snapshot={
+                "status": connection.status,
+                "last_check_status": connection.last_check_status,
+                "has_protected_ref": bool(connection.protected_secret_ref),
+            },
+            source_context=AuditSourceContext.UI,
+        )
+        return connection
+    assert_no_secret_like_values(connection.metadata, field_name="connection metadata")
+    factory = client_factory or WBApiClient
+    client = factory(
+        token=token,
+        store_scope=connection.store.visible_id or str(connection.store_id),
+    )
+
+    checked_at = timezone.now()
+    safe_message = "WB API connection check succeeded."
+    try:
+        client.check_connection()
+    except WBApiError as exc:
+        safe_message = exc.safe_message
+        connection.status = ConnectionBlock.Status.CHECK_FAILED
+        connection.last_check_status = "failed"
+        connection.last_check_message = safe_message
+        connection.last_checked_at = checked_at
+        connection.save(
+            update_fields=[
+                "status",
+                "last_check_status",
+                "last_check_message",
+                "last_checked_at",
+                "updated_at",
+            ],
+        )
+        create_techlog_record(
+            severity=TechLogSeverity.WARNING,
+            event_type=exc.techlog_event_type,
+            source_component="apps.stores.wb_api_connection",
+            store=connection.store,
+            user=actor,
+            entity_type="ConnectionBlock",
+            entity_id=connection.pk,
+            safe_message=safe_message,
+            sensitive_details_ref="redacted:wba-connection-check",
+        )
+    else:
+        connection.status = ConnectionBlock.Status.ACTIVE
+        connection.last_check_status = "success"
+        connection.last_check_message = safe_message
+        connection.last_checked_at = checked_at
+        connection.save(
+            update_fields=[
+                "status",
+                "last_check_status",
+                "last_check_message",
+                "last_checked_at",
+                "updated_at",
+            ],
+        )
+
+    create_audit_record(
+        action_code=AuditActionCode.WB_API_CONNECTION_CHECKED,
+        entity_type="ConnectionBlock",
+        entity_id=connection.pk,
+        user=actor,
+        store=connection.store,
+        safe_message=connection.last_check_message,
+        after_snapshot={
+            "status": connection.status,
+            "last_check_status": connection.last_check_status,
+            "has_protected_ref": bool(connection.protected_secret_ref),
+        },
+        source_context=AuditSourceContext.UI,
+    )
     return connection
 
 

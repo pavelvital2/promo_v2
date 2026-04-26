@@ -219,3 +219,24 @@ class AuditTask006Tests(TestCase):
         self.assertIn("cleanup_audit_techlog completed", stdout.getvalue())
         self.assertEqual(AuditRecord.objects.count(), 0)
         self.assertFalse(TechLogRecord.objects.filter(pk=old_techlog.pk).exists())
+
+    def test_audit_rejects_secret_like_safe_contour(self):
+        with self.assertRaises(ValueError):
+            create_audit_record(
+                action_code=AuditActionCode.WB_API_CONNECTION_CHECKED,
+                entity_type="ConnectionBlock",
+                entity_id="1",
+                user=self.full_user,
+                store=self.store,
+                safe_message="Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890",
+            )
+
+        with self.assertRaises(ValueError):
+            create_audit_record(
+                action_code=AuditActionCode.WB_API_CONNECTION_UPDATED,
+                entity_type="ConnectionBlock",
+                entity_id="1",
+                user=self.full_user,
+                store=self.store,
+                after_snapshot={"api_key": "abcdef123456"},
+            )

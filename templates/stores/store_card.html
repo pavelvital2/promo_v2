@@ -16,16 +16,34 @@
     <strong>Комментарий</strong><span>{{ store.comments }}</span>
   </div>
 </section>
-<section class="panel" style="margin-top:16px">
-  <h2>Connection blocks</h2>
-  <p class="status">{{ api_stage_2_notice }}</p>
-  {% if can_view_connection and connections %}
-    <table><thead><tr><th>Module</th><th>Type</th><th>Status</th><th>Secret ref</th><th>Metadata</th><th></th></tr></thead><tbody>
-      {% for item in connections %}
-        <tr><td>{{ item.module }}</td><td>{{ item.connection_type }}</td><td>{{ item.status }}</td><td>{% if item.protected_secret_ref %}[ref-set]{% else %}[empty]{% endif %}</td><td>{{ item.metadata_display }}</td><td>{% if can_edit_connection %}<a href="{% url 'stores:connection_edit' store.visible_id item.pk %}">Изменить</a>{% endif %}</td></tr>
-      {% endfor %}
-    </tbody></table>
-  {% else %}<div class="empty">Нет блоков подключения или права просмотра.</div>{% endif %}
-  {% if can_edit_connection %}<a class="button" href="{% url 'stores:connection_create' store.visible_id %}">Добавить connection block</a>{% endif %}
-</section>
+{% if is_wb_store %}
+  <section class="panel" style="margin-top:16px">
+    <h2>Connection blocks</h2>
+    <p class="status">{{ api_stage_2_notice }}</p>
+    {% if can_view_connection and connections %}
+      <table><thead><tr><th>Module</th><th>Type</th><th>Status</th><th>Last check</th><th>Secret ref</th><th>Metadata</th><th></th></tr></thead><tbody>
+        {% for item in connections %}
+          <tr>
+            <td>{{ item.module }}</td>
+            <td>{{ item.connection_type }}</td>
+            <td>{{ item.status }}</td>
+            <td>{{ item.last_checked_at|default:"" }} {{ item.last_check_status }}</td>
+            <td>{% if item.protected_secret_ref %}[ref-set]{% else %}[empty]{% endif %}</td>
+            <td>{{ item.metadata_display }}</td>
+            <td>
+              {% if can_edit_connection %}
+                <a href="{% url 'stores:connection_edit' store.visible_id item.pk %}">Изменить</a>
+                <form method="post" action="{% url 'stores:connection_check' store.visible_id item.pk %}" style="display:inline">
+                  {% csrf_token %}
+                  <button type="submit">Проверить</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody></table>
+    {% else %}<div class="empty">Нет блоков подключения или права просмотра.</div>{% endif %}
+    {% if can_edit_connection %}<a class="button" href="{% url 'stores:connection_create' store.visible_id %}">Добавить connection block</a>{% endif %}
+  </section>
+{% endif %}
 {% endblock %}

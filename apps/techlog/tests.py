@@ -240,3 +240,23 @@ class TechLogTask006Tests(TestCase):
         self.assertFalse(TechLogRecord.objects.filter(pk=old_record.pk).exists())
         self.assertTrue(TechLogRecord.objects.filter(pk=fresh_record.pk).exists())
         self.assertTrue(type(self.operation).objects.filter(pk=self.operation.pk).exists())
+
+    def test_techlog_rejects_secret_like_safe_contour(self):
+        with self.assertRaises(ValueError):
+            create_techlog_record(
+                severity=TechLogSeverity.ERROR,
+                event_type=TechLogEventType.WB_API_AUTH_FAILED,
+                source_component="tests",
+                store=self.store,
+                safe_message="token=abcdef123456",
+            )
+
+        with self.assertRaises(ValueError):
+            create_techlog_record(
+                severity=TechLogSeverity.ERROR,
+                event_type=TechLogEventType.WB_API_AUTH_FAILED,
+                source_component="tests",
+                store=self.store,
+                safe_message="Auth failed.",
+                sensitive_details_ref="Bearer abcdefghijklmnopqrstuvwxyz1234567890",
+            )

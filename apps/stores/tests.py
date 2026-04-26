@@ -1,3 +1,6 @@
+import os
+from unittest.mock import patch
+
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models.deletion import ProtectedError
 from django.test import TestCase
@@ -10,15 +13,45 @@ from apps.identity_access.seeds import (
     ROLE_OBSERVER,
     seed_identity_access,
 )
+from apps.audit.models import AuditActionCode, AuditRecord
+from apps.techlog.models import TechLogEventType, TechLogRecord
+from apps.discounts.wb_api.client import (
+    WBApiAuthError,
+    WBApiInvalidResponseError,
+    WBApiRateLimitError,
+    WBApiTimeoutError,
+)
 
 from .models import BusinessGroup, ConnectionBlock, StoreAccount, StoreAccountChangeHistory
 from .services import (
     API_STAGE_2_NOTICE,
+    WB_API_CONNECTION_TYPE,
+    WB_API_MODULE,
+    check_wb_api_connection,
     connection_metadata_display,
+    default_secret_resolver,
     save_connection_block,
     update_store_account,
     visible_stores_queryset,
 )
+
+
+SENTINEL_TOKEN = "Bearer abcdefghijklmnopqrstuvwxyz1234567890"
+
+
+class FakeWBApiClient:
+    error = None
+    token_seen = None
+    store_scope_seen = None
+
+    def __init__(self, *, token, store_scope, **kwargs):
+        type(self).token_seen = token
+        type(self).store_scope_seen = store_scope
+
+    def check_connection(self):
+        if type(self).error:
+            raise type(self).error(type(self).error.safe_message)
+        return {"data": {"listGoods": []}}
 
 
 class StoreTask003Tests(TestCase):
@@ -150,7 +183,7 @@ class StoreTask003Tests(TestCase):
             connection,
             module="future_api",
             connection_type="protected_reference",
-            status=ConnectionBlock.Status.PREPARED,
+            status=ConnectionBlock.Status.NOT_CONFIGURED,
             protected_secret_ref="vault://stores/wb-visible-store",
             metadata={"owner": "integration-team"},
         )
@@ -231,7 +264,7 @@ class StoreTask003Tests(TestCase):
                 connection,
                 module="future_api",
                 connection_type="protected_reference",
-                status=ConnectionBlock.Status.PREPARED,
+                status=ConnectionBlock.Status.NOT_CONFIGURED,
                 protected_secret_ref="vault://forbidden",
                 metadata={},
             )
@@ -279,7 +312,7 @@ class StoreTask003Tests(TestCase):
             ConnectionBlock(store=self.wb_store),
             module="future_api_delete_policy",
             connection_type="protected_reference",
-            status=ConnectionBlock.Status.PREPARED,
+            status=ConnectionBlock.Status.NOT_CONFIGURED,
             protected_secret_ref="vault://stores/delete-policy",
             metadata={},
         )
@@ -356,3 +389,371 @@ class StoreTask003Tests(TestCase):
         self.assertContains(response, "[redacted]")
         self.assertContains(response, "integration-team")
         self.assertNotContains(response, "legacy-nested-secret")
+
+
+class StoreTask011WBApiConnectionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        seed_identity_access()
+        cls.global_admin_role = Role.objects.get(code=ROLE_GLOBAL_ADMIN)
+        cls.manager_role = Role.objects.get(code=ROLE_MARKETPLACE_MANAGER)
+        cls.observer_role = Role.objects.get(code=ROLE_OBSERVER)
+        cls.store = StoreAccount.objects.create(
+            name="WB API Store",
+            marketplace=StoreAccount.Marketplace.WB,
+        )
+        cls.other_store = StoreAccount.objects.create(
+            name="Other WB API Store",
+            marketplace=StoreAccount.Marketplace.WB,
+        )
+        cls.ozon_store = StoreAccount.objects.create(
+            name="Ozon API Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+        )
+        cls.global_admin = User.objects.create_user(
+            login="global-admin-task011",
+            password="test",
+            display_name="Global Admin TASK-011",
+            primary_role=cls.global_admin_role,
+        )
+        cls.manager = User.objects.create_user(
+            login="manager-task011",
+            password="test",
+            display_name="Manager TASK-011",
+            primary_role=cls.manager_role,
+        )
+        cls.observer = User.objects.create_user(
+            login="observer-task011",
+            password="test",
+            display_name="Observer TASK-011",
+            primary_role=cls.observer_role,
+        )
+        StoreAccess.objects.create(
+            user=cls.manager,
+            store=cls.store,
+            access_level=StoreAccess.AccessLevel.WORK,
+        )
+        StoreAccess.objects.create(
+            user=cls.observer,
+            store=cls.store,
+            access_level=StoreAccess.AccessLevel.VIEW,
+        )
+
+    def setUp(self):
+        FakeWBApiClient.error = None
+        FakeWBApiClient.token_seen = None
+        FakeWBApiClient.store_scope_seen = None
+
+    def _create_connection(self):
+        return save_connection_block(
+            self.global_admin,
+            ConnectionBlock(store=self.store),
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+            protected_secret_ref="vault://wb-api/store-001",
+            metadata={"label": "read-only check"},
+        )
+
+    def _resolve_secret(self, protected_secret_ref):
+        self.assertEqual(protected_secret_ref, "vault://wb-api/store-001")
+        return SENTINEL_TOKEN
+
+    def test_wb_api_connection_save_uses_protected_ref_status_and_audit(self):
+        connection = self._create_connection()
+
+        self.assertEqual(connection.status, ConnectionBlock.Status.CONFIGURED)
+        self.assertTrue(connection.is_stage2_1_used)
+        self.assertEqual(connection.protected_secret_ref, "vault://wb-api/store-001")
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.WB_API_CONNECTION_CREATED,
+                entity_type="ConnectionBlock",
+                entity_id=str(connection.pk),
+                store=self.store,
+            ).exists(),
+        )
+        persisted_text = " ".join(
+            [
+                str(connection.metadata),
+                *AuditRecord.objects.values_list("safe_message", flat=True),
+            ],
+        )
+        self.assertNotIn(SENTINEL_TOKEN, persisted_text)
+
+    def test_metadata_rejects_secret_like_keys_and_values(self):
+        secret_cases = (
+            {"authorization": "safe-looking"},
+            {"public_note": SENTINEL_TOKEN},
+            {"nested": [{"label": "token=abcdef123456"}]},
+        )
+        for index, metadata in enumerate(secret_cases):
+            connection = ConnectionBlock(
+                store=self.store,
+                module=f"{WB_API_MODULE}_{index}",
+                connection_type=WB_API_CONNECTION_TYPE,
+                metadata=metadata,
+            )
+            with self.subTest(metadata=metadata), self.assertRaises(ValidationError):
+                connection.save()
+
+    def test_connection_check_success_sets_active_and_keeps_token_outside_db(self):
+        connection = self._create_connection()
+
+        result = check_wb_api_connection(
+            self.global_admin,
+            connection,
+            client_factory=FakeWBApiClient,
+            secret_resolver=self._resolve_secret,
+        )
+
+        self.assertEqual(result.status, ConnectionBlock.Status.ACTIVE)
+        self.assertEqual(result.last_check_status, "success")
+        self.assertEqual(FakeWBApiClient.token_seen, SENTINEL_TOKEN)
+        self.assertEqual(FakeWBApiClient.store_scope_seen, self.store.visible_id)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.WB_API_CONNECTION_CHECKED,
+                entity_id=str(connection.pk),
+            ).exists(),
+        )
+        self.assertFalse(TechLogRecord.objects.exists())
+        all_db_text = " ".join(
+            [
+                str(ConnectionBlock.objects.values_list("protected_secret_ref", "metadata")),
+                str(AuditRecord.objects.values_list("safe_message", "before_snapshot", "after_snapshot")),
+                str(TechLogRecord.objects.values_list("safe_message", "sensitive_details_ref")),
+            ],
+        )
+        self.assertNotIn(SENTINEL_TOKEN, all_db_text)
+        self.assertIn("vault://wb-api/store-001", all_db_text)
+
+    def test_default_secret_resolver_uses_documented_env_ref_without_persisting_secret(self):
+        env_ref = "env://PROMO_V2_TASK011_WB_SECRET"
+        connection = save_connection_block(
+            self.global_admin,
+            ConnectionBlock(store=self.store),
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+            protected_secret_ref=env_ref,
+            metadata={"label": "local env resolver"},
+        )
+
+        with patch.dict(os.environ, {"PROMO_V2_TASK011_WB_SECRET": SENTINEL_TOKEN}, clear=False):
+            self.assertEqual(default_secret_resolver(env_ref), SENTINEL_TOKEN)
+            with patch("apps.stores.services.WBApiClient", FakeWBApiClient):
+                result = check_wb_api_connection(self.global_admin, connection)
+
+        self.assertEqual(result.status, ConnectionBlock.Status.ACTIVE)
+        self.assertEqual(FakeWBApiClient.token_seen, SENTINEL_TOKEN)
+        all_db_text = " ".join(
+            [
+                str(ConnectionBlock.objects.values_list("protected_secret_ref", "metadata")),
+                str(AuditRecord.objects.values_list("safe_message", "before_snapshot", "after_snapshot")),
+                str(TechLogRecord.objects.values_list("safe_message", "sensitive_details_ref")),
+            ],
+        )
+        self.assertNotIn(SENTINEL_TOKEN, all_db_text)
+        self.assertIn(env_ref, all_db_text)
+
+    def test_default_secret_resolver_rejects_unsupported_or_missing_refs_safely(self):
+        for ref in ("vault://wb-api/store-001", "env://invalid-name", "env://PROMO_V2_MISSING_SECRET"):
+            with self.subTest(ref=ref), self.assertRaises(WBApiInvalidResponseError):
+                default_secret_resolver(ref)
+
+    def test_connection_check_auth_rate_and_timeout_fail_safely(self):
+        connection = self._create_connection()
+        cases = (
+            (WBApiAuthError, TechLogEventType.WB_API_AUTH_FAILED),
+            (WBApiRateLimitError, TechLogEventType.WB_API_RATE_LIMITED),
+            (WBApiTimeoutError, TechLogEventType.WB_API_TIMEOUT),
+        )
+        for error_class, event_type in cases:
+            FakeWBApiClient.error = error_class
+
+            result = check_wb_api_connection(
+                self.global_admin,
+                connection,
+                client_factory=FakeWBApiClient,
+                secret_resolver=self._resolve_secret,
+            )
+
+            self.assertEqual(result.status, ConnectionBlock.Status.CHECK_FAILED)
+            self.assertEqual(result.last_check_status, "failed")
+            self.assertTrue(
+                TechLogRecord.objects.filter(
+                    event_type=event_type,
+                    entity_type="ConnectionBlock",
+                    entity_id=str(connection.pk),
+                ).exists(),
+            )
+            self.assertNotIn(
+                SENTINEL_TOKEN,
+                str(TechLogRecord.objects.values_list("safe_message", "sensitive_details_ref")),
+            )
+
+    def test_connection_view_manage_and_object_access_are_enforced(self):
+        connection = self._create_connection()
+
+        self.assertEqual(
+            self.client.get(
+                reverse("stores:store_card", args=[self.other_store.visible_id]),
+                HTTP_HOST="localhost",
+            ).status_code,
+            302,
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get(
+            reverse("stores:store_card", args=[self.store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+        self.assertNotContains(response, "vault://wb-api/store-001")
+
+        response = self.client.get(
+            reverse("stores:connection_edit", args=[self.store.visible_id, connection.pk]),
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.global_admin)
+        response = self.client.get(
+            reverse("stores:store_card", args=[self.store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+        self.assertContains(response, "[ref-set]")
+        self.assertNotContains(response, "vault://wb-api/store-001")
+
+    def test_connection_edit_form_does_not_render_saved_secret_ref_or_status_control(self):
+        connection = save_connection_block(
+            self.global_admin,
+            ConnectionBlock(store=self.store),
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+            protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
+            metadata={"label": "edit leak check"},
+        )
+
+        self.client.force_login(self.global_admin)
+        response = self.client.get(
+            reverse("stores:connection_edit", args=[self.store.visible_id, connection.pk]),
+            HTTP_HOST="localhost",
+        )
+
+        self.assertContains(response, "edit leak check")
+        self.assertContains(response, "name=\"protected_secret_ref\"")
+        self.assertNotContains(response, "env://PROMO_V2_TASK011_WB_SECRET")
+        self.assertNotContains(response, "name=\"status\"")
+        self.assertNotContains(response, "value=\"active\"")
+
+    def test_blank_secret_input_keeps_existing_ref_and_new_input_replaces_it(self):
+        connection = save_connection_block(
+            self.global_admin,
+            ConnectionBlock(store=self.store),
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+            protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
+            metadata={"label": "original"},
+        )
+
+        self.client.force_login(self.global_admin)
+        response = self.client.post(
+            reverse("stores:connection_edit", args=[self.store.visible_id, connection.pk]),
+            {"metadata": '{"label": "kept"}', "protected_secret_ref": ""},
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 302)
+        connection.refresh_from_db()
+        self.assertEqual(connection.protected_secret_ref, "env://PROMO_V2_TASK011_WB_SECRET")
+        self.assertEqual(connection.metadata, {"label": "kept"})
+
+        response = self.client.post(
+            reverse("stores:connection_edit", args=[self.store.visible_id, connection.pk]),
+            {
+                "metadata": '{"label": "replaced"}',
+                "protected_secret_ref": "env://PROMO_V2_TASK011_WB_SECRET_REPLACEMENT",
+            },
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 302)
+        connection.refresh_from_db()
+        self.assertEqual(
+            connection.protected_secret_ref,
+            "env://PROMO_V2_TASK011_WB_SECRET_REPLACEMENT",
+        )
+        self.assertEqual(connection.status, ConnectionBlock.Status.CONFIGURED)
+
+    def test_posted_active_status_cannot_bypass_connection_check(self):
+        connection = self._create_connection()
+
+        self.client.force_login(self.global_admin)
+        response = self.client.post(
+            reverse("stores:connection_edit", args=[self.store.visible_id, connection.pk]),
+            {
+                "metadata": '{"label": "manual active attempt"}',
+                "protected_secret_ref": "",
+                "status": ConnectionBlock.Status.ACTIVE,
+            },
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        connection.refresh_from_db()
+        self.assertEqual(connection.status, ConnectionBlock.Status.CONFIGURED)
+        self.assertEqual(connection.last_check_status, "")
+
+        with self.assertRaises(ValidationError):
+            save_connection_block(
+                self.global_admin,
+                connection,
+                module=WB_API_MODULE,
+                connection_type=WB_API_CONNECTION_TYPE,
+                status=ConnectionBlock.Status.ACTIVE,
+                metadata={},
+            )
+
+    def test_wb_api_connection_ui_and_service_are_denied_for_ozon_store(self):
+        self.client.force_login(self.global_admin)
+
+        card_response = self.client.get(
+            reverse("stores:store_card", args=[self.ozon_store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+        self.assertNotContains(card_response, "Add connection block")
+        self.assertNotContains(card_response, "Добавить connection block")
+        self.assertNotContains(card_response, "Connection blocks")
+
+        create_response = self.client.get(
+            reverse("stores:connection_create", args=[self.ozon_store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(create_response.status_code, 403)
+
+        with self.assertRaises(PermissionDenied):
+            save_connection_block(
+                self.global_admin,
+                ConnectionBlock(store=self.ozon_store),
+                module=WB_API_MODULE,
+                connection_type=WB_API_CONNECTION_TYPE,
+                protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
+                metadata={},
+            )
+
+        legacy_connection = ConnectionBlock.objects.create(
+            store=self.ozon_store,
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+            protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
+            metadata={},
+        )
+        edit_response = self.client.get(
+            reverse("stores:connection_edit", args=[self.ozon_store.visible_id, legacy_connection.pk]),
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(edit_response.status_code, 403)
+
+        check_response = self.client.post(
+            reverse("stores:connection_check", args=[self.ozon_store.visible_id, legacy_connection.pk]),
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(check_response.status_code, 403)
+        with self.assertRaises(PermissionDenied):
+            check_wb_api_connection(self.global_admin, legacy_connection, secret_resolver=self._resolve_secret)
