@@ -24,20 +24,20 @@
         </label>
       </div>
       <div class="toolbar">
-        <button type="submit" name="action" value="upload_price" {% if not can_upload %}disabled{% endif %}>Загрузить/заменить файл цен</button>
-        <button type="submit" name="action" value="upload_promo" {% if not can_upload %}disabled{% endif %}>Добавить файлы акций</button>
+        <button type="submit" name="action" value="upload_price" data-loading-text="Загружаем..." {% if not can_upload %}disabled{% endif %}>Загрузить/заменить файл цен</button>
+        <button type="submit" name="action" value="upload_promo" data-loading-text="Загружаем..." {% if not can_upload %}disabled{% endif %}>Добавить файлы акций</button>
       </div>
       <section class="panel">
         <h2>Черновой контекст</h2>
         <table><thead><tr><th>Роль</th><th>Файл</th><th>Версия</th><th>Размер</th><th>Действие</th></tr></thead><tbody>
           {% if draft.price %}
-            <tr><td>price</td><td>{{ draft.price.file.visible_id }} {{ draft.price.original_name }}</td><td>v{{ draft.price.version_no }}</td><td>{{ draft.price.size }}</td><td><button name="action" value="delete_file" {% if not can_upload %}disabled{% endif %}>Удалить</button><input type="hidden" name="version_id" value="{{ draft.price.pk }}"></td></tr>
+            <tr><td>price</td><td>{{ draft.price.file.visible_id }} {{ draft.price.original_name }}</td><td>v{{ draft.price.version_no }}</td><td>{{ draft.price.size }}</td><td><button name="action" value="delete_file" data-loading-text="Удаляем..." {% if not can_upload %}disabled{% endif %}>Удалить</button><input type="hidden" name="version_id" value="{{ draft.price.pk }}"></td></tr>
             {% if draft.price_chain|length > 1 %}
               <tr><td>price history</td><td colspan="4">{% for version in draft.price_chain %}{{ version.file.visible_id }} v{{ version.version_no }} {{ version.original_name }}{% if not forloop.last %}; {% endif %}{% endfor %}</td></tr>
             {% endif %}
           {% endif %}
           {% for version in draft.promo %}
-            <tr><td>promo</td><td>{{ version.file.visible_id }} {{ version.original_name }}</td><td>v{{ version.version_no }}</td><td>{{ version.size }}</td><td><button name="action" value="delete_file" {% if not can_upload %}disabled{% endif %} onclick="this.form.version_id.value='{{ version.pk }}'">Удалить</button></td></tr>
+            <tr><td>promo</td><td>{{ version.file.visible_id }} {{ version.original_name }}</td><td>v{{ version.version_no }}</td><td>{{ version.size }}</td><td><button name="action" value="delete_file" data-loading-text="Удаляем..." {% if not can_upload %}disabled{% endif %} onclick="this.form.version_id.value='{{ version.pk }}'">Удалить</button></td></tr>
           {% endfor %}
           {% if not draft.price and not draft.promo %}<tr><td colspan="5" class="empty">Файлы ещё не загружены.</td></tr>{% endif %}
         </tbody></table>
@@ -45,23 +45,43 @@
       </section>
       <div class="panel">
         <h2>Параметры WB</h2>
-        {% if parameters %}
+        {% if effective_params %}
+          <table>
+            <thead><tr><th>Параметр</th><th>Текущее значение</th><th>Источник</th><th>Значение магазина</th><th>Сбросить</th></tr></thead>
+            <tbody>
+            {% for item in effective_params %}
+              <tr>
+                <td>{{ item.code }}</td>
+                <td>{{ item.effective_value }}</td>
+                <td>{{ item.source }}</td>
+                <td><input name="{{ item.code }}" type="number" min="0" max="100" value="{{ item.store_value }}" {% if not can_edit_store_params %}disabled{% endif %}></td>
+                <td><input name="clear" value="{{ item.code }}" type="checkbox" {% if not can_edit_store_params %}disabled{% endif %}></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          <div class="toolbar" style="margin-top:16px">
+            <button type="submit" name="action" value="save_wb_params" data-loading-text="Сохраняем..." {% if not can_edit_store_params %}disabled{% endif %}>Сохранить параметры WB</button>
+          </div>
+          <p class="status">Изменения параметров применяются только к новым операциям.</p>
+        {% elif parameters %}
           <table><thead><tr><th>Параметр</th><th>Значение</th><th>Источник</th><th>Версия</th></tr></thead><tbody>
             {% for item in parameters.snapshots %}
               <tr><td>{{ item.code }}</td><td>{{ item.value }}</td><td>{{ item.source }}</td><td>{{ item.parameter_version }}</td></tr>
             {% endfor %}
           </tbody></table>
-          <p class="status">Изменения параметров применяются только к новым операциям.</p>
+          <p class="status">Просмотр или изменение параметров магазина скрыты правами доступа.</p>
         {% endif %}
       </div>
       <div class="toolbar">
-        <button class="primary" type="submit" name="action" value="check" {% if not can_check %}disabled{% endif %}>Проверить</button>
-        <button type="submit" name="action" value="process" {% if not can_process %}disabled{% endif %}>Обработать</button>
+        <button class="primary" type="submit" name="action" value="check" data-loading-text="Проверяем..." {% if not can_check %}disabled{% endif %}>Проверить</button>
+        <button type="submit" name="action" value="process" data-loading-text="Обрабатываем..." {% if not can_process %}disabled{% endif %}>Обработать</button>
       </div>
     {% else %}
       <div class="empty">Нет доступных WB магазинов/кабинетов.</div>
     {% endif %}
   </form>
 </section>
+{% include "web/_inline_operation_result.html" %}
 {% include "web/_recent_files.html" %}
 {% endblock %}

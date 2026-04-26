@@ -37,6 +37,8 @@ pnpm-debug.log*
 
 # Logs, backups and temporary output
 logs/
+run/
+test_files/
 *.log
 tmp/
 temp/

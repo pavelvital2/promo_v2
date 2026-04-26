@@ -1,5 +1,7 @@
 import re
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -449,6 +451,164 @@ class HomeSmokeTests(TestCase):
         response = self.client.get(f"{reverse('web:wb_excel')}?store={store.pk}")
         self.assertContains(response, "v1")
         self.assertContains(response, "v2")
+
+    def test_wb_check_keeps_draft_files_for_process(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        self.client.force_login(user)
+        self.client.post(
+            reverse("web:wb_excel"),
+            {
+                "store": store.pk,
+                "action": "upload_price",
+                "price_file": SimpleUploadedFile("prices.xlsx", b"price"),
+            },
+        )
+        self.client.post(
+            reverse("web:wb_excel"),
+            {
+                "store": store.pk,
+                "action": "upload_promo",
+                "promo_files": SimpleUploadedFile("promo.xlsx", b"promo"),
+            },
+        )
+        session_key = f"draft:wb:{store.pk}"
+        before = self.client.session[session_key].copy()
+
+        with patch(
+            "apps.web.views.wb_services.run_wb_check",
+            return_value=SimpleNamespace(visible_id="OP-2026-999001"),
+        ):
+            response = self.client.post(
+                reverse("web:wb_excel"),
+                {"store": store.pk, "action": "check"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{reverse('web:wb_excel')}?store={store.pk}&operation=OP-2026-999001",
+        )
+        self.assertEqual(self.client.session[session_key], before)
+
+    def test_owner_can_edit_wb_parameters_on_upload_page(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(f"{reverse('web:wb_excel')}?store={store.pk}")
+        self.assertContains(response, "Сохранить параметры WB")
+        self.assertContains(response, "wb_threshold_percent")
+
+        response = self.client.post(
+            reverse("web:wb_excel"),
+            {
+                "store": store.pk,
+                "action": "save_wb_params",
+                "wb_threshold_percent": "70",
+                "wb_fallback_no_promo_percent": "55",
+                "wb_fallback_over_threshold_percent": "55",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"{reverse('web:wb_excel')}?store={store.pk}")
+        self.assertEqual(StoreParameterValue.objects.filter(store=store, is_active=True).count(), 3)
+        self.assertTrue(AuditRecord.objects.filter(action_code="settings.wb_parameter_changed").exists())
+
+    def test_ozon_check_keeps_draft_file_for_process(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        self.client.force_login(user)
+        self.client.post(
+            reverse("web:ozon_excel"),
+            {
+                "store": store.pk,
+                "action": "upload_input",
+                "input_file": SimpleUploadedFile("ozon.xlsx", b"input"),
+            },
+        )
+        session_key = f"draft:ozon:{store.pk}"
+        before = self.client.session[session_key].copy()
+
+        with patch(
+            "apps.web.views.ozon_services.run_ozon_check",
+            return_value=SimpleNamespace(visible_id="OP-2026-999002"),
+        ):
+            response = self.client.post(
+                reverse("web:ozon_excel"),
+                {"store": store.pk, "action": "check"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{reverse('web:ozon_excel')}?store={store.pk}&operation=OP-2026-999002",
+        )
+        self.assertEqual(self.client.session[session_key], before)
+
+    def test_excel_page_shows_process_output_download_inline(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        run = Run.objects.create(marketplace="wb", store=store, initiated_by=user)
+        check = Operation.objects.create(
+            marketplace="wb",
+            operation_type=OperationType.CHECK,
+            status=CheckStatus.COMPLETED_NO_ERRORS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        operation = Operation.objects.create(
+            marketplace="wb",
+            operation_type=OperationType.PROCESS,
+            status="running",
+            run=run,
+            store=store,
+            initiator_user=user,
+            check_basis_operation=check,
+            logic_version="test",
+            summary={"output_created": True},
+        )
+        output_version = create_file_version(
+            store=store,
+            uploaded_by=user,
+            uploaded_file=SimpleUploadedFile("result.xlsx", b"output"),
+            scenario=FileObject.Scenario.WB_DISCOUNTS_EXCEL,
+            kind=FileObject.Kind.OUTPUT,
+            logical_name="wb output",
+        )
+        OperationOutputFile.objects.create(
+            operation=operation,
+            file_version=output_version,
+            output_kind=OutputKind.OUTPUT_WORKBOOK,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(
+            f"{reverse('web:wb_excel')}?store={store.pk}&operation={operation.visible_id}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"Результат {operation.visible_id}")
+        self.assertContains(response, reverse("web:download_file", args=[output_version.pk]))
 
     def test_admin_user_actions_require_distinct_permissions(self) -> None:
         observer_role = Role.objects.get(code=ROLE_OBSERVER)

@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from decimal import Decimal
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -101,6 +102,44 @@ class WbExcelTask007Tests(TestCase):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
+    def _xlsx_version_with_bad_dimension(
+        self,
+        name: str,
+        rows: list[list],
+        *,
+        logical_name: str = "input",
+    ):
+        workbook = Workbook()
+        sheet = workbook.active
+        for row in rows:
+            sheet.append(row)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        workbook.close()
+
+        source = BytesIO(buffer.getvalue())
+        patched = BytesIO()
+        with ZipFile(source, "r") as src, ZipFile(patched, "w", ZIP_DEFLATED) as dst:
+            for item in src.infolist():
+                data = src.read(item.filename)
+                if item.filename == "xl/worksheets/sheet1.xml":
+                    data = data.replace(
+                        b'<dimension ref="A1:C2"/>',
+                        b'<dimension ref="A1"/>',
+                        1,
+                    )
+                dst.writestr(item, data)
+        content = ContentFile(patched.getvalue(), name=name)
+        return create_file_version(
+            store=self.store,
+            uploaded_by=self.user,
+            uploaded_file=content,
+            scenario=FileObject.Scenario.WB_DISCOUNTS_EXCEL,
+            kind=FileObject.Kind.INPUT,
+            logical_name=logical_name,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     def _raw_version(self, name: str, content: bytes, *, logical_name: str = "input"):
         return create_file_version(
             store=self.store,
@@ -159,6 +198,30 @@ class WbExcelTask007Tests(TestCase):
         self.assertEqual(by_row[3].reason_code, "wb_over_threshold")
         self.assertEqual(by_row[4].reason_code, "wb_no_promo_item")
         self.assertIsNone(parse_decimal("not-a-number"))
+
+    def test_read_only_parser_ignores_stale_a1_dimension_from_wb_exports(self):
+        price = self._xlsx_version_with_bad_dimension(
+            "prices-bad-dimension.xlsx",
+            [["Артикул WB", "Текущая цена", "Новая скидка"], ["123", "1000", 0]],
+            logical_name="price",
+        )
+        promo = self._xlsx_version_with_bad_dimension(
+            "promo-bad-dimension.xlsx",
+            [
+                [
+                    "Артикул WB",
+                    "Плановая цена для акции",
+                    "Загружаемая скидка для участия в акции",
+                ],
+                ["123", "900", "15"],
+            ],
+            logical_name="promo",
+        )
+
+        result = calculate(price, [promo], resolve_wb_parameters(self.store))
+
+        self.assertEqual(result.error_count, 0)
+        self.assertEqual(result.final_discounts_by_row, {2: 10})
 
     def test_check_writes_no_output_and_persists_closed_reason_codes(self):
         price = self._price([["123", "1000", 0, "keep"]])

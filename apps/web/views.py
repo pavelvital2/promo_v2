@@ -450,6 +450,13 @@ def _excel_screen(request: HttpRequest, *, marketplace: str) -> HttpResponse:
                 return response
 
     parameters = wb_services.resolve_wb_parameters(store) if marketplace == "wb" and store else None
+    effective_params = (
+        effective_parameter_rows(store)
+        if marketplace == "wb"
+        and store
+        and has_permission(request.user, "settings.store_params.view", store)
+        else []
+    )
     draft = _draft_versions(request, marketplace, store) if store else {"all": []}
     recent_files = FileVersion.objects.select_related("file", "uploaded_by").filter(
         file__store=store,
@@ -459,6 +466,7 @@ def _excel_screen(request: HttpRequest, *, marketplace: str) -> HttpResponse:
             else FileObject.Scenario.OZON_DISCOUNTS_EXCEL
         ),
     ).order_by("-created_at", "-id")[:20] if store else []
+    result_context = _inline_operation_result_context(request, marketplace=marketplace, store=store)
 
     return _render(
         request,
@@ -467,21 +475,75 @@ def _excel_screen(request: HttpRequest, *, marketplace: str) -> HttpResponse:
             "stores": stores,
             "selected_store": store,
             "parameters": parameters,
+            "effective_params": effective_params,
             "recent_files": recent_files,
             "draft": draft,
             "can_upload": store and has_permission(request.user, f"{marketplace}_discounts_excel.upload_input", store),
             "can_check": store and has_permission(request.user, f"{marketplace}_discounts_excel.run_check", store),
             "can_process": store and has_permission(request.user, f"{marketplace}_discounts_excel.run_process", store),
+            "can_edit_store_params": marketplace == "wb" and store and has_permission(request.user, "settings.store_params.edit", store),
+            **result_context,
         },
         section="marketplaces",
     )
 
 
+def _inline_operation_result_context(
+    request: HttpRequest,
+    *,
+    marketplace: str,
+    store: StoreAccount | None,
+) -> dict:
+    visible_id = request.GET.get("operation", "").strip()
+    if not visible_id or store is None:
+        return {"result_operation": None}
+    operation = (
+        Operation.objects.select_related("store", "initiator_user", "check_basis_operation")
+        .filter(visible_id=visible_id, marketplace=marketplace, store=store)
+        .first()
+    )
+    if operation is None:
+        return {"result_operation": None}
+    _require_operation_view(request.user, operation)
+    can_download_output = has_permission(
+        request.user,
+        f"{operation.marketplace}_discounts_excel.download_output",
+        operation.store,
+    )
+    can_download_detail = has_permission(
+        request.user,
+        f"{operation.marketplace}_discounts_excel.download_detail_report",
+        operation.store,
+    )
+    return {
+        "result_operation": operation,
+        "result_summary_items": _summary_items(operation.summary),
+        "result_output_links": operation.output_files.select_related("file_version", "file_version__file"),
+        "result_can_download_output": can_download_output,
+        "result_can_download_detail": can_download_detail,
+    }
+
+
+def _excel_redirect(marketplace: str, store: StoreAccount, operation: Operation | None = None):
+    route = "web:wb_excel" if marketplace == "wb" else "web:ozon_excel"
+    url = f"{reverse(route)}?store={store.pk}"
+    if operation is not None:
+        url = f"{url}&operation={operation.visible_id}"
+    return redirect(url)
+
+
 def _handle_wb_excel_post(request: HttpRequest, store: StoreAccount, action: str | None):
-    if action not in {"upload_price", "upload_promo", "delete_file", "check", "process"}:
+    if action not in {"upload_price", "upload_promo", "delete_file", "save_wb_params", "check", "process"}:
         messages.error(request, "Неизвестное действие.")
         return None
     try:
+        if action == "save_wb_params":
+            clear_codes = set(request.POST.getlist("clear"))
+            values = {code: request.POST.get(code, "") for code in WB_PARAMETER_CODES}
+            changed = save_wb_store_parameters(request.user, store, values, clear_codes)
+            messages.success(request, f"Сохранено параметров WB: {len(changed)}.")
+            return _excel_redirect("wb", store)
+
         if action in {"upload_price", "upload_promo", "delete_file"}:
             if not has_permission(request.user, "wb_discounts_excel.upload_input", store):
                 raise PermissionDenied("No permission to upload WB input files.")
@@ -544,8 +606,7 @@ def _handle_wb_excel_post(request: HttpRequest, store: StoreAccount, action: str
                 promo_versions=promo_versions,
                 enforce_permissions=True,
             )
-            _save_draft_data(request, "wb", store, {"price": None, "promo": [], "input": None})
-            return redirect("web:operation_result", visible_id=operation.visible_id)
+            return _excel_redirect("wb", store, operation)
         result = wb_services.press_wb_process(
             store=store,
             initiator_user=request.user,
@@ -554,7 +615,7 @@ def _handle_wb_excel_post(request: HttpRequest, store: StoreAccount, action: str
             enforce_permissions=True,
         )
         _save_draft_data(request, "wb", store, {"price": None, "promo": [], "input": None})
-        return redirect("web:operation_result", visible_id=result.process_operation.visible_id)
+        return _excel_redirect("wb", store, result.process_operation)
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, _error_text(exc))
         return None
@@ -605,8 +666,7 @@ def _handle_ozon_excel_post(request: HttpRequest, store: StoreAccount, action: s
                 input_versions=[input_version],
                 enforce_permissions=True,
             )
-            _save_draft_data(request, "ozon", store, {"price": None, "promo": [], "input": None})
-            return redirect("web:operation_result", visible_id=operation.visible_id)
+            return _excel_redirect("ozon", store, operation)
         result = ozon_services.press_ozon_process(
             store=store,
             initiator_user=request.user,
@@ -614,7 +674,7 @@ def _handle_ozon_excel_post(request: HttpRequest, store: StoreAccount, action: s
             enforce_permissions=True,
         )
         _save_draft_data(request, "ozon", store, {"price": None, "promo": [], "input": None})
-        return redirect("web:operation_result", visible_id=result.process_operation.visible_id)
+        return _excel_redirect("ozon", store, result.process_operation)
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, _error_text(exc))
         return None

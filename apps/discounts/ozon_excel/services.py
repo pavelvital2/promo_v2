@@ -151,10 +151,15 @@ def _load_workbook(version: FileVersion, *, read_only: bool):
     if SHEET_NAME not in workbook.sheetnames:
         workbook.close()
         raise ValidationError(f"Workbook must contain sheet {SHEET_NAME}.")
-    return workbook, workbook[SHEET_NAME]
+    sheet = workbook[SHEET_NAME]
+    if read_only and hasattr(sheet, "reset_dimensions"):
+        sheet.reset_dimensions()
+    return workbook, sheet
 
 
 def _missing_required_columns(sheet) -> list[str]:
+    if (sheet.max_column or 0) < max(REQUIRED_COLUMNS) and hasattr(sheet, "calculate_dimension"):
+        sheet.calculate_dimension(force=True)
     max_column = sheet.max_column or 0
     return [get_column_letter(column_no) for column_no in REQUIRED_COLUMNS if max_column < column_no]
 

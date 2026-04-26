@@ -1,0 +1,46 @@
+{% if result_operation %}
+  <section class="panel">
+    <h2>Результат {{ result_operation.visible_id }}</h2>
+    <div class="kv">
+      <strong>Тип / статус</strong><span>{{ result_operation.operation_type }} / {{ result_operation.status }}</span>
+      <strong>Ошибки / warnings</strong><span>{{ result_operation.error_count }} / {{ result_operation.warning_count }}</span>
+      <strong>Финиш</strong><span>{{ result_operation.finished_at }}</span>
+      <strong>Полная карточка</strong><span><a href="{% url 'web:operation_card' result_operation.visible_id %}">Открыть</a></span>
+    </div>
+    {% if result_summary_items %}
+      <table>
+        <tbody>
+          {% for key, value in result_summary_items %}
+            <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+    {% if result_output_links %}
+      <h3>Файлы результата</h3>
+      <table>
+        <thead><tr><th>Тип</th><th>Файл</th><th>Версия</th><th>Действие</th></tr></thead>
+        <tbody>
+          {% for link in result_output_links %}
+            <tr>
+              <td>{{ link.output_kind }}</td>
+              <td>{{ link.file_version.file.visible_id }} {{ link.file_version.original_name }}</td>
+              <td>v{{ link.file_version.version_no }}</td>
+              <td>
+                {% if link.output_kind == "detail_report" %}
+                  {% if link.file_version.is_physically_available and result_can_download_detail %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not result_can_download_detail %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Файл недоступен</span>{% endif %}
+                {% else %}
+                  {% if link.file_version.is_physically_available and result_can_download_output %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not result_can_download_output %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Файл недоступен</span>{% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% elif result_operation.operation_type == "check" %}
+      <div class="empty">Проверка завершена. Если ошибок нет, можно нажать "Обработать" на этой странице.</div>
+    {% else %}
+      <div class="empty">Output workbook не создан для этой операции.</div>
+    {% endif %}
+  </section>
+{% endif %}

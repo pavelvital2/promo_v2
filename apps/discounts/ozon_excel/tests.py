@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from decimal import Decimal
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -111,6 +112,42 @@ class OzonExcelTask008Tests(TestCase):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
+    def _xlsx_version_with_bad_dimension(self, name: str, data_rows: list[dict]):
+        workbook = Workbook()
+        workbook.active.title = "Описание"
+        sheet = workbook.create_sheet(SHEET_NAME)
+        for row_no in range(1, 4):
+            for column_no in range(1, 19):
+                sheet.cell(row=row_no, column=column_no, value=f"service-{row_no}-{column_no}")
+        for index, data in enumerate(data_rows, start=4):
+            for column_no in range(1, 19):
+                sheet.cell(row=index, column=column_no, value=data.get(column_no, f"keep-{index}-{column_no}"))
+        buffer = BytesIO()
+        workbook.save(buffer)
+        workbook.close()
+
+        source = BytesIO(buffer.getvalue())
+        patched = BytesIO()
+        with ZipFile(source, "r") as src, ZipFile(patched, "w", ZIP_DEFLATED) as dst:
+            for item in src.infolist():
+                data = src.read(item.filename)
+                if item.filename == "xl/worksheets/sheet2.xml":
+                    data = data.replace(
+                        b'<dimension ref="A1:R4"/>',
+                        b'<dimension ref="A1"/>',
+                        1,
+                    )
+                dst.writestr(item, data)
+        return create_file_version(
+            store=self.store,
+            uploaded_by=self.manager,
+            uploaded_file=ContentFile(patched.getvalue(), name=name),
+            scenario=FileObject.Scenario.OZON_DISCOUNTS_EXCEL,
+            kind=FileObject.Kind.INPUT,
+            logical_name="input",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     def _raw_version(self, name: str, content: bytes):
         return create_file_version(
             store=self.store,
@@ -160,6 +197,19 @@ class OzonExcelTask008Tests(TestCase):
         self.assertIsNone(parse_decimal("not numeric"))
         self.assertIsNone(parse_decimal("NaN"))
         self.assertEqual(parse_decimal("1 234,50"), Decimal("1234.50"))
+
+    def test_read_only_parser_ignores_stale_a1_dimension_from_ozon_exports(self):
+        version = self._xlsx_version_with_bad_dimension(
+            "ozon-bad-dimension.xlsx",
+            [{10: "100", 15: "90", 16: "120", 18: "5"}],
+        )
+
+        result = calculate([version])
+
+        self.assertEqual(result.error_count, 0)
+        self.assertEqual(result.summary["data_rows"], 1)
+        self.assertEqual(result.summary["participating_rows"], 1)
+        self.assertEqual(result.details[0].reason_code, "use_max_boost_price")
 
     def test_rule_order_prefers_max_boost_before_min_boost_threshold(self):
         decision = decide_row(

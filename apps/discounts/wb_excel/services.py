@@ -177,7 +177,10 @@ def _load_first_sheet(version: FileVersion, *, read_only: bool = True):
         raise ValidationError("Workbook cannot be opened safely.") from exc
     if not workbook.sheetnames:
         raise ValidationError("Workbook has no sheets.")
-    return workbook, workbook[workbook.sheetnames[0]]
+    sheet = workbook[workbook.sheetnames[0]]
+    if read_only and hasattr(sheet, "reset_dimensions"):
+        sheet.reset_dimensions()
+    return workbook, sheet
 
 
 def _header_map(sheet) -> dict[str, int]:
