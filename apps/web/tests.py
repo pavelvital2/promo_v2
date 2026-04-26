@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from apps.audit.models import AuditActionCode, AuditRecord
+from apps.discounts.wb_api.client import WBApiInvalidResponseError
 from apps.identity_access.models import AccessEffect, Permission, Role, StoreAccess, UserPermissionOverride
 from apps.identity_access.seeds import ROLE_LOCAL_ADMIN, ROLE_OBSERVER, ROLE_OWNER, seed_identity_access
 from apps.files.models import FileObject, FileVersion
@@ -478,6 +479,28 @@ class HomeSmokeTests(TestCase):
             response["Location"],
             f"{reverse('web:wb_api')}?store={store.pk}&operation={operation.visible_id}",
         )
+        service.assert_called_once()
+
+    def test_wb_api_post_shows_safe_message_when_wb_api_fails(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        self.client.force_login(user)
+
+        with patch(
+            "apps.web.views.wb_api_promotions_services.download_wb_current_promotions",
+            side_effect=WBApiInvalidResponseError(WBApiInvalidResponseError.safe_message),
+        ) as service:
+            response = self.client.post(
+                reverse("web:wb_api"),
+                {"store": store.pk, "action": "download_promotions"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "WB API returned an invalid response.")
         service.assert_called_once()
 
     def test_wb_api_calculation_requires_active_connection_in_ui_and_dispatch(self) -> None:

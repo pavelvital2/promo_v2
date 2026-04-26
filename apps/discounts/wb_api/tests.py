@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from django.test import SimpleTestCase
 
@@ -103,6 +104,35 @@ class WBApiClientTask011Tests(SimpleTestCase):
                 session = FakeSession([response])
                 with self.assertRaises(WBApiInvalidResponseError):
                     self._client(session).check_connection()
+
+    def test_promotion_details_uses_repeated_promotion_ids_query_params(self):
+        session = FakeSession([FakeResponse(200, {"data": {"promotions": []}})])
+
+        self._client(session).promotion_details(promotion_ids=[2339, 2338, 2337])
+
+        call = session.calls[0]
+        self.assertTrue(call["url"].endswith("/api/v1/calendar/promotions/details"))
+        self.assertEqual(call["params"], {"promotionIDs": ["2339", "2338", "2337"]})
+
+        urllib_session = __import__(
+            "apps.discounts.wb_api.client",
+            fromlist=["UrllibSession"],
+        ).UrllibSession()
+
+        captured = {}
+
+        def fake_open(request, *, timeout=None):
+            captured["full_url"] = request.full_url
+            return FakeResponse(200, {"data": {"promotions": []}})
+
+        urllib_session._open = fake_open
+        urllib_session.get(
+            "https://dp-calendar-api.wildberries.ru/api/v1/calendar/promotions/details",
+            params=call["params"],
+        )
+
+        query = parse_qs(urlparse(captured["full_url"]).query)
+        self.assertEqual(query["promotionIDs"], ["2339", "2338", "2337"])
 
     def test_redaction_detects_headers_tokens_and_secret_like_values(self):
         unsafe = {

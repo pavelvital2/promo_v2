@@ -191,7 +191,7 @@ class WBApiClient:
     def promotion_details(self, *, promotion_ids: list[int]) -> dict:
         return self.get_json(
             WB_PROMOTIONS_DETAILS_PATH,
-            params={"promotionIDs": ",".join(str(promotion_id) for promotion_id in promotion_ids)},
+            params={"promotionIDs": [str(promotion_id) for promotion_id in promotion_ids]},
             api_category="promotions_calendar",
         )
 
@@ -330,7 +330,7 @@ class UrllibResponse:
 
 class UrllibSession:
     def get(self, url: str, *, params=None, headers=None, timeout=None):
-        query = urlencode(params or {})
+        query = urlencode(params or {}, doseq=True)
         full_url = f"{url}?{query}" if query else url
         request = Request(full_url, headers=headers or {}, method="GET")
         return self._open(request, timeout=timeout)

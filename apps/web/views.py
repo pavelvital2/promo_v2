@@ -17,6 +17,7 @@ from django.utils.dateparse import parse_date
 from apps.audit.models import AuditActionCode, AuditRecord, AuditSourceContext
 from apps.audit.services import audit_records_visible_to, create_audit_record
 from apps.discounts.ozon_excel import services as ozon_services
+from apps.discounts.wb_api.client import WBApiError
 from apps.discounts.wb_api.calculation import services as wb_api_calculation_services
 from apps.discounts.wb_api.prices import services as wb_api_prices_services
 from apps.discounts.wb_api.promotions import services as wb_api_promotions_services
@@ -736,7 +737,7 @@ def _handle_wb_api_post(request: HttpRequest, store: StoreAccount, action: str |
             promotion_operation=promotion_operation,
         )
         return _wb_api_redirect(store, operation)
-    except (PermissionDenied, ValidationError) as exc:
+    except (PermissionDenied, ValidationError, WBApiError) as exc:
         messages.error(request, _error_text(exc))
         return None
 
