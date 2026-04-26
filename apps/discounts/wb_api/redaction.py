@@ -15,6 +15,7 @@ SECRET_KEY_MARKERS = (
     "password",
 )
 SECRET_VALUE_PATTERNS = (
+    re.compile(r"\bAuthorization\s*[:=]\s*[A-Za-z0-9._~+/=-]{6,}", re.IGNORECASE),
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
     re.compile(r"\b(api[_-]?key|token|secret|password)\s*[:=]\s*[A-Za-z0-9._~+/=-]{6,}", re.IGNORECASE),
     re.compile(r"\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b"),
