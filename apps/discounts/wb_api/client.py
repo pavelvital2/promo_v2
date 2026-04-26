@@ -13,7 +13,11 @@ from .redaction import assert_no_secret_like_values, redact
 
 
 WB_DISCOUNTS_API_BASE_URL = "https://discounts-prices-api.wildberries.ru"
+WB_PROMOTIONS_API_BASE_URL = "https://dp-calendar-api.wildberries.ru"
 WB_CONNECTION_CHECK_PATH = "/api/v2/list/goods/filter"
+WB_PROMOTIONS_LIST_PATH = "/api/v1/calendar/promotions"
+WB_PROMOTIONS_DETAILS_PATH = "/api/v1/calendar/promotions/details"
+WB_PROMOTIONS_NOMENCLATURES_PATH = "/api/v1/calendar/promotions/nomenclatures"
 
 
 class WBApiError(Exception):
@@ -95,6 +99,53 @@ class WBApiClient:
             WB_CONNECTION_CHECK_PATH,
             params={"limit": limit, "offset": offset},
             api_category="prices_and_discounts",
+        )
+
+    def list_promotions(
+        self,
+        *,
+        start_datetime: str,
+        end_datetime: str,
+        all_promo: bool = True,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> dict:
+        return self.get_json(
+            WB_PROMOTIONS_LIST_PATH,
+            params={
+                "startDateTime": start_datetime,
+                "endDateTime": end_datetime,
+                "allPromo": str(bool(all_promo)).lower(),
+                "limit": limit,
+                "offset": offset,
+            },
+            api_category="promotions_calendar",
+        )
+
+    def promotion_details(self, *, promotion_ids: list[int]) -> dict:
+        return self.get_json(
+            WB_PROMOTIONS_DETAILS_PATH,
+            params={"promotionIDs": ",".join(str(promotion_id) for promotion_id in promotion_ids)},
+            api_category="promotions_calendar",
+        )
+
+    def promotion_nomenclatures(
+        self,
+        *,
+        promotion_id: int,
+        in_action: bool,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> dict:
+        return self.get_json(
+            WB_PROMOTIONS_NOMENCLATURES_PATH,
+            params={
+                "promotionID": promotion_id,
+                "inAction": str(bool(in_action)).lower(),
+                "limit": limit,
+                "offset": offset,
+            },
+            api_category="promotions_calendar",
         )
 
     def get_json(self, path: str, *, params: dict | None = None, api_category: str) -> dict:

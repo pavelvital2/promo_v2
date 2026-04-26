@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.marketplace_products",
     "apps.operations",
     "apps.files",
+    "apps.discounts.wb_api.promotions",
     "apps.discounts.wb_excel",
     "apps.discounts.ozon_excel",
     "apps.platform_settings",

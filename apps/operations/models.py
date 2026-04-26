@@ -149,6 +149,7 @@ class ParameterSource(models.TextChoices):
 class OutputKind(models.TextChoices):
     OUTPUT_WORKBOOK = "output_workbook", "Output workbook"
     DETAIL_REPORT = "detail_report", "Detail report"
+    PROMOTION_EXPORT = "promotion_export", "Promotion export"
 
 
 CHECK_TERMINAL_STATUSES = {
@@ -674,10 +675,6 @@ class OperationOutputFile(OperationLinkGuardMixin, models.Model):
     class Meta:
         ordering = ["operation_id", "output_kind", "id"]
         constraints = [
-            models.UniqueConstraint(
-                fields=["operation", "output_kind"],
-                name="uniq_operation_output_kind",
-            ),
             models.UniqueConstraint(
                 fields=["file_version"],
                 name="uniq_operation_output_file_version",
