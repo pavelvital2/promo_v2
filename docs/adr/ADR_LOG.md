@@ -150,8 +150,9 @@ ADR фиксирует архитектурное или проектное ре
 - Статус: accepted
 - Дата: 2026-04-25
 - Контекст: `GAP-0008` блокировал формальную приёмку из-за отсутствия реальных WB/Ozon файлов, checksums, результатов старой программы и expected results.
-- Решение: заказчик передаёт реальные контрольные WB/Ozon файлы и результаты старой программы; дополнительно готовятся edge-case наборы. Проектное решение закрыто, но фактические файлы, checksums и expected results остаются обязательным acceptance artifact gate.
-- Последствия: агенты не создают фиктивные customer files/checksums/expected results. До получения артефактов можно выполнять разработческие и synthetic edge-case tests, но formal acceptance не завершается.
+- Решение: заказчик передаёт реальные контрольные WB/Ozon файлы и результаты старой программы; дополнительно могут готовиться edge-case наборы. Проектное решение закрыто; фактические файлы, checksums и expected results являются обязательными для formal comparison соответствующего набора.
+- Последствия: агенты не создают фиктивные customer files/checksums/expected results. До получения артефактов можно выполнять разработческие и synthetic edge-case tests, но formal comparison соответствующего customer artifact set не завершается.
+- Обновление 2026-04-26: real WB/Ozon output comparison artifact gate закрыт для `WB-REAL-001` и `OZ-REAL-001`; checksums, результаты старой программы и expected results зафиксированы в `docs/testing/CONTROL_FILE_REGISTRY.md`, сравнение принято в `docs/testing/TEST_REPORT_STAGE_1_FORMAL_ACCEPTANCE.md`.
 - Закрывает: `GAP-0008`
 - Трассировка: ТЗ §24
 

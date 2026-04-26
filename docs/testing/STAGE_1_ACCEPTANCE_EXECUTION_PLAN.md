@@ -4,7 +4,7 @@
 
 ## Scope
 
-Executable acceptance plan for TASK-010. Formal WB/Ozon comparison remains `blocked_by_artifact_gate` until the artifacts listed in `docs/testing/CONTROL_FILE_REGISTRY.md` are delivered and recorded.
+Executable acceptance plan for TASK-010. Formal WB/Ozon real output comparison for `WB-REAL-001` and `OZ-REAL-001` is closed: the artifacts listed in `docs/testing/CONTROL_FILE_REGISTRY.md` were delivered, checksummed, compared and accepted on 2026-04-26.
 
 ## Environment
 
@@ -90,8 +90,8 @@ Expected result:
 
 | Area | Test IDs | Execution | Expected TASK-010 status |
 | --- | --- | --- | --- |
-| WB formal comparison | ACC-WB-001..ACC-WB-008 | Run after customer artifacts are registered in `CONTROL_FILE_REGISTRY.md` | blocked_by_artifact_gate |
-| Ozon formal comparison | ACC-OZ-001..ACC-OZ-005 | Run after customer artifacts are registered in `CONTROL_FILE_REGISTRY.md` | blocked_by_artifact_gate |
+| WB formal comparison | ACC-WB-001..ACC-WB-008 | `WB-REAL-001` registered and compared in `CONTROL_FILE_REGISTRY.md` / `TEST_REPORT_STAGE_1_FORMAL_ACCEPTANCE.md` | accepted |
+| Ozon formal comparison | ACC-OZ-001..ACC-OZ-005 | `OZ-REAL-001` registered and compared in `CONTROL_FILE_REGISTRY.md` / `TEST_REPORT_STAGE_1_FORMAL_ACCEPTANCE.md` | accepted |
 | Operations | ACC-OPS-001..ACC-OPS-002 | Automated tests plus UI smoke | pass if suite passes |
 | Files/retention | ACC-FILE-001..ACC-FILE-002 | Automated tests plus `cleanup_file_retention --dry-run` where relevant | pass if suite passes |
 | Security/access | ACC-SEC-001 | Automated tests plus owner/limited UI smoke | pass if suite passes |
@@ -99,7 +99,7 @@ Expected result:
 | Deployment | Release/update runbook | `deployment_smoke_check.sh` against running nginx/systemd | pass only after server smoke succeeds |
 | Backup/restore | ADR-0012 policy | `pre_update_backup.sh` and `restore_check.sh` in safe contour | pass only after manual restore check succeeds |
 
-## Formal WB/Ozon Execution After Artifact Delivery
+## Formal WB/Ozon Execution For New Artifact Delivery
 
 1. Register every control set in `CONTROL_FILE_REGISTRY.md`.
 2. Verify checksums before test execution.
@@ -110,4 +110,4 @@ Expected result:
 5. Compare summary and row-level results against registered expected artifacts.
 6. Record every difference with classification: old program defect, ТЗ issue, approved new-system difference, or defect.
 
-Formal acceptance is not complete while any required real customer artifact remains pending.
+Formal acceptance for `WB-REAL-001` and `OZ-REAL-001` is complete. If a new required real customer artifact is introduced later, that specific set is not complete while it remains pending.

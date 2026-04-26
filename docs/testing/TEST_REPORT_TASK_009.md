@@ -15,8 +15,8 @@ FAIL
 | # | Scenario | Status | Evidence / notes |
 | --- | --- | --- | --- |
 | 1 | Main navigation and home/dashboard visible according to permissions | PASS | `apps.web` smoke tests: owner screens render, anonymous home redirects, home template shell renders. Views build nav by section access. |
-| 2 | WB draft upload/replace/delete/version list, then check/process actions | PASS WITH REMARKS | Covered by `test_draft_replace_preserves_file_chain_and_creates_audit`, launch denial before creating files, WB template route smoke. Delete action exists in draft context. Formal Excel acceptance remains artifact-gated. |
-| 3 | Ozon draft upload/replace/delete/version list, then check/process actions | PASS WITH REMARKS | Route/template smoke and shared draft handler path reviewed. Ozon screen has upload/replace/delete, version chain and check/process controls. Formal Excel acceptance remains artifact-gated. |
+| 2 | WB draft upload/replace/delete/version list, then check/process actions | PASS WITH REMARKS | Covered by `test_draft_replace_preserves_file_chain_and_creates_audit`, launch denial before creating files, WB template route smoke. Delete action exists in draft context. Post-acceptance update 2026-04-26: formal real WB/Ozon comparison is accepted for registered artifacts. |
+| 3 | Ozon draft upload/replace/delete/version list, then check/process actions | PASS WITH REMARKS | Route/template smoke and shared draft handler path reviewed. Ozon screen has upload/replace/delete, version chain and check/process controls. Post-acceptance update 2026-04-26: formal real WB/Ozon comparison is accepted for registered artifacts. |
 | 4 | Operation list/card/result/confirmation action visibility: download/confirm only with rights | FAIL | Defect T009-UI-001: detail report download link is hidden when only `download_detail_report` is granted, while direct download succeeds. Confirmation action is gated by `confirm_warnings` + `run_process`. |
 | 5 | Product list/card store-aware visibility and related operations scope | PASS | Existing tests cover product list/card and related operation scoping by store and marketplace. |
 | 6 | WB parameter write-flow: set/clear, history, audit, permissions; Ozon has no params | PASS WITH REMARKS | Existing tests cover set/history/audit; settings template has clear controls and disabled state by edit right; Ozon template explicitly has no WB params. |
@@ -90,7 +90,7 @@ Impact: users with detail report download rights cannot discover/download detail
 ## environment limitations
 
 - PostgreSQL was available with user `postgres`, password `postgres`; required commands ran against PostgreSQL test database successfully.
-- No real customer WB/Ozon control Excel files, checksums, old-program expected summaries or row-level expected results were provided. Formal Excel acceptance remains `blocked_by_artifact_gate` per `docs/testing/TEST_PROTOCOL.md`.
+- Post-acceptance update 2026-04-26: real WB/Ozon comparison artifacts were provided and accepted as `WB-REAL-001` / `OZ-REAL-001` in `docs/testing/CONTROL_FILE_REGISTRY.md`; this supersedes the earlier artifact-gate remark for registered real comparison artifacts.
 - Manual browser sanity check/dev server was not run; verification used Django test client, route smoke tests, templates and an optional temporary scenario runner.
 - Working directory is not a git repository, so no git diff/status evidence is available.
 

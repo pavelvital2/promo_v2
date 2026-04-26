@@ -4,7 +4,7 @@
 
 ## Назначение
 
-Реестр фиксирует фактические контрольные наборы для formal acceptance этапа 1. До передачи заказчиком реальных WB/Ozon файлов, checksums, результатов старой программы, expected summary, row-level expected results и edge-case sets формальная приёмка остаётся `blocked_by_artifact_gate`.
+Реестр фиксирует фактические контрольные наборы для formal acceptance этапа 1. Реальные WB/Ozon output comparison artifacts `WB-REAL-001` и `OZ-REAL-001` переданы заказчиком, checksums и expected results зафиксированы, сравнение с результатами старой программы принято 2026-04-26. Для будущих новых обязательных customer artifacts до передачи файлов сохраняется статус `blocked_by_artifact_gate` только у соответствующего набора.
 
 Агенты не создают фиктивные customer files, checksums или expected results.
 

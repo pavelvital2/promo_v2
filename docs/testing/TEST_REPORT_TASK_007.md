@@ -7,7 +7,7 @@
 
 PASS WITH REMARKS
 
-Поведенческие сценарии WB TASK-007 пройдены на синтетических edge-case данных и существующем Django test suite. Замечания не являются дефектами TASK-007: формальная приёмка на реальных customer files остаётся заблокирована acceptance artifact gate по GAP-0008/ADR-0013, потому что реальные WB/Ozon файлы, checksums, результаты старой программы и expected results не переданы.
+Поведенческие сценарии WB TASK-007 пройдены на синтетических edge-case данных и существующем Django test suite. Post-acceptance update 2026-04-26: прежнее замечание по отсутствующим real customer artifacts закрыто для `WB-REAL-001` / `OZ-REAL-001`; checksums, результаты старой программы и expected results зарегистрированы в `docs/testing/CONTROL_FILE_REGISTRY.md`.
 
 ## scenario matrix
 
@@ -63,4 +63,4 @@ Not used. No behavioral discrepancy or ambiguous business-logic result appeared 
 
 ## recommendation
 
-Можно переходить к TASK-008. TASK-007 behavioral testing has PASS WITH REMARKS; the remaining remark is the project-level acceptance artifact gate for real customer files, not a blocker for starting Ozon Excel implementation.
+Можно переходить к TASK-008. TASK-007 behavioral testing has PASS WITH REMARKS; post-acceptance update 2026-04-26 closes the earlier project-level artifact remark for the registered real comparison artifacts.

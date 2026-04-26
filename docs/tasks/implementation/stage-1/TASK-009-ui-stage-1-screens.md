@@ -84,7 +84,7 @@ Customer decisions от 2026-04-25 по `GAP-0010`, `GAP-0011`, `GAP-0012` и `G
 - All object access restrictions are applied server-side.
 - Desktop-first layout is usable and does not hide required actions.
 - Observer has view-only behavior and no default output/detail download.
-- UI shows artifact-gated acceptance states explicitly where customer control files/checksums/expected results are still pending.
+- UI shows registered acceptance states explicitly; artifact-gated states are used only for future customer artifacts that are actually pending.
 - `GAP-0010` is implemented now: product list/card work against backend `MarketplaceProduct` data and related operations/files/history.
 - `GAP-0011` is implemented now: WB store parameters can be set/cleared/saved where allowed, with immutable history and audit.
 - `GAP-0012` is implemented now: WB/Ozon upload screens have draft run context with file upload/replace/delete, version list and Check/Process after draft validation.
@@ -100,11 +100,11 @@ Customer decisions от 2026-04-25 по `GAP-0010`, `GAP-0011`, `GAP-0012` и `G
 
 ## Handoff format
 
-Использовать формат из `docs/tasks/implementation/stage-1/README.md`; include route map and list of screens not completed because of artifact gates or new open gaps.
+Использовать формат из `docs/tasks/implementation/stage-1/README.md`; include route map and list of screens not completed because of new open gaps or future pending artifacts.
 
 ## Gaps/blockers
 
-No open WB UI implementation blocker remains for GAP-0002, GAP-0003 or GAP-0004. Formal acceptance states remain artifact-gated until customer control files, checksums and expected results are provided.
+No open WB UI implementation blocker remains for GAP-0002, GAP-0003 or GAP-0004. Formal real WB/Ozon comparison artifacts are accepted for `WB-REAL-001` / `OZ-REAL-001`; pending artifact states apply only to future new customer artifacts.
 
 `GAP-0010`, `GAP-0011`, `GAP-0012` and `GAP-0013` are closed as `resolved/customer_decision`, but TASK-009 remains blocked until those decisions are implemented in this task. They must not be deferred to TASK-010.
 

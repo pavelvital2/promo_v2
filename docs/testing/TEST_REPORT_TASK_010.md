@@ -8,7 +8,7 @@ Role: Codex CLI developer, acceptance and deployment readiness
 
 ## Summary
 
-Prepared executable acceptance/deployment readiness package for stage 1 without inventing customer WB/Ozon artifacts. Formal WB/Ozon acceptance remains `blocked_by_artifact_gate` until real files, checksums, old-program results, expected summary, row-level expected results and edge-case sets are delivered and recorded.
+Prepared executable acceptance/deployment readiness package for stage 1 without inventing customer WB/Ozon artifacts. Post-acceptance update 2026-04-26: real WB/Ozon output comparison artifacts were later delivered and accepted as `WB-REAL-001` / `OZ-REAL-001`.
 
 Audit fix update on 2026-04-25: corrected both major findings from `docs/audit/AUDIT_REPORT_TASK_010.md`.
 
@@ -41,9 +41,9 @@ Audit fix update on 2026-04-25: corrected both major findings from `docs/audit/A
 
 | Area | Status | Evidence / Notes |
 | --- | --- | --- |
-| WB formal acceptance | blocked_by_artifact_gate | Real WB files, checksums, old program results, expected summary and row-level expected results are not provided. No fake artifacts created. |
-| Ozon formal acceptance | blocked_by_artifact_gate | Real Ozon files, checksums, old program results, expected summary and row-level expected results are not provided. No fake artifacts created. |
-| Edge-case control sets | blocked_by_artifact_gate for formal acceptance | Registry placeholders added; expected artifacts still pending. |
+| WB formal acceptance | accepted | `WB-REAL-001` registered and accepted on 2026-04-26; no fake artifacts created. |
+| Ozon formal acceptance | accepted | `OZ-REAL-001` registered and accepted on 2026-04-26; no fake artifacts created. |
+| Edge-case control sets | optional_future_artifact | Automated edge-case coverage remains; future customer artifacts are registered separately if introduced. |
 | Operations acceptance | pass | Full automated suite passed. |
 | Files and file retention | pass | Full automated suite passed. |
 | Security/access | pass | Full automated suite passed. |
@@ -91,7 +91,7 @@ Initial `cleanup_audit_techlog --dry-run` before migrations failed because local
 
 No new GAP was opened.
 
-`GAP-0007`, `GAP-0008` and `GAP-0009` remain resolved by ADR-0012/ADR-0013/ADR-0014. The only remaining formal acceptance blocker is the artifact gate from ADR-0013.
+`GAP-0007`, `GAP-0008` and `GAP-0009` remain resolved by ADR-0012/ADR-0013/ADR-0014. The real WB/Ozon output comparison artifact gate from ADR-0013 is closed for `WB-REAL-001` / `OZ-REAL-001`.
 
 ## Handoff To Auditor
 

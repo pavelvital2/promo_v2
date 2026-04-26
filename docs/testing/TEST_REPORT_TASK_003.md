@@ -52,7 +52,7 @@ Process/environment issue:
 - Working directory `/home/pavel/projects/promo_v2` is not a git repository, so tester could not use `git status` or diff attribution.
 - Default DB settings target PostgreSQL `promo_v2` on `127.0.0.1:5432`; test DB creation failed due password authentication.
 - SQLite override was in-memory and temporary, applied only inside inline runner processes; no project settings or product code were changed.
-- Formal WB/Ozon Excel acceptance artifacts are outside TASK-003 and remain governed by the artifact gate in `docs/testing/TEST_PROTOCOL.md`; no Excel/API calculation scenario was tested here.
+- Formal WB/Ozon Excel acceptance artifacts are outside TASK-003 and governed by `docs/testing/TEST_PROTOCOL.md`; post-acceptance update 2026-04-26 closes the real comparison gate for `WB-REAL-001` / `OZ-REAL-001`. No Excel/API calculation scenario was tested here.
 
 ## recommendation
 

@@ -66,7 +66,7 @@ TASK-008-ozon-discounts-excel
 
 ## Acceptance criteria
 
-- All Ozon acceptance checklist items are satisfied except formal customer file comparison blocked by acceptance artifact gate until real customer files/checksums/expected results are provided.
+- Ozon acceptance checklist items are satisfied by automated/synthetic coverage and the accepted real comparison artifact `OZ-REAL-001` where applicable.
 - All 7 decision rules covered by tests.
 - File/version links and operation details are stored.
 - Permission checks match `docs/product/PERMISSIONS_MATRIX.md`.
@@ -81,8 +81,8 @@ TASK-008-ozon-discounts-excel
 
 ## Handoff format
 
-Использовать формат из `docs/tasks/implementation/stage-1/README.md`; include that GAP-0008 is resolved as project decision with remaining acceptance artifact gate.
+Использовать формат из `docs/tasks/implementation/stage-1/README.md`; include that GAP-0008 real WB/Ozon comparison artifact gate is closed for accepted registered artifacts.
 
 ## Gaps/blockers
 
-Formal acceptance with customer control files is blocked by artifact gate until files, checksums and expected results are provided. Do not invent customer expected results.
+Formal real Ozon comparison for `OZ-REAL-001` is accepted. Do not invent customer expected results for future new artifacts.

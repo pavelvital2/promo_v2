@@ -52,21 +52,21 @@ TASK-010-acceptance-and-deployment
 
 - TASK-001 through TASK-009.
 - ADR-0012 and ADR-0014 accepted for production readiness policy.
-- Customer acceptance artifact gate closed before formal acceptance / production acceptance sign-off: real WB/Ozon control files, input checksums, old program results, expected summary, row-level expected results and edge-case sets are provided and recorded.
-- This artifact gate does not block implementation of the stage 1 platform scaffold or development/synthetic edge-case testing.
+- Customer acceptance artifact gate for real WB/Ozon output comparison is closed before stage 2 development: `WB-REAL-001` and `OZ-REAL-001` are provided, checksummed, compared and recorded.
+- Future new customer artifacts, if introduced, must be registered before formal comparison for that new set.
 
 ## Expected output
 
 - Executable acceptance test plan.
-- Control file registry populated after customer delivery.
+- Control file registry populated with accepted `WB-REAL-001` / `OZ-REAL-001`; future artifacts added after customer delivery.
 - Deployment and rollback procedure verified for Django stack.
 - Backup/restore check procedure implemented according to ADR-0012.
 - Audit/techlog retention cleanup procedure implemented according to ADR-0014, if included in release scope.
 
 ## Acceptance criteria
 
-- All stage 1 acceptance checklists not waiting for customer artifacts pass.
-- WB/Ozon formal acceptance areas waiting for customer artifacts have explicit `blocked_by_artifact_gate` status as an artifact gate, not as an unresolved GAP blocker.
+- All stage 1 acceptance checklists pass or have explicit accepted remarks.
+- WB/Ozon formal real comparison areas reference accepted registered artifacts, not stale `blocked_by_artifact_gate` placeholders.
 - Backup and restore are tested according to approved policy.
 - Release/update runbook commands match actual Django project.
 - Formal WB/Ozon file comparison uses customer-provided expected results only.
@@ -74,7 +74,7 @@ TASK-010-acceptance-and-deployment
 ## Required checks
 
 - Full automated test suite.
-- Acceptance tests with control files after artifact delivery.
+- Acceptance tests with registered control files.
 - Backup/restore test according to approved policy.
 - Deployment smoke test.
 - Audit/techlog retention check according to approved 90-day non-UI policy.
@@ -85,4 +85,4 @@ TASK-010-acceptance-and-deployment
 
 ## Gaps/blockers
 
-Production policy decisions for GAP-0007 and GAP-0009 are resolved, and GAP-0008 has a resolved project decision. Remaining gate is an acceptance artifact gate: formal acceptance / production acceptance stays `blocked_by_artifact_gate` until real WB/Ozon control files, checksums, old program results, expected summary, row-level expected results and edge-case sets are provided and recorded. Agents must not invent these files or expected results.
+Production policy decisions for GAP-0007 and GAP-0009 are resolved, and GAP-0008 has a resolved project decision. The real WB/Ozon comparison artifact gate is closed for `WB-REAL-001` / `OZ-REAL-001`. Agents must not invent files or expected results for future new artifacts.

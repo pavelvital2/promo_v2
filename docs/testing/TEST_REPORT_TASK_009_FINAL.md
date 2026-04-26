@@ -76,7 +76,7 @@ None.
 ## residual risks
 
 - Проверка выполнена через Django checks, Django test client, существующие synthetic/internal fixtures and static inspection of relevant templates/views. Ручной браузерный sanity check не выполнялся.
-- Customer WB/Ozon control Excel files, checksums, old-program expected summaries and row-level expected results are still not present in the allowed test scope. Formal Excel acceptance remains artifact-gated; no fabricated customer files were created.
+- Post-acceptance update 2026-04-26: customer WB/Ozon control Excel comparison artifacts are registered and accepted as `WB-REAL-001` / `OZ-REAL-001`; no fabricated customer files were created.
 - The first test command encountered stale/occupied PostgreSQL `test_promo_v2`; final rerun with `--noinput` completed successfully.
 
 ## decision

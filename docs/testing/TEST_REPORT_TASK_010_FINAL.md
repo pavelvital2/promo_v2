@@ -10,7 +10,7 @@ Role: Codex CLI tester, independent deployment/readiness verification after PASS
 
 PASS for TASK-010 deployment/readiness.
 
-Formal WB/Ozon acceptance remains `blocked_by_artifact_gate`: customer control files, checksums, old-program outputs, expected summaries and row-level expected results are absent. No files or expected results were fabricated.
+Post-acceptance update 2026-04-26: formal WB/Ozon real output comparison is no longer `blocked_by_artifact_gate` for the registered artifacts. `WB-REAL-001` and `OZ-REAL-001` are recorded in `docs/testing/CONTROL_FILE_REGISTRY.md` and accepted in `docs/testing/TEST_REPORT_STAGE_1_FORMAL_ACCEPTANCE.md`. No files or expected results were fabricated.
 
 ## Scope
 
@@ -50,13 +50,13 @@ Tested deployment/readiness behavior after `docs/audit/AUDIT_REPORT_TASK_010_ROU
 | T010-FINAL-011 | Nginx example readiness | Read `deploy/nginx/promo_v2.conf.example` | Contains `listen 8080;`, `client_max_body_size 128m;`, and `proxy_pass http://127.0.0.1:8000;`. No system nginx was changed. | pass |
 | T010-FINAL-012 | Systemd service/timer example readiness | Read `deploy/systemd/promo_v2.service.example`, `deploy/systemd/promo_v2-daily-backup.service.example`, `deploy/systemd/promo_v2-daily-backup.timer.example` | Application unit uses gunicorn on `127.0.0.1:8000`; daily backup service is `Type=oneshot` and runs PostgreSQL and media backup scripts; timer has `OnCalendar=*-*-* 02:15:00` and `Persistent=true`. No system services were installed. | pass |
 
-## Blocked Artifact Areas
+## Artifact Areas
 
 | Area | Status | Reason |
 | --- | --- | --- |
-| WB formal acceptance | blocked_by_artifact_gate | Real WB files, checksums, old-program results, expected summary and row-level expected results are absent. |
-| Ozon formal acceptance | blocked_by_artifact_gate | Real Ozon files, checksums, old-program results, expected summary and row-level expected results are absent. |
-| Edge-case control sets for formal acceptance | blocked_by_artifact_gate | Artifact registry contains placeholders only; no approved executable control artifacts are registered. |
+| WB formal acceptance | accepted | `WB-REAL-001` registered, checksummed and compared with old-program result. |
+| Ozon formal acceptance | accepted | `OZ-REAL-001` registered, checksummed and compared with old-program result. |
+| Future edge-case control sets | optional_future_artifact | Existing automated edge-case coverage remains; future customer artifacts are registered separately if introduced. |
 
 ## Defects
 
@@ -66,7 +66,7 @@ No TASK-010 deployment/readiness defects were found during this independent test
 
 - Production nginx reload, production systemd service installation and real VPS timer execution were not performed in this local test pass.
 - Restore check verified archive readability and technical restore into a temporary DB; full business-level restore validation in a production-like contour remains a release/runbook activity.
-- Formal WB/Ozon acceptance cannot complete until customer artifacts are delivered and registered.
+- Future new customer artifacts require separate registration before formal comparison for that new set.
 
 ## Changed Files
 

@@ -69,7 +69,7 @@ TASK-007-wb-discounts-excel
 
 ## Acceptance criteria
 
-- All WB acceptance checklist items are satisfied except formal customer file comparison blocked by acceptance artifact gate until real customer files/checksums/expected results are provided.
+- WB acceptance checklist items are satisfied by automated/synthetic coverage and the accepted real comparison artifact `WB-REAL-001` where applicable.
 - Process cannot run on check with errors.
 - Confirmable warnings require explicit confirmation.
 - Check/process use same normalization and актуальность rules.
@@ -84,8 +84,8 @@ TASK-007-wb-discounts-excel
 
 ## Handoff format
 
-Использовать формат из `docs/tasks/implementation/stage-1/README.md`; include that GAP-0002/0003/0004 are resolved and GAP-0008 is resolved as project decision with remaining acceptance artifact gate.
+Использовать формат из `docs/tasks/implementation/stage-1/README.md`; include that GAP-0002/0003/0004 are resolved and GAP-0008 real WB/Ozon comparison artifact gate is closed for accepted registered artifacts.
 
 ## Gaps/blockers
 
-No open WB implementation gap remains for GAP-0002, GAP-0003 or GAP-0004. Formal customer-file acceptance remains blocked by artifact gate until real WB/Ozon files, checksums and expected results are provided.
+No open WB implementation gap remains for GAP-0002, GAP-0003 or GAP-0004. Formal real WB comparison for `WB-REAL-001` is accepted; new customer artifacts, if introduced later, must be registered before use.

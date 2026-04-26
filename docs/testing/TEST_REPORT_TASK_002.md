@@ -65,7 +65,7 @@ No product defects found in the checked TASK-002 behavior.
 - SQLite override was used only for tests/smoke scenarios in memory. It does not fully prove PostgreSQL-specific behavior.
 - Login smoke was checked through Django test client with `HTTP_HOST=localhost`, matching current `ALLOWED_HOSTS`.
 - `/home/pavel/projects/promo_v2` is not a git worktree from this directory; `git status --short` is unavailable.
-- Formal stage-1 acceptance remains subject to the broader acceptance artifact gate for WB/Ozon control files described in `GAP-0008`; this does not block TASK-002 tester recommendation.
+- Post-acceptance update 2026-04-26: the broader WB/Ozon real comparison artifact gate described in `GAP-0008` is closed for `WB-REAL-001` / `OZ-REAL-001`; this does not change the TASK-002 tester recommendation.
 
 ## recommendation
 

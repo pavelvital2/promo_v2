@@ -62,7 +62,7 @@ No blocker, major, or minor product defects were found in the tested TASK-004 be
 - `/home/pavel/projects/promo_v2` is not a git repository from this working directory; `git status --short` fails with `fatal: not a git repository`.
 - PostgreSQL test database setup is unavailable in this environment because authentication for user `promo_v2` on `127.0.0.1:5432` fails.
 - SQLite override confirms Django model/service behavior for TASK-004 unit scenarios, but it is not a full substitute for PostgreSQL-specific integration confidence.
-- No customer WB/Ozon acceptance artifacts were required for this file-layer task. Formal stage acceptance remains subject to the separate artifact gate described in `GAP-0008` / `ACCEPTANCE_TESTS.md`.
+- No customer WB/Ozon acceptance artifacts were required for this file-layer task. Post-acceptance update 2026-04-26 closes the separate real comparison artifact gate described in `GAP-0008` / `ACCEPTANCE_TESTS.md` for `WB-REAL-001` / `OZ-REAL-001`.
 
 ## recommendation
 

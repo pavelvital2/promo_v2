@@ -42,7 +42,7 @@
 
 ## Реестр фактических контрольных наборов
 
-Этот раздел заполняется только после передачи файлов заказчиком и результатов старой программы. До этого строки имеют статус `blocked_by_artifact_gate`, а agents не создают фиктивные контрольные файлы, checksums или expected results от имени заказчика.
+Реальные WB/Ozon output comparison artifacts переданы заказчиком, проверены и зарегистрированы 2026-04-26. Для `WB-REAL-001` и `OZ-REAL-001` статус formal comparison = `accepted`; agents по-прежнему не создают фиктивные контрольные файлы, checksums или expected results от имени заказчика. Новые customer edge-case artifacts добавляются в этот реестр отдельно, но текущую эксплуатационную готовность Excel replacement не блокируют.
 
 | Set ID | Marketplace | Scenario | Source file(s) | Input checksum(s) | Old program result | Expected summary | Expected row-level results | Allowed differences | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

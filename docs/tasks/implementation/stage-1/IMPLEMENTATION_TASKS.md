@@ -17,7 +17,7 @@
 - WB reason/result codes: минимальный закрытый перечень из `docs/product/WB_DISCOUNTS_EXCEL_SPEC.md`. См. ADR-0010.
 - WB out-of-range final discount: row error `wb_discount_out_of_range`, check с ошибками, process запрещён. См. ADR-0011.
 - Backup policy: daily PostgreSQL + daily server file storage backup, retention 14 days, mandatory backup before production update, manual restore check after setup and before important releases. См. ADR-0012.
-- Acceptance control files: проектное решение закрыто, но фактические customer files/checksums/expected results остаются artifact gate. См. ADR-0013.
+- Acceptance control files: проектное решение закрыто; реальные WB/Ozon comparison artifacts `WB-REAL-001` / `OZ-REAL-001` зарегистрированы и accepted 2026-04-26. См. ADR-0013 и `docs/testing/CONTROL_FILE_REGISTRY.md`.
 - Audit/techlog retention: 90 days, cleanup only by regulated non-UI procedure. См. ADR-0014.
 - TASK-009 customer decisions from 2026-04-25: `GAP-0010` product backend/list/card, `GAP-0011` WB store parameter write-flow with history/audit, `GAP-0012` draft run context, `GAP-0013` admin write-flow. См. ADR-0015 и `docs/gaps/GAP_REGISTER.md`.
 
@@ -26,7 +26,7 @@
 | Gate | Gaps | Влияние |
 | --- | --- | --- |
 | blocks_before_module_implementation | нет открытых | WB settings/WB discounts implementation разрешена после audit pass документации |
-| blocks_before_acceptance/production | нет открытых GAP | production readiness policy утверждена; formal acceptance остаётся заблокированной artifact gate до передачи customer контрольных файлов, checksums и expected results; TASK-009 дополнительно blocked до реализации customer decisions `GAP-0010`..`GAP-0013` в самом TASK-009 |
+| blocks_before_acceptance/production | нет открытых GAP | production readiness policy утверждена; real WB/Ozon comparison artifact gate закрыт для `WB-REAL-001` / `OZ-REAL-001`; TASK-009 дополнительно blocked до реализации customer decisions `GAP-0010`..`GAP-0013` в самом TASK-009 |
 
 ## Порядок задач
 
@@ -39,9 +39,9 @@
 | 5 | `docs/tasks/implementation/stage-1/TASK-005-operations-run-execution.md` | operation/run, statuses, check/process orchestration shell | TASK-002, TASK-003, TASK-004 | нет |
 | 6 | `docs/tasks/implementation/stage-1/TASK-006-audit-techlog-notifications.md` | audit, techlog, notifications, sensitive visibility | TASK-002, TASK-005 | нет |
 | 7 | `docs/tasks/implementation/stage-1/TASK-007-wb-discounts-excel.md` | WB Excel check/process | TASK-002..TASK-006 | нет |
-| 8 | `docs/tasks/implementation/stage-1/TASK-008-ozon-discounts-excel.md` | Ozon Excel check/process | TASK-002..TASK-006 | artifact gate только для formal acceptance |
+| 8 | `docs/tasks/implementation/stage-1/TASK-008-ozon-discounts-excel.md` | Ozon Excel check/process | TASK-002..TASK-006 | нет; real comparison accepted 2026-04-26 |
 | 9 | `docs/tasks/implementation/stage-1/TASK-009-ui-stage-1-screens.md` | server-rendered screens and workflows, including approved TASK-009 backend/service pieces | TASK-002..TASK-008 as available | blocked until `GAP-0010` product backend/list/card, `GAP-0011` WB store parameter write-flow with history/audit, `GAP-0012` draft run context and `GAP-0013` admin write-flow are implemented; no deferral to TASK-010 |
-| 10 | `docs/tasks/implementation/stage-1/TASK-010-acceptance-and-deployment.md` | acceptance, release, backup/restore, deployment readiness | TASK-001..TASK-009 | artifact gate для customer control files |
+| 10 | `docs/tasks/implementation/stage-1/TASK-010-acceptance-and-deployment.md` | acceptance, release, backup/restore, deployment readiness | TASK-001..TASK-009 | нет для real WB/Ozon comparison; deployment/ops sign-off остаётся по task checks |
 
 ## Общие правила для всех задач
 
