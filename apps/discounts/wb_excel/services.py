@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import PurePosixPath
 from zipfile import BadZipFile
@@ -32,6 +32,7 @@ from apps.operations.services import (
 )
 from apps.marketplace_products.services import sync_products_for_operation
 from apps.platform_settings.models import StoreParameterValue, SystemParameterValue
+from apps.discounts.wb_shared.calculation import decide_wb_discount
 
 
 LOGIC_VERSION = "wb_discounts_excel_v1"
@@ -159,10 +160,6 @@ def parse_decimal(value) -> Decimal | None:
     except InvalidOperation:
         return None
     return decimal if decimal.is_finite() else None
-
-
-def ceil_decimal_to_int(value: Decimal) -> int:
-    return int(value.to_integral_value(rounding=ROUND_CEILING))
 
 
 def _load_first_sheet(version: FileVersion, *, read_only: bool = True):
@@ -608,23 +605,29 @@ def calculate(
                 continue
             aggregate = aggregates.get(price_row.article)
             if aggregate is None:
-                final_discount = ceil_decimal_to_int(parameters.fallback_no_promo_percent)
-                code = "wb_no_promo_item"
-                pre_threshold = None
+                decision = decide_wb_discount(
+                    current_price=price_row.current_price,
+                    min_discount=None,
+                    max_plan_price=None,
+                    threshold_percent=parameters.threshold_percent,
+                    fallback_no_promo_percent=parameters.fallback_no_promo_percent,
+                    fallback_over_threshold_percent=parameters.fallback_over_threshold_percent,
+                )
                 min_discount = max_plan_price = None
             else:
-                calculated = ceil_decimal_to_int(
-                    (Decimal("1") - aggregate.max_plan_price / price_row.current_price) * Decimal("100")
+                decision = decide_wb_discount(
+                    current_price=price_row.current_price,
+                    min_discount=aggregate.min_discount,
+                    max_plan_price=aggregate.max_plan_price,
+                    threshold_percent=parameters.threshold_percent,
+                    fallback_no_promo_percent=parameters.fallback_no_promo_percent,
+                    fallback_over_threshold_percent=parameters.fallback_over_threshold_percent,
                 )
-                pre_threshold = min(ceil_decimal_to_int(aggregate.min_discount), calculated)
                 min_discount = aggregate.min_discount
                 max_plan_price = aggregate.max_plan_price
-                if Decimal(pre_threshold) > parameters.threshold_percent:
-                    final_discount = ceil_decimal_to_int(parameters.fallback_over_threshold_percent)
-                    code = "wb_over_threshold"
-                else:
-                    final_discount = pre_threshold
-                    code = "wb_valid_calculated"
+            final_discount = decision.final_discount
+            code = decision.reason_code
+            pre_threshold = decision.final_discount_pre_threshold
 
             row_status = "ok"
             message_level = MessageLevel.INFO
@@ -802,6 +805,9 @@ def _write_output_workbook(
     user,
     operation_ref: str,
     run_ref: str,
+    scenario: str = FileObject.Scenario.WB_DISCOUNTS_EXCEL,
+    module: str = "discounts_excel",
+    logical_name: str = OUTPUT_LOGICAL_NAME,
 ) -> FileVersion:
     try:
         with default_storage.open(price_version.storage_path, "rb") as handle:
@@ -829,9 +835,10 @@ def _write_output_workbook(
         store=store,
         uploaded_by=user,
         uploaded_file=content,
-        scenario=FileObject.Scenario.WB_DISCOUNTS_EXCEL,
+        scenario=scenario,
         kind=FileObject.Kind.OUTPUT,
-        logical_name=OUTPUT_LOGICAL_NAME,
+        logical_name=logical_name,
+        module=module,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         operation_ref=operation_ref,
         run_ref=run_ref,
