@@ -92,6 +92,17 @@ def store_card(request, visible_id: str):
     is_wb_store = store.marketplace == StoreAccount.Marketplace.WB
     can_view_connection = is_wb_store and has_permission(request.user, "wb.api.connection.view", store)
     can_edit_connection = is_wb_store and has_permission(request.user, "wb.api.connection.manage", store)
+    can_open_wb_api = is_wb_store and any(
+        has_permission(request.user, code, store)
+        for code in (
+            "wb.api.operation.view",
+            "wb.api.prices.download",
+            "wb.api.promotions.download",
+            "wb.api.discounts.calculate",
+            "wb.api.discounts.upload",
+            "wb.api.discounts.upload.confirm",
+        )
+    )
     can_view_history = has_permission(request.user, "stores.history.view", store)
     return render(
         request,
@@ -102,6 +113,7 @@ def store_card(request, visible_id: str):
             "can_edit": can_edit,
             "can_view_connection": can_view_connection,
             "can_edit_connection": can_edit_connection,
+            "can_open_wb_api": can_open_wb_api,
             "can_view_history": can_view_history,
             "is_wb_store": is_wb_store,
             "api_stage_2_notice": API_STAGE_2_NOTICE,

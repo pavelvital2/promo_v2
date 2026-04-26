@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}WB API{% endblock %}
+{% block content %}
+<h1>WB -> Скидки -> API</h1>
+<div class="toolbar">
+  <a class="button" href="{% url 'web:wb_excel' %}">WB Excel</a>
+</div>
+
+<section class="panel">
+  <form method="get" class="toolbar">
+    <label>Магазин / кабинет
+      <select name="store" onchange="this.form.submit()">
+        {% for store in stores %}
+          <option value="{{ store.pk }}" {% if selected_store.pk == store.pk %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Выбрать</button>
+  </form>
+  {% if not selected_store %}<div class="empty">Нет доступных WB магазинов/кабинетов для WB API.</div>{% endif %}
+</section>
+
+{% if selected_store %}
+  <section class="panel" style="margin-top:16px">
+    <h2>Подключение WB API</h2>
+    <div class="kv">
+      <strong>Статус</strong><span><span class="badge {% if not connection_is_active %}warning{% endif %}">{{ connection_status }}</span></span>
+      <strong>Stage 2.1</strong><span>{{ api_stage_2_notice }}</span>
+      {% if can_view_connection and connection %}
+        <strong>Secret ref</strong><span>{% if connection.has_protected_ref %}[ref-set]{% else %}[empty]{% endif %}</span>
+        <strong>Last check</strong><span>{{ connection.last_checked_at|default:"" }} {{ connection.last_check_status }}</span>
+        <strong>Metadata</strong><span>{{ connection.metadata_display }}</span>
+      {% else %}
+        <strong>Детали</strong><span>Скрыто правами доступа или подключение отсутствует.</span>
+      {% endif %}
+      <strong>Действие</strong><span>{% if can_manage_connection %}<a href="{% url 'stores:store_card' selected_store.visible_id %}">Открыть карточку магазина / connection</a>{% else %}-{% endif %}</span>
+    </div>
+    {% if not connection_is_active %}<p class="status">Действия Stage 2.1 заблокированы: требуется active connection.</p>{% endif %}
+  </section>
+
+  {% if result_operation %}
+    <section class="panel" style="margin-top:16px">
+      <h2>Последнее действие {{ result_operation.visible_id }}</h2>
+      <p><a href="{% url 'web:operation_card' result_operation.visible_id %}">Открыть карточку операции</a></p>
+      <p class="status">{{ result_operation.step_code }} / {{ result_operation.status }}</p>
+    </section>
+  {% endif %}
+
+  <div class="grid" style="margin-top:16px">
+    {% for step in steps %}
+      <section class="panel">
+        <h2>{{ step.title }}</h2>
+        <p class="status">{{ step.readonly_text }}</p>
+        {% if step.operation %}
+          <div class="kv">
+            <strong>Последняя operation</strong><span><a href="{% url 'web:operation_card' step.operation.visible_id %}">{{ step.operation.visible_id }}</a></span>
+            <strong>Статус</strong><span><span class="badge {% if step.operation.error_count %}error{% elif step.operation.warning_count %}warning{% endif %}">{{ step.operation.status }}</span></span>
+            <strong>Финиш</strong><span>{{ step.operation.finished_at }}</span>
+            <strong>Ошибки / warnings</strong><span>{{ step.operation.error_count }} / {{ step.operation.warning_count }}</span>
+          </div>
+          {% if step.summary_items %}
+            <table style="margin-top:12px"><tbody>{% for key, value in step.summary_items %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</tbody></table>
+          {% endif %}
+          {% if step.output_links %}
+            <h3>Файлы</h3>
+            <table><thead><tr><th>Тип</th><th>Файл</th><th>Версия</th><th>Действие</th></tr></thead><tbody>
+              {% for item in step.output_links %}
+                <tr>
+                  <td>{{ item.link.output_kind }}</td>
+                  <td>{{ item.link.file_version.file.visible_id }} {{ item.link.file_version.original_name }}</td>
+                  <td>v{{ item.link.file_version.version_no }}</td>
+                  <td>{% if item.link.file_version.is_physically_available and item.can_download %}<a href="{% url 'web:download_file' item.link.file_version.pk %}">Скачать</a>{% elif not item.can_download %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Файл недоступен</span>{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody></table>
+          {% endif %}
+        {% else %}
+          <div class="empty">Операций этого шага ещё нет.</div>
+        {% endif %}
+
+        {% if step.code == "wb_api_discount_calculation" %}
+          <form method="post" class="toolbar">
+            {% csrf_token %}
+            <input type="hidden" name="store" value="{{ selected_store.pk }}">
+            <label>Price basis
+              <select name="price_operation_id" {% if not step.price_basis %}disabled{% endif %}>
+                {% for operation in step.price_basis %}<option value="{{ operation.pk }}">{{ operation.visible_id }} {{ operation.finished_at }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Promotion basis
+              <select name="promotion_operation_id" {% if not step.promotion_basis %}disabled{% endif %}>
+                {% for operation in step.promotion_basis %}<option value="{{ operation.pk }}">{{ operation.visible_id }} {{ operation.finished_at }}</option>{% endfor %}
+              </select>
+            </label>
+            <button class="primary" type="submit" name="action" value="calculate" data-loading-text="Рассчитываем..." {% if not step.can_run %}disabled{% endif %}>{{ step.button }}</button>
+          </form>
+          {% if not step.price_basis %}<p class="status">Нет successful price export basis.</p>{% endif %}
+          {% if not step.promotion_basis %}<p class="status">Нет successful current promotions export basis.</p>{% endif %}
+        {% elif step.code == "wb_api_discount_upload" %}
+          <form method="get" action="{% url 'web:wb_api_upload_confirm' %}" class="toolbar">
+            <input type="hidden" name="store" value="{{ selected_store.pk }}">
+            <label>Calculation basis
+              <select name="calculation_operation_id" {% if not step.calculations %}disabled{% endif %}>
+                {% for operation in step.calculations %}<option value="{{ operation.pk }}">{{ operation.visible_id }} {{ operation.finished_at }}</option>{% endfor %}
+              </select>
+            </label>
+            <button class="primary" type="submit" {% if not step.can_run %}disabled{% endif %}>Открыть подтверждение</button>
+          </form>
+          <p class="status">Upload-ready rows: {{ step.upload_ready_count }}. Upload недоступен при ошибках расчёта, drift/size conflicts или без result file.</p>
+        {% else %}
+          <form method="post" class="toolbar">
+            {% csrf_token %}
+            <input type="hidden" name="store" value="{{ selected_store.pk }}">
+            <button class="primary" type="submit" name="action" value="{{ step.action }}" data-loading-text="Выполняем..." {% if not step.can_run %}disabled{% endif %}>{{ step.button }}</button>
+          </form>
+        {% endif %}
+      </section>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

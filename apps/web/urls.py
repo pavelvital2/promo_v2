@@ -10,6 +10,12 @@ urlpatterns = [
     path("health/", views.health, name="health"),
     path("marketplaces/", views.marketplaces, name="marketplaces"),
     path("marketplaces/wb/discounts/excel/", views.wb_excel, name="wb_excel"),
+    path("marketplaces/wb/discounts/api/", views.wb_api, name="wb_api"),
+    path(
+        "marketplaces/wb/discounts/api/upload/confirm/",
+        views.wb_api_upload_confirm,
+        name="wb_api_upload_confirm",
+    ),
     path("marketplaces/ozon/discounts/excel/", views.ozon_excel, name="ozon_excel"),
     path("operations/", views.operation_list, name="operation_list"),
     path("operations/<str:visible_id>/", views.operation_card, name="operation_card"),

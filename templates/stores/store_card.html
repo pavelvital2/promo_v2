@@ -6,6 +6,7 @@
   <a class="button" href="{% url 'stores:store_list' %}">К списку</a>
   {% if can_edit %}<a class="button" href="{% url 'stores:store_edit' store.visible_id %}">Изменить</a>{% endif %}
   {% if can_view_history %}<a class="button" href="{% url 'stores:store_history' store.visible_id %}">История</a>{% endif %}
+  {% if can_open_wb_api %}<a class="button" href="{% url 'web:wb_api' %}?store={{ store.pk }}">WB API</a>{% endif %}
 </div>
 <section class="panel">
   <div class="kv">

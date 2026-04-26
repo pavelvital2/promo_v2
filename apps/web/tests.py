@@ -18,13 +18,17 @@ from apps.operations.models import (
     CheckStatus,
     Operation,
     OperationDetailRow,
+    OperationMode,
+    OperationModule,
     OperationOutputFile,
+    OperationStepCode,
     OperationType,
     OutputKind,
+    ProcessStatus,
     Run,
 )
 from apps.platform_settings.models import StoreParameterChangeHistory, StoreParameterValue
-from apps.stores.models import StoreAccount
+from apps.stores.models import ConnectionBlock, StoreAccount
 
 
 class BootstrapSmokeTests(SimpleTestCase):
@@ -374,6 +378,311 @@ class HomeSmokeTests(TestCase):
 
         self.assertContains(response, reverse("web:download_file", args=[output_version.pk]))
         self.assertNotContains(response, reverse("web:download_file", args=[detail_version.pk]))
+
+    def test_wb_api_master_requires_object_access_and_shows_active_connection(self) -> None:
+        observer_role = Role.objects.get(code=ROLE_OBSERVER)
+        user = get_user_model().objects.create_user(
+            login="wb-api-viewer",
+            password="password",
+            display_name="WB API Viewer",
+            primary_role=observer_role,
+        )
+        allowed_store = StoreAccount.objects.create(
+            name="Allowed WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        hidden_store = StoreAccount.objects.create(
+            name="Hidden WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=allowed_store,
+            module="wb_api",
+            connection_type="wb_header_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://WB_API_REF",
+            is_stage2_1_used=True,
+            metadata={"safe": "value"},
+        )
+        StoreAccess.objects.create(
+            user=user,
+            store=allowed_store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        for code in ("wb.api.operation.view", "wb.api.connection.view"):
+            UserPermissionOverride.objects.create(
+                user=user,
+                permission=Permission.objects.get(code=code),
+                effect=AccessEffect.ALLOW,
+                store=allowed_store,
+            )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:wb_api"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Allowed WB Store")
+        self.assertNotContains(response, "Hidden WB Store")
+        self.assertContains(response, "active")
+        self.assertContains(response, "[ref-set]")
+        self.assertNotContains(response, "env://WB_API_REF")
+
+        StoreAccess.objects.create(
+            user=user,
+            store=hidden_store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.DENY,
+        )
+        response = self.client.get(f"{reverse('web:wb_api')}?store={hidden_store.pk}")
+        self.assertEqual(response.status_code, 403)
+
+    def test_wb_api_post_invokes_price_service_and_preserves_store_redirect(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        run = Run.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        operation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        self.client.force_login(user)
+
+        with patch("apps.web.views.wb_api_prices_services.download_wb_prices", return_value=operation) as service:
+            response = self.client.post(
+                reverse("web:wb_api"),
+                {"store": store.pk, "action": "download_prices"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{reverse('web:wb_api')}?store={store.pk}&operation={operation.visible_id}",
+        )
+        service.assert_called_once()
+
+    def test_wb_api_calculation_requires_active_connection_in_ui_and_dispatch(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="wb_api",
+            connection_type="wb_header_api_key",
+            status=ConnectionBlock.Status.CONFIGURED,
+            is_stage2_1_used=True,
+        )
+        run = Run.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        price_operation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        promotion_operation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(f"{reverse('web:wb_api')}?store={store.pk}")
+
+        self.assertContains(response, "Действия Stage 2.1 заблокированы: требуется active connection.")
+        self.assertRegex(
+            response.content.decode(),
+            r'<button[^>]+name="action"[^>]+value="calculate"[^>]+disabled',
+        )
+
+        with patch("apps.web.views.wb_api_calculation_services.calculate_wb_api_discounts") as service:
+            response = self.client.post(
+                reverse("web:wb_api"),
+                {
+                    "store": store.pk,
+                    "action": "calculate",
+                    "price_operation_id": price_operation.pk,
+                    "promotion_operation_id": promotion_operation.pk,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        service.assert_not_called()
+        self.assertContains(response, "Действие заблокировано: требуется active connection.")
+
+    def test_operation_list_and_card_classify_wb_api_by_step_code(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        run = Run.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        operation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_DISCOUNT_UPLOAD,
+            status=ProcessStatus.COMPLETED_WITH_WARNINGS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            warning_count=1,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(
+            f"{reverse('web:operation_list')}?mode=api&step_code={OperationStepCode.WB_API_DISCOUNT_UPLOAD}"
+        )
+        self.assertContains(response, "2.1.4 Загрузить по API")
+        self.assertNotContains(response, "<td>not_applicable</td>", html=True)
+
+        response = self.client.get(reverse("web:operation_card", args=[operation.visible_id]))
+        self.assertContains(response, OperationStepCode.WB_API_DISCOUNT_UPLOAD)
+        self.assertContains(response, "2.1.4 Загрузить по API")
+        self.assertNotContains(response, "Подтверждение warnings")
+
+    def test_wb_api_upload_confirmation_posts_exact_phrase_to_service(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="wb_api",
+            connection_type="wb_header_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://WB_API_REF",
+            is_stage2_1_used=True,
+        )
+        run = Run.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        calculation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_DISCOUNT_CALCULATION,
+            status=ProcessStatus.RUNNING,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        result_version = create_file_version(
+            store=store,
+            uploaded_by=user,
+            uploaded_file=SimpleUploadedFile("result.xlsx", b"output"),
+            scenario=FileObject.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL,
+            kind=FileObject.Kind.OUTPUT,
+            logical_name="wb api result",
+            module=OperationModule.WB_API,
+        )
+        OperationOutputFile.objects.create(
+            operation=calculation,
+            file_version=result_version,
+            output_kind=OutputKind.OUTPUT_WORKBOOK,
+        )
+        OperationDetailRow.objects.create(
+            operation=calculation,
+            row_no=1,
+            product_ref="123",
+            row_status="ok",
+            reason_code="wb_api_calculated_from_api_sources",
+            message_level="info",
+            final_value={"upload_ready": True, "final_discount": 20, "current_price": "100"},
+        )
+        Operation.objects.filter(pk=calculation.pk).update(status=ProcessStatus.COMPLETED_SUCCESS)
+        calculation.refresh_from_db()
+        upload_operation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_DISCOUNT_UPLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        self.client.force_login(user)
+
+        phrase = "Я понимаю, что скидки будут отправлены в WB по API."
+        with patch(
+            "apps.web.views.wb_api_upload_services.upload_wb_api_discounts",
+            return_value=upload_operation,
+        ) as service:
+            response = self.client.post(
+                reverse("web:wb_api_upload_confirm"),
+                {
+                    "store": store.pk,
+                    "calculation_operation_id": calculation.pk,
+                    "confirmation_phrase": phrase,
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{reverse('web:wb_api')}?store={store.pk}&operation={upload_operation.visible_id}",
+        )
+        self.assertEqual(service.call_args.kwargs["confirmation_phrase"], phrase)
 
     def test_wb_store_parameter_write_creates_history_and_audit(self) -> None:
         user = self._owner()

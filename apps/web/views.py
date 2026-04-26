@@ -17,10 +17,15 @@ from django.utils.dateparse import parse_date
 from apps.audit.models import AuditActionCode, AuditRecord, AuditSourceContext
 from apps.audit.services import audit_records_visible_to, create_audit_record
 from apps.discounts.ozon_excel import services as ozon_services
+from apps.discounts.wb_api.calculation import services as wb_api_calculation_services
+from apps.discounts.wb_api.prices import services as wb_api_prices_services
+from apps.discounts.wb_api.promotions import services as wb_api_promotions_services
+from apps.discounts.wb_api.upload import services as wb_api_upload_services
 from apps.discounts.wb_excel import services as wb_services
 from apps.files.models import FileObject, FileVersion
 from apps.files.services import (
     delete_pre_operation_file_version,
+    download_permission_code,
     open_file_version_for_download,
 )
 from apps.identity_access.models import (
@@ -47,9 +52,13 @@ from apps.marketplace_products.services import products_visible_to
 from apps.marketplace_products.models import MarketplaceProduct
 from apps.operations.models import (
     MessageLevel,
+    OperationMode,
+    OperationModule,
+    OperationStepCode,
     Operation,
     OperationType,
     OutputKind,
+    ProcessStatus,
 )
 from apps.platform_settings.models import (
     StoreParameterChangeHistory,
@@ -58,8 +67,14 @@ from apps.platform_settings.models import (
     WB_PARAMETER_CODES,
 )
 from apps.platform_settings.services import effective_parameter_rows, save_wb_store_parameters
-from apps.stores.models import StoreAccount
-from apps.stores.services import API_STAGE_2_NOTICE, visible_stores_queryset
+from apps.stores.models import ConnectionBlock, StoreAccount
+from apps.stores.services import (
+    API_STAGE_2_NOTICE,
+    WB_API_CONNECTION_TYPE,
+    WB_API_MODULE,
+    connection_metadata_display,
+    visible_stores_queryset,
+)
 from apps.techlog.models import SystemNotification, TechLogRecord
 
 
@@ -78,7 +93,7 @@ NAV_ITEMS = (
     NavItem(
         "Маркетплейсы",
         "web:marketplaces",
-        ("wb_discounts_excel.view", "ozon_discounts_excel.view"),
+        ("wb_discounts_excel.view", "wb_discounts_api.view", "ozon_discounts_excel.view"),
     ),
     NavItem("Операции", "web:operation_list", ("operations.view",)),
     NavItem("Справочники", "web:reference_index", ("stores.view", "products.view")),
@@ -108,6 +123,26 @@ SCENARIO_FILE_OBJECT = {
     "wb": FileObject.Scenario.WB_DISCOUNTS_EXCEL,
     "ozon": FileObject.Scenario.OZON_DISCOUNTS_EXCEL,
 }
+WB_API_ACTION_PERMISSION_CODES = (
+    "wb.api.operation.view",
+    "wb.api.connection.view",
+    "wb.api.connection.manage",
+    "wb.api.prices.download",
+    "wb.api.prices.file.download",
+    "wb.api.promotions.download",
+    "wb.api.promotions.file.download",
+    "wb.api.discounts.calculate",
+    "wb.api.discounts.result.download",
+    "wb.api.discounts.upload",
+    "wb.api.discounts.upload.confirm",
+)
+WB_API_STEP_LABELS = {
+    OperationStepCode.WB_API_PRICES_DOWNLOAD: "2.1.1 Скачать цены",
+    OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD: "2.1.2 Скачать текущие акции",
+    OperationStepCode.WB_API_DISCOUNT_CALCULATION: "2.1.3 Рассчитать итоговый Excel",
+    OperationStepCode.WB_API_DISCOUNT_UPLOAD: "2.1.4 Загрузить по API",
+}
+WB_API_STEPS = tuple(WB_API_STEP_LABELS)
 
 
 def _common_context(request: HttpRequest, *, section: str = "") -> dict:
@@ -162,16 +197,7 @@ def _visible_operations_queryset(user):
 
     queryset = Operation.objects.select_related("store", "initiator_user", "check_basis_operation")
     queryset = queryset.filter(store_id__in=_visible_store_ids(user))
-    allowed_ids = []
-    for operation in queryset:
-        permission_map = (
-            SCENARIO_CHECK_RESULT_PERMISSION
-            if operation.operation_type == OperationType.CHECK
-            else SCENARIO_PROCESS_RESULT_PERMISSION
-        )
-        permission_code = permission_map.get(operation.marketplace)
-        if permission_code and has_permission(user, permission_code, operation.store):
-            allowed_ids.append(operation.id)
+    allowed_ids = [operation.id for operation in queryset if _can_view_operation(user, operation)]
     return (
         Operation.objects.select_related("store", "initiator_user", "check_basis_operation")
         .filter(id__in=allowed_ids)
@@ -180,13 +206,7 @@ def _visible_operations_queryset(user):
 
 
 def _require_operation_view(user, operation: Operation) -> None:
-    permission_map = (
-        SCENARIO_CHECK_RESULT_PERMISSION
-        if operation.operation_type == OperationType.CHECK
-        else SCENARIO_PROCESS_RESULT_PERMISSION
-    )
-    permission_code = permission_map.get(operation.marketplace)
-    if not permission_code or not has_permission(user, permission_code, operation.store):
+    if not _can_view_operation(user, operation):
         raise PermissionDenied("No permission or object access for this operation.")
 
 
@@ -359,6 +379,177 @@ def _summary_items(value) -> list[tuple[str, object]]:
     return [(key, child) for key, child in value.items()]
 
 
+def _operation_classifier(operation: Operation) -> str:
+    if operation.marketplace == "wb" and operation.mode == OperationMode.API:
+        return operation.step_code or OperationType.NOT_APPLICABLE
+    return operation.operation_type
+
+
+def _operation_classifier_label(operation: Operation) -> str:
+    if operation.marketplace == "wb" and operation.mode == OperationMode.API:
+        return WB_API_STEP_LABELS.get(operation.step_code, operation.step_code or "api")
+    return operation.operation_type
+
+
+def _decorate_operations(operations):
+    for operation in operations:
+        operation.classifier = _operation_classifier(operation)
+        operation.classifier_label = _operation_classifier_label(operation)
+    return operations
+
+
+def _can_view_operation(user, operation: Operation) -> bool:
+    if operation.marketplace == "wb" and operation.mode == OperationMode.API:
+        return (
+            operation.module == OperationModule.WB_API
+            and operation.step_code in WB_API_STEPS
+            and has_permission(user, "wb.api.operation.view", operation.store)
+        )
+    permission_map = (
+        SCENARIO_CHECK_RESULT_PERMISSION
+        if operation.operation_type == OperationType.CHECK
+        else SCENARIO_PROCESS_RESULT_PERMISSION
+    )
+    permission_code = permission_map.get(operation.marketplace)
+    return bool(permission_code and has_permission(user, permission_code, operation.store))
+
+
+def _api_file_permission(link) -> str:
+    return download_permission_code(link.file_version.file)
+
+
+def _can_download_link(user, link) -> bool:
+    return has_permission(user, _api_file_permission(link), link.file_version.file.store)
+
+
+def _successful_wb_api_operations(store: StoreAccount, step_code: str):
+    return (
+        Operation.objects.filter(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=step_code,
+            store=store,
+            status__in=[ProcessStatus.COMPLETED_SUCCESS, ProcessStatus.COMPLETED_WITH_WARNINGS],
+        )
+        .order_by("-finished_at", "-id")
+    )
+
+
+def _successful_wb_api_calculations(store: StoreAccount):
+    return (
+        Operation.objects.filter(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_DISCOUNT_CALCULATION,
+            store=store,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            error_count=0,
+            output_files__file_version__file__scenario=FileObject.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL,
+        )
+        .distinct()
+        .order_by("-finished_at", "-id")
+    )
+
+
+def _wb_api_stores(user):
+    stores = visible_stores_queryset(user).filter(marketplace=StoreAccount.Marketplace.WB)
+    allowed_ids = [
+        store.pk
+        for store in stores
+        if has_permission(user, "wb.api.operation.view", store)
+        or any(has_permission(user, code, store) for code in WB_API_ACTION_PERMISSION_CODES)
+    ]
+    return StoreAccount.objects.filter(pk__in=allowed_ids).select_related("group").order_by("name", "id")
+
+
+def _selected_wb_api_store(request: HttpRequest) -> StoreAccount | None:
+    store_id = request.POST.get("store") or request.GET.get("store")
+    stores = _wb_api_stores(request.user)
+    if not store_id:
+        return stores.first()
+    return stores.filter(pk=store_id).first()
+
+
+def _active_connection_for_ui(store: StoreAccount | None):
+    if store is None:
+        return None
+    return (
+        ConnectionBlock.objects.filter(
+            store=store,
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+            is_stage2_1_used=True,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+
+
+def _connection_context(user, store: StoreAccount | None) -> dict:
+    connection = _active_connection_for_ui(store)
+    can_view = bool(store and has_permission(user, "wb.api.connection.view", store))
+    can_manage = bool(store and has_permission(user, "wb.api.connection.manage", store))
+    if connection and can_view:
+        connection_info = {
+            "last_checked_at": connection.last_checked_at,
+            "last_check_status": connection.last_check_status,
+            "has_protected_ref": bool(connection.protected_secret_ref),
+            "metadata_display": connection_metadata_display(connection.metadata),
+        }
+    else:
+        connection_info = None
+    status = connection.status if connection else ConnectionBlock.Status.NOT_CONFIGURED
+    return {
+        "connection": connection_info,
+        "connection_status": status,
+        "connection_is_active": status == ConnectionBlock.Status.ACTIVE,
+        "can_view_connection": can_view,
+        "can_manage_connection": can_manage,
+    }
+
+
+def _operation_output_links(operation: Operation | None):
+    if operation is None:
+        return []
+    return list(operation.output_files.select_related("file_version", "file_version__file"))
+
+
+def _step_context(user, operation: Operation | None) -> dict:
+    links = _operation_output_links(operation)
+    return {
+        "operation": operation,
+        "summary_items": _summary_items(operation.summary if operation else None),
+        "output_links": [
+            {
+                "link": link,
+                "can_download": _can_download_link(user, link),
+            }
+            for link in links
+        ],
+    }
+
+
+def _upload_ready_count(operation: Operation | None) -> int:
+    if operation is None:
+        return 0
+    return operation.detail_rows.filter(
+        row_status="ok",
+        reason_code="wb_api_calculated_from_api_sources",
+        final_value__upload_ready=True,
+    ).count()
+
+
+def _wb_api_redirect(store: StoreAccount, operation: Operation | None = None):
+    url = f"{reverse('web:wb_api')}?store={store.pk}"
+    if operation is not None:
+        url = f"{url}&operation={operation.visible_id}"
+    return redirect(url)
+
+
 @login_required
 def home(request: HttpRequest) -> HttpResponse:
     operations = _visible_operations_queryset(request.user)
@@ -388,6 +579,8 @@ def home(request: HttpRequest) -> HttpResponse:
     ):
         if _scenario_stores(request.user, marketplace).exists():
             quick_actions.append({"label": label, "url_name": route})
+    if _wb_api_stores(request.user).exists():
+        quick_actions.append({"label": "WB API", "url_name": "web:wb_api"})
 
     return _render(
         request,
@@ -412,10 +605,11 @@ def health(request: HttpRequest) -> JsonResponse:
 def marketplaces(request: HttpRequest) -> HttpResponse:
     wb_stores = _scenario_stores(request.user, "wb")
     ozon_stores = _scenario_stores(request.user, "ozon")
+    wb_api_stores = _wb_api_stores(request.user)
     return _render(
         request,
         "web/marketplaces.html",
-        {"wb_stores": wb_stores, "ozon_stores": ozon_stores},
+        {"wb_stores": wb_stores, "ozon_stores": ozon_stores, "wb_api_stores": wb_api_stores},
         section="marketplaces",
     )
 
@@ -428,6 +622,237 @@ def wb_excel(request: HttpRequest) -> HttpResponse:
 @login_required
 def ozon_excel(request: HttpRequest) -> HttpResponse:
     return _excel_screen(request, marketplace="ozon")
+
+
+@login_required
+def wb_api(request: HttpRequest) -> HttpResponse:
+    stores = _wb_api_stores(request.user)
+    store = _selected_wb_api_store(request)
+    if store is None and stores.exists():
+        raise PermissionDenied("No object access for selected WB store.")
+    if store and not has_permission(request.user, "wb.api.operation.view", store):
+        raise PermissionDenied("No permission or object access for WB API operations.")
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if store is None:
+            messages.error(request, "Не выбран доступный WB магазин/кабинет.")
+        else:
+            response = _handle_wb_api_post(request, store, action)
+            if response:
+                return response
+
+    context = _wb_api_master_context(request, stores, store)
+    return _render(request, "web/wb_api.html", context, section="marketplaces")
+
+
+@login_required
+def wb_api_upload_confirm(request: HttpRequest) -> HttpResponse:
+    stores = _wb_api_stores(request.user)
+    store = _selected_wb_api_store(request)
+    if store is None:
+        raise PermissionDenied("No object access for selected WB store.")
+    if not (
+        has_permission(request.user, "wb.api.operation.view", store)
+        and has_permission(request.user, "wb.api.discounts.upload", store)
+        and has_permission(request.user, "wb.api.discounts.upload.confirm", store)
+    ):
+        raise PermissionDenied("No permission or object access for WB API upload confirmation.")
+
+    calculation = get_object_or_404(
+        _successful_wb_api_calculations(store),
+        pk=request.POST.get("calculation_operation_id") or request.GET.get("calculation_operation_id") or 0,
+    )
+    if request.method == "POST":
+        try:
+            operation = wb_api_upload_services.upload_wb_api_discounts(
+                actor=request.user,
+                store=store,
+                calculation_operation=calculation,
+                confirmation_phrase=request.POST.get("confirmation_phrase", ""),
+            )
+            return _wb_api_redirect(store, operation)
+        except (PermissionDenied, ValidationError) as exc:
+            messages.error(request, _error_text(exc))
+
+    result_link = (
+        calculation.output_files.select_related("file_version", "file_version__file")
+        .filter(file_version__file__scenario=FileObject.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL)
+        .first()
+    )
+    upload_ready_count = _upload_ready_count(calculation)
+    excluded_count = calculation.detail_rows.exclude(
+        row_status="ok",
+        reason_code="wb_api_calculated_from_api_sources",
+        final_value__upload_ready=True,
+    ).count()
+    return _render(
+        request,
+        "web/wb_api_upload_confirm.html",
+        {
+            "stores": stores,
+            "selected_store": store,
+            "calculation": calculation,
+            "result_link": result_link,
+            "upload_ready_count": upload_ready_count,
+            "excluded_count": excluded_count,
+            "confirmation_phrase": wb_api_upload_services.CONFIRMATION_PHRASE,
+            **_connection_context(request.user, store),
+        },
+        section="marketplaces",
+    )
+
+
+def _handle_wb_api_post(request: HttpRequest, store: StoreAccount, action: str | None):
+    if action not in {"download_prices", "download_promotions", "calculate"}:
+        messages.error(request, "Неизвестное действие.")
+        return None
+    try:
+        if action == "download_prices":
+            operation = wb_api_prices_services.download_wb_prices(actor=request.user, store=store)
+            return _wb_api_redirect(store, operation)
+        if action == "download_promotions":
+            operation = wb_api_promotions_services.download_wb_current_promotions(
+                actor=request.user,
+                store=store,
+            )
+            return _wb_api_redirect(store, operation)
+
+        if not _connection_context(request.user, store)["connection_is_active"]:
+            messages.error(request, "Действие заблокировано: требуется active connection.")
+            return None
+        price_operation = get_object_or_404(
+            _successful_wb_api_operations(store, OperationStepCode.WB_API_PRICES_DOWNLOAD),
+            pk=request.POST.get("price_operation_id") or 0,
+        )
+        promotion_operation = get_object_or_404(
+            _successful_wb_api_operations(store, OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD),
+            pk=request.POST.get("promotion_operation_id") or 0,
+        )
+        operation = wb_api_calculation_services.calculate_wb_api_discounts(
+            actor=request.user,
+            store=store,
+            price_operation=price_operation,
+            promotion_operation=promotion_operation,
+        )
+        return _wb_api_redirect(store, operation)
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, _error_text(exc))
+        return None
+
+
+def _wb_api_master_context(request: HttpRequest, stores, store: StoreAccount | None) -> dict:
+    latest_by_step = {}
+    price_basis = []
+    promotion_basis = []
+    calculations = []
+    if store:
+        for operation in (
+            Operation.objects.filter(
+                marketplace="wb",
+                module=OperationModule.WB_API,
+                mode=OperationMode.API,
+                operation_type=OperationType.NOT_APPLICABLE,
+                step_code__in=WB_API_STEPS,
+                store=store,
+            )
+            .order_by("-created_at", "-id")
+        ):
+            latest_by_step.setdefault(operation.step_code, operation)
+        price_basis = list(_successful_wb_api_operations(store, OperationStepCode.WB_API_PRICES_DOWNLOAD)[:20])
+        promotion_basis = list(
+            _successful_wb_api_operations(store, OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD)[:20]
+        )
+        calculations = list(_successful_wb_api_calculations(store)[:20])
+
+    connection = _connection_context(request.user, store)
+    selected_calculation = calculations[0] if calculations else None
+    operation_visible_id = request.GET.get("operation", "").strip()
+    result_operation = None
+    if operation_visible_id and store:
+        result_operation = (
+            Operation.objects.filter(
+                visible_id=operation_visible_id,
+                store=store,
+                marketplace="wb",
+                module=OperationModule.WB_API,
+                mode=OperationMode.API,
+                step_code__in=WB_API_STEPS,
+            )
+            .first()
+        )
+        if result_operation:
+            _require_operation_view(request.user, result_operation)
+
+    return {
+        "stores": stores,
+        "selected_store": store,
+        "steps": [
+            {
+                "code": OperationStepCode.WB_API_PRICES_DOWNLOAD,
+                "title": "Шаг 1: Скачать цены",
+                "readonly_text": "Шаг читает WB API и не меняет WB.",
+                "action": "download_prices",
+                "button": "Скачать цены",
+                "can_run": bool(
+                    store
+                    and connection["connection_is_active"]
+                    and has_permission(request.user, "wb.api.prices.download", store)
+                ),
+                **_step_context(request.user, latest_by_step.get(OperationStepCode.WB_API_PRICES_DOWNLOAD)),
+            },
+            {
+                "code": OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD,
+                "title": "Шаг 2: Скачать текущие акции",
+                "readonly_text": "Шаг читает только текущие акции и не меняет WB.",
+                "action": "download_promotions",
+                "button": "Скачать текущие акции",
+                "can_run": bool(
+                    store
+                    and connection["connection_is_active"]
+                    and has_permission(request.user, "wb.api.promotions.download", store)
+                ),
+                **_step_context(request.user, latest_by_step.get(OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD)),
+            },
+            {
+                "code": OperationStepCode.WB_API_DISCOUNT_CALCULATION,
+                "title": "Шаг 3: Рассчитать итоговый Excel",
+                "readonly_text": "Расчёт формирует Excel для ручной загрузки в ЛК WB и не меняет WB.",
+                "action": "calculate",
+                "button": "Рассчитать итоговый Excel",
+                "can_run": bool(
+                    store
+                    and connection["connection_is_active"]
+                    and has_permission(request.user, "wb.api.discounts.calculate", store)
+                    and price_basis
+                    and promotion_basis
+                ),
+                "price_basis": price_basis,
+                "promotion_basis": promotion_basis,
+                **_step_context(request.user, latest_by_step.get(OperationStepCode.WB_API_DISCOUNT_CALCULATION)),
+            },
+            {
+                "code": OperationStepCode.WB_API_DISCOUNT_UPLOAD,
+                "title": "Шаг 4: Загрузить по API",
+                "readonly_text": "Единственный шаг, который отправляет скидки в WB; требуется подтверждение и drift check.",
+                "can_run": bool(
+                    store
+                    and selected_calculation
+                    and connection["connection_is_active"]
+                    and has_permission(request.user, "wb.api.discounts.upload", store)
+                    and has_permission(request.user, "wb.api.discounts.upload.confirm", store)
+                    and _upload_ready_count(selected_calculation)
+                ),
+                "calculations": calculations,
+                "selected_calculation": selected_calculation,
+                "upload_ready_count": _upload_ready_count(selected_calculation),
+                **_step_context(request.user, latest_by_step.get(OperationStepCode.WB_API_DISCOUNT_UPLOAD)),
+            },
+        ],
+        "result_operation": result_operation,
+        "api_stage_2_notice": API_STAGE_2_NOTICE,
+        **connection,
+    }
 
 
 def _excel_screen(request: HttpRequest, *, marketplace: str) -> HttpResponse:
@@ -715,15 +1140,21 @@ def operation_list(request: HttpRequest) -> HttpResponse:
     operations = _visible_operations_queryset(request.user)
     search = request.GET.get("q", "").strip()
     marketplace = request.GET.get("marketplace", "").strip()
+    mode = request.GET.get("mode", "").strip()
     operation_type = request.GET.get("type", "").strip()
+    step_code = request.GET.get("step_code", "").strip()
     status = request.GET.get("status", "").strip()
     store_id = request.GET.get("store", "").strip()
     if search:
         operations = operations.filter(visible_id__icontains=search)
     if marketplace:
         operations = operations.filter(marketplace=marketplace)
+    if mode:
+        operations = operations.filter(mode=mode)
     if operation_type:
-        operations = operations.filter(operation_type=operation_type)
+        operations = operations.filter(mode=OperationMode.EXCEL, operation_type=operation_type)
+    if step_code:
+        operations = operations.filter(mode=OperationMode.API, step_code=step_code)
     if status:
         operations = operations.filter(status=status)
     if store_id:
@@ -732,15 +1163,18 @@ def operation_list(request: HttpRequest) -> HttpResponse:
         request,
         "web/operation_list.html",
         {
-            "page": _paginate(request, operations),
+            "page": _paginate(request, _decorate_operations(operations)),
             "stores": visible_stores_queryset(request.user),
             "filters": {
                 "q": search,
                 "marketplace": marketplace,
+                "mode": mode,
                 "type": operation_type,
+                "step_code": step_code,
                 "status": status,
                 "store": store_id,
             },
+            "wb_api_step_labels": WB_API_STEP_LABELS,
         },
         section="operations",
     )
@@ -766,23 +1200,38 @@ def operation_card(request: HttpRequest, visible_id: str) -> HttpResponse:
             Q(product_ref__icontains=q) | Q(message__icontains=q) | Q(problem_field__icontains=q)
         )
     output_links = operation.output_files.select_related("file_version", "file_version__file")
-    can_view_details = has_permission(
-        request.user,
-        f"{operation.marketplace}_discounts_excel.view_details",
-        operation.store,
-    )
-    can_download_output = has_permission(
-        request.user,
-        f"{operation.marketplace}_discounts_excel.download_output",
-        operation.store,
-    )
-    can_download_detail = has_permission(
-        request.user,
-        f"{operation.marketplace}_discounts_excel.download_detail_report",
-        operation.store,
-    )
+    is_api_operation = operation.marketplace == "wb" and operation.mode == OperationMode.API
+    if is_api_operation:
+        can_view_details = has_permission(request.user, "wb.api.operation.view", operation.store)
+        can_download_output = has_permission(request.user, "wb.api.discounts.result.download", operation.store)
+        can_download_detail = can_download_output
+        for link in output_links:
+            link.can_download = _can_download_link(request.user, link)
+    else:
+        can_view_details = has_permission(
+            request.user,
+            f"{operation.marketplace}_discounts_excel.view_details",
+            operation.store,
+        )
+        can_download_output = has_permission(
+            request.user,
+            f"{operation.marketplace}_discounts_excel.download_output",
+            operation.store,
+        )
+        can_download_detail = has_permission(
+            request.user,
+            f"{operation.marketplace}_discounts_excel.download_detail_report",
+            operation.store,
+        )
+        for link in output_links:
+            link.can_download = (
+                can_download_detail
+                if link.output_kind == OutputKind.DETAIL_REPORT
+                else can_download_output
+            )
     can_confirm_warnings = (
         operation.operation_type == OperationType.CHECK
+        and operation.mode == OperationMode.EXCEL
         and operation.warning_count
         and operation.error_count == 0
         and has_permission(
@@ -801,6 +1250,8 @@ def operation_card(request: HttpRequest, visible_id: str) -> HttpResponse:
         "web/operation_card.html",
         {
             "operation": operation,
+            "classifier_label": _operation_classifier_label(operation),
+            "is_api_operation": is_api_operation,
             "summary_items": _summary_items(operation.summary),
             "detail_page": _paginate(request, details, 50) if can_view_details else None,
             "input_files": operation.input_files.select_related("file_version", "file_version__file"),

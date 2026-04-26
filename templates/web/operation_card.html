@@ -12,7 +12,8 @@
   <div class="kv">
     <strong>Маркетплейс</strong><span>{{ operation.marketplace }}</span>
     <strong>Модуль / режим</strong><span>{{ operation.module }} / {{ operation.mode }}</span>
-    <strong>Тип / статус</strong><span>{{ operation.operation_type }} / {{ operation.status }}</span>
+    <strong>Классификатор / статус</strong><span>{{ classifier_label }} / {{ operation.status }}</span>
+    {% if is_api_operation %}<strong>step_code</strong><span>{{ operation.step_code }}</span>{% else %}<strong>Тип</strong><span>{{ operation.operation_type }}</span>{% endif %}
     <strong>Магазин</strong><span>{{ operation.store.visible_id }} {{ operation.store.name }}</span>
     <strong>Инициатор</strong><span>{{ operation.initiator_user.visible_id }} {{ operation.initiator_user.login }}</span>
     <strong>Старт / финиш</strong><span>{{ operation.started_at }} / {{ operation.finished_at }}</span>
@@ -43,11 +44,7 @@
             <td>{{ link.file_version.file.visible_id }} {{ link.file_version.original_name }}</td>
             <td>v{{ link.file_version.version_no }}</td>
             <td>
-              {% if link.output_kind == "detail_report" %}
-                {% if link.file_version.is_physically_available and can_download_detail %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not can_download_detail %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Срок хранения истёк или файл недоступен</span>{% endif %}
-              {% else %}
-                {% if link.file_version.is_physically_available and can_download_output %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not can_download_output %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Срок хранения истёк или файл недоступен</span>{% endif %}
-              {% endif %}
+              {% if link.file_version.is_physically_available and link.can_download %}<a href="{% url 'web:download_file' link.file_version.pk %}">Скачать</a>{% elif not link.can_download %}<span class="status">Скрыто правами доступа</span>{% else %}<span class="status">Срок хранения истёк или файл недоступен</span>{% endif %}
             </td>
           </tr>
         {% endfor %}

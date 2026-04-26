@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Подтверждение WB API upload{% endblock %}
+{% block content %}
+<h1>WB API upload: подтверждение</h1>
+<div class="toolbar">
+  <a class="button" href="{% url 'web:wb_api' %}?store={{ selected_store.pk }}">К мастеру WB API</a>
+</div>
+
+<section class="panel">
+  <h2>Данные отправки</h2>
+  <div class="kv">
+    <strong>Магазин</strong><span>{{ selected_store.visible_id }} {{ selected_store.name }}</span>
+    <strong>Connection status</strong><span>{{ connection_status }}</span>
+    <strong>Calculation operation</strong><span><a href="{% url 'web:operation_card' calculation.visible_id %}">{{ calculation.visible_id }}</a></span>
+    <strong>Дата расчёта</strong><span>{{ calculation.finished_at }}</span>
+    <strong>Result file</strong><span>{% if result_link %}{{ result_link.file_version.file.visible_id }} {{ result_link.file_version.original_name }} v{{ result_link.file_version.version_no }}{% else %}нет файла{% endif %}</span>
+    <strong>К отправке</strong><span>{{ upload_ready_count }}</span>
+    <strong>Исключено</strong><span>{{ excluded_count }}</span>
+  </div>
+  <p class="status">Скидки будут отправлены в WB по API. Перед отправкой сервис выполнит drift check; upload будет заблокирован при drift, size conflict или invalid rows.</p>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Явное подтверждение</h2>
+  <form method="post" class="grid">
+    {% csrf_token %}
+    <input type="hidden" name="store" value="{{ selected_store.pk }}">
+    <input type="hidden" name="calculation_operation_id" value="{{ calculation.pk }}">
+    <label>Фраза подтверждения
+      <input name="confirmation_phrase" value="{{ confirmation_phrase }}" readonly>
+    </label>
+    <div class="toolbar">
+      <button class="primary" type="submit" data-loading-text="Отправляем..." {% if not connection_is_active or not result_link or not upload_ready_count %}disabled{% endif %}>Подтвердить и загрузить по API</button>
+      <a class="button" href="{% url 'web:wb_api' %}?store={{ selected_store.pk }}">Отмена</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

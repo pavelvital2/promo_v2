@@ -11,11 +11,26 @@
       <option value="ozon" {% if filters.marketplace == "ozon" %}selected{% endif %}>Ozon</option>
     </select>
   </label>
+  <label>Режим
+    <select name="mode">
+      <option value="">Все</option>
+      <option value="excel" {% if filters.mode == "excel" %}selected{% endif %}>excel</option>
+      <option value="api" {% if filters.mode == "api" %}selected{% endif %}>api</option>
+    </select>
+  </label>
   <label>Тип
     <select name="type">
       <option value="">Все</option>
       <option value="check" {% if filters.type == "check" %}selected{% endif %}>check</option>
       <option value="process" {% if filters.type == "process" %}selected{% endif %}>process</option>
+    </select>
+  </label>
+  <label>API step_code
+    <select name="step_code">
+      <option value="">Все</option>
+      {% for code, label in wb_api_step_labels.items %}
+        <option value="{{ code }}" {% if filters.step_code == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
     </select>
   </label>
   <label>Статус<input name="status" value="{{ filters.status }}"></label>

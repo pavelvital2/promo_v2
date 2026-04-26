@@ -9,6 +9,11 @@
     {% if wb_stores %}<a class="button primary" href="{% url 'web:wb_excel' %}">Открыть WB Excel</a>{% endif %}
   </section>
   <section class="panel">
+    <h2>WB -> Скидки -> API</h2>
+    <p class="status">Доступных WB API магазинов: {{ wb_api_stores|length }}</p>
+    {% if wb_api_stores %}<a class="button primary" href="{% url 'web:wb_api' %}">Открыть WB API</a>{% endif %}
+  </section>
+  <section class="panel">
     <h2>Ozon -> Скидки -> Excel</h2>
     <p class="status">Доступных Ozon магазинов: {{ ozon_stores|length }}</p>
     {% if ozon_stores %}<a class="button primary" href="{% url 'web:ozon_excel' %}">Открыть Ozon Excel</a>{% endif %}

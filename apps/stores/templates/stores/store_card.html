@@ -10,6 +10,9 @@
   {% if can_edit %}
     <p><a href="{% url 'stores:store_edit' store.visible_id %}">Edit store</a></p>
   {% endif %}
+  {% if can_open_wb_api %}
+    <p><a href="{% url 'web:wb_api' %}?store={{ store.pk }}">WB API</a></p>
+  {% endif %}
 
   <section>
     <h2>Details</h2>
