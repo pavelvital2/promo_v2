@@ -16,7 +16,7 @@
 
 ## Обязательные группы тестов
 
-Проектное решение по `GAP-0008` закрыто: заказчик передаёт реальные контрольные WB/Ozon файлы и результаты старой программы, дополнительно должны быть edge-case наборы. Фактические контрольные файлы, checksums и expected results пока не переданы; это не заменяется синтетическими данными и остаётся acceptance artifact gate. До получения и фиксации этих артефактов формальная приёмка этапа 1 имеет статус `blocked_by_artifact_gate`, даже если разработческие и synthetic edge-case tests выполнены.
+Проектное решение по `GAP-0008` закрыто: заказчик передаёт реальные контрольные WB/Ozon файлы и результаты старой программы, дополнительно должны быть edge-case наборы. Реальные WB/Ozon output comparison artifacts от 2026-04-26 зарегистрированы в `docs/testing/CONTROL_FILE_REGISTRY.md` как `WB-REAL-001` и `OZ-REAL-001` со статусом `accepted`. Synthetic edge-case coverage остаётся покрытой automated tests; новые customer edge-case artifacts могут добавляться в реестр отдельно, но не блокируют эксплуатационную готовность Excel replacement после accepted real comparisons.
 
 | ID | Группа | Покрытие |
 | --- | --- | --- |
@@ -46,10 +46,10 @@
 
 | Set ID | Marketplace | Scenario | Source file(s) | Input checksum(s) | Old program result | Expected summary | Expected row-level results | Allowed differences | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TBD-WB-REAL-001 | WB | real working files | pending customer delivery | pending | pending | pending | pending | pending | blocked_by_artifact_gate |
-| TBD-OZ-REAL-001 | Ozon | real working file | pending customer delivery | pending | pending | pending | pending | pending | blocked_by_artifact_gate |
-| TBD-WB-EDGE-001 | WB | synthetic edge cases by ТЗ | pending tester creation after implementation plan | pending | not applicable | pending | pending | by ТЗ | pending tester creation; formal acceptance still blocked_by_artifact_gate until real files arrive |
-| TBD-OZ-EDGE-001 | Ozon | synthetic edge cases by ТЗ | pending tester creation after implementation plan | pending | not applicable | pending | pending | by ТЗ | pending tester creation; formal acceptance still blocked_by_artifact_gate until real files arrive |
+| WB-REAL-001 | WB | real working output comparison | `test_files/WB/1_processed.xlsx` | `0c2f5302fe7381c74c1bdf0e1ffae90e756299466648310fb6a383172f5a6420` | `test_files/WB/1_red.xlsx` | workbook values equal; `Новая скидка` equal; non-target diffs `0` | target and non-target workbook diffs `0` | none | accepted |
+| OZ-REAL-001 | Ozon | real working output comparison | `test_files/Ozon/products-1977747_25.04.26_processed.xlsx` | `756fe1f97febb0b1432c2d7caf23c4f1eb3b781ae63b7b5e77f2e5ded39a4ddf` | `test_files/Ozon/products-1977747_25.04.26_red.xlsx` | workbook values equal; K/L equal; non-target diffs `0` | target and non-target workbook diffs `0`; invalid K/L values `0` | none | accepted |
+| TBD-WB-EDGE-001 | WB | synthetic edge cases by ТЗ | optional future customer artifact delivery | pending | not applicable | covered by automated tests; optional artifact pending | covered by automated tests; optional artifact pending | by ТЗ | optional_future_artifact |
+| TBD-OZ-EDGE-001 | Ozon | synthetic edge cases by ТЗ | optional future customer artifact delivery | pending | not applicable | covered by automated tests; optional artifact pending | covered by automated tests; optional artifact pending | by ТЗ | optional_future_artifact |
 
 ## Шаблон карточки контрольного набора
 
@@ -128,7 +128,7 @@ ID расхождения:
 
 Этап 1 готов к эксплуатационной приёмке, если:
 
-- acceptance artifact gate закрыт: переданы реальные WB/Ozon файлы, checksums, результаты старой программы и expected results;
+- acceptance artifact gate закрыт для реальных WB/Ozon output comparison: переданы и зарегистрированы реальные comparison artifacts, checksums, результаты старой программы и expected results для `WB-REAL-001` и `OZ-REAL-001`;
 - все обязательные группы тестов выполнены;
 - критические расхождения закрыты;
 - открытые расхождения классифицированы и не блокируют замену текущего Excel-сценария;
