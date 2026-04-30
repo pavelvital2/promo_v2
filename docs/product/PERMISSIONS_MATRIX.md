@@ -132,6 +132,7 @@ Seed-набор утверждён решением заказчика и заф
 | API-блок / подключения | да | да | да, только назначенные магазины/кабинеты | просмотр при праве, без secret edit по умолчанию | нет |
 | Аудит/техжурнал | да | да | ограниченно по назначенным магазинам/кабинетам | ограниченно по доступным операциям/магазинам | ограниченно по доступным объектам |
 | WB API Stage 2.1 | да | да | управление подключениями в назначенных магазинах; рабочие действия только при выдаче | рабочие download/calculate/upload при выдаче в доступных магазинах | просмотр только при выдаче |
+| Ozon API Stage 2.2 | да | да | управление подключениями в назначенных магазинах; рабочие действия только при выдаче | read/download/calculate/review при выдаче; upload/deactivate отдельно | просмотр только при выдаче |
 
 ## Seed-набор по правам
 
@@ -172,3 +173,36 @@ Seed-набор утверждён решением заказчика и заф
 - Локальный администратор: `wb.api.connection.*`, `wb.api.operation.view` для назначенных stores; рабочие download/calculate/upload только при отдельной выдаче.
 - Менеджер маркетплейсов: `wb.api.prices.download`, `wb.api.prices.file.download`, `wb.api.promotions.download`, `wb.api.promotions.file.download`, `wb.api.discounts.calculate`, `wb.api.discounts.result.download`, `wb.api.operation.view`; upload права выдаются отдельно.
 - Наблюдатель: `wb.api.operation.view` only при отдельной выдаче; file download отдельно.
+
+## Ozon API Stage 2.2 права
+
+Трассировка: `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md`; `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`.
+
+Все права ниже требуют object access к конкретному Ozon store/account. Отсутствие object access скрывает операции, файлы, акции, товары и API-подключение магазина.
+
+| Право | Code | Область |
+| --- | --- | --- |
+| просмотр Ozon API подключения | `ozon.api.connection.view` | store |
+| управление Ozon API подключением | `ozon.api.connection.manage` | store |
+| просмотр Ozon actions/Elastic workflow | `ozon.api.actions.view` | store |
+| скачать доступные акции | `ozon.api.actions.download` | store |
+| скачать товары участвующие в акции | `ozon.api.elastic.active_products.download` | store |
+| скачать кандидаты в акцию | `ozon.api.elastic.candidates.download` | store |
+| скачать product info/stocks | `ozon.api.elastic.product_data.download` | store |
+| рассчитать Elastic Boosting | `ozon.api.elastic.calculate` | store |
+| принять/не принять результат | `ozon.api.elastic.review` | store |
+| выполнить API upload add/update | `ozon.api.elastic.upload` | store |
+| подтвердить API upload add/update | `ozon.api.elastic.upload.confirm` | store |
+| подтвердить группу deactivate | `ozon.api.elastic.deactivate.confirm` | store |
+| скачать Stage 2.2 файлы | `ozon.api.elastic.files.download` | store |
+| просмотреть Ozon API operations | `ozon.api.operation.view` | store |
+
+`ozon.api.connection.manage` does not grant secret readback.
+
+Recommended seed Stage 2.2:
+
+- Владелец: all Ozon API rights.
+- Глобальный администратор: all Ozon API rights except owner-only protections.
+- Локальный администратор: `ozon.api.connection.*`, `ozon.api.operation.view` for assigned stores; workflow rights only if separately granted.
+- Менеджер маркетплейсов: `ozon.api.actions.*`, `ozon.api.elastic.active_products.download`, `ozon.api.elastic.candidates.download`, `ozon.api.elastic.product_data.download`, `ozon.api.elastic.calculate`, `ozon.api.elastic.review`, `ozon.api.elastic.files.download`, `ozon.api.operation.view`; upload and deactivate confirmation rights are granted separately.
+- Наблюдатель: `ozon.api.operation.view` only if separately granted; file download separately.

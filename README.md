@@ -33,6 +33,8 @@ WB API current promotion support has an important boundary:
 
 For WB auto-promotion calculations, an external product source is still required, for example an export from the WB seller cabinet. WB API can still be used separately for product cards, stocks, orders and sales where those APIs are available.
 
+This decision is formalized in `docs/adr/ADR_LOG.md` as ADR-0021.
+
 ## Documentation
 
 Start with:

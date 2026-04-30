@@ -68,6 +68,7 @@ class Marketplace(models.TextChoices):
 class OperationModule(models.TextChoices):
     DISCOUNTS_EXCEL = "discounts_excel", "Discounts Excel"
     WB_API = "wb_api", "WB API"
+    OZON_API = "ozon_api", "Ozon API"
 
 
 class OperationMode(models.TextChoices):
@@ -93,6 +94,28 @@ class OperationStepCode(models.TextChoices):
     WB_API_PROMOTIONS_DOWNLOAD = "wb_api_promotions_download", "WB API promotions download"
     WB_API_DISCOUNT_CALCULATION = "wb_api_discount_calculation", "WB API discount calculation"
     WB_API_DISCOUNT_UPLOAD = "wb_api_discount_upload", "WB API discount upload"
+    OZON_API_CONNECTION_CHECK = "ozon_api_connection_check", "Ozon API connection check"
+    OZON_API_ACTIONS_DOWNLOAD = "ozon_api_actions_download", "Ozon API actions download"
+    OZON_API_ELASTIC_ACTIVE_PRODUCTS_DOWNLOAD = (
+        "ozon_api_elastic_active_products_download",
+        "Ozon API Elastic active products download",
+    )
+    OZON_API_ELASTIC_CANDIDATE_PRODUCTS_DOWNLOAD = (
+        "ozon_api_elastic_candidate_products_download",
+        "Ozon API Elastic candidate products download",
+    )
+    OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD = (
+        "ozon_api_elastic_product_data_download",
+        "Ozon API Elastic product data download",
+    )
+    OZON_API_ELASTIC_CALCULATION = (
+        "ozon_api_elastic_calculation",
+        "Ozon API Elastic calculation",
+    )
+    OZON_API_ELASTIC_UPLOAD = (
+        "ozon_api_elastic_upload",
+        "Ozon API Elastic upload",
+    )
 
 
 class CheckStatus(models.TextChoices):
@@ -205,7 +228,21 @@ WB_API_REASON_CODES = {
     "wb_api_upload_status_unknown",
 }
 WB_ALL_REASON_CODES = WB_REASON_CODES | WB_API_REASON_CODES
-WB_API_STEP_CODES = tuple(choice.value for choice in OperationStepCode)
+WB_API_STEP_CODES = (
+    OperationStepCode.WB_API_PRICES_DOWNLOAD,
+    OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD,
+    OperationStepCode.WB_API_DISCOUNT_CALCULATION,
+    OperationStepCode.WB_API_DISCOUNT_UPLOAD,
+)
+OZON_API_STEP_CODES = (
+    OperationStepCode.OZON_API_CONNECTION_CHECK,
+    OperationStepCode.OZON_API_ACTIONS_DOWNLOAD,
+    OperationStepCode.OZON_API_ELASTIC_ACTIVE_PRODUCTS_DOWNLOAD,
+    OperationStepCode.OZON_API_ELASTIC_CANDIDATE_PRODUCTS_DOWNLOAD,
+    OperationStepCode.OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD,
+    OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+    OperationStepCode.OZON_API_ELASTIC_UPLOAD,
+)
 OZON_REASON_CODES = {
     "missing_min_price",
     "no_stock",
@@ -214,6 +251,25 @@ OZON_REASON_CODES = {
     "use_min_price",
     "below_min_price_threshold",
     "insufficient_ozon_input_data",
+    "ozon_api_action_not_elastic",
+    "ozon_api_action_not_found",
+    "ozon_api_missing_elastic_fields",
+    "ozon_api_missing_product_info",
+    "ozon_api_missing_stock_info",
+    "ozon_api_product_not_eligible",
+    "ozon_api_upload_blocked_by_drift",
+    "ozon_api_upload_blocked_deactivate_unconfirmed",
+    "ozon_api_upload_ready",
+    "ozon_api_upload_rejected",
+    "ozon_api_upload_partial_rejected",
+    "ozon_api_upload_success",
+    "ozon_api_deactivate_required",
+    "ozon_api_deactivate_group_confirmed",
+    "ozon_api_auth_failed",
+    "ozon_api_response_invalid",
+    "ozon_api_rate_limited",
+    "ozon_api_timeout",
+    "ozon_api_secret_redaction_violation",
 }
 
 
@@ -490,6 +546,18 @@ class Operation(models.Model):
                 ),
                 name="wb_api_operation_has_step_and_non_check_type",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        marketplace=Marketplace.OZON,
+                        mode=OperationMode.API,
+                        step_code__in=OZON_API_STEP_CODES,
+                        operation_type=OperationType.NOT_APPLICABLE,
+                    )
+                    | ~models.Q(marketplace=Marketplace.OZON, mode=OperationMode.API)
+                ),
+                name="ozon_api_operation_has_step_and_non_check_type",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -529,10 +597,16 @@ class Operation(models.Model):
                 raise ValidationError("WB API operation requires a supported step code.")
             if self.operation_type in {OperationType.CHECK, OperationType.PROCESS}:
                 raise ValidationError("WB API operation must not use check/process type.")
+        elif self.marketplace == Marketplace.OZON and self.mode == OperationMode.API:
+            if self.step_code not in OZON_API_STEP_CODES:
+                raise ValidationError("Ozon API operation requires a supported step code.")
+            if self.operation_type in {OperationType.CHECK, OperationType.PROCESS}:
+                raise ValidationError("Ozon API operation must not use check/process type.")
         elif self.step_code:
             raise ValidationError("Step code is reserved for documented API operations.")
         if self.operation_type == OperationType.NOT_APPLICABLE and not (
             self.marketplace == Marketplace.WB and self.mode == OperationMode.API
+            or self.marketplace == Marketplace.OZON and self.mode == OperationMode.API
         ):
             raise ValidationError("Not applicable operation type is reserved for documented API operations.")
         if self.operation_type == OperationType.PROCESS:

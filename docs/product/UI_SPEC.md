@@ -303,6 +303,53 @@ Excel route `WB -> Скидки -> Excel` остаётся доступным ш
 | Сообщения/статусы | Upload blocked by drift, size conflict, invalid rows, status polling pending/failed, partial errors, quarantine errors, WB canceled upload. |
 | Критерии готовности | Upload невозможен без explicit confirmation; успех не показывается до WB status polling; partial errors отображаются как `completed_with_warnings`; quarantine выделен отдельно. |
 
+## Маркетплейсы -> Ozon -> Акции -> API -> Эластичный бустинг
+
+Трассировка: `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md`; `docs/product/OZON_API_ELASTIC_UI_SPEC.md`.
+
+Stage 2.2 использует отдельный master page. Детальная спецификация находится в `docs/product/OZON_API_ELASTIC_UI_SPEC.md` и является обязательной для implementation tasks TASK-019..TASK-026.
+
+Action selection follows ADR-0029: actions download marks Elastic Boosting candidates by `action_type = MARKETPLACE_MULTI_LEVEL_DISCOUNT_ON_AMOUNT` and title marker `Эластичный бустинг`; user-selected/saved `action_id` is the basis for downstream steps in the selected Ozon store/account.
+
+Иерархия навигации закладывается с запасом:
+
+```text
+Маркетплейсы
+  -> Ozon
+     -> Цены -> Excel / API
+     -> Акции -> Excel / API -> Эластичный бустинг
+     -> Остатки -> Excel / API
+     -> Продажи -> Excel / API
+     -> В производство -> Excel / API
+     -> Поставки -> Excel / API
+  -> WB
+     -> Цены -> Excel / API
+     -> Акции -> Excel / API
+     -> Остатки -> Excel / API
+     -> Продажи -> Excel / API
+     -> В производство -> Excel / API
+     -> Поставки -> Excel / API
+```
+
+Только `Ozon -> Акции -> API -> Эластичный бустинг` является рабочим Stage 2.2 flow. Future entry points не показываются как реализованные сценарии.
+
+Фиксированный порядок кнопок master page:
+
+1. `Скачать доступные акции`
+2. `Выбрать акцию`
+3. `Скачать товары участвующие в акции`
+4. `Скачать товары кандидаты в акцию`
+5. `Скачать данные по полученным товарам`
+6. `Обработать`
+7. `Принять результат` / `Не принять результат`
+8. `Скачать Excel результата`
+9. `Скачать Excel для ручной загрузки`
+10. `Загрузить в Ozon`
+
+`Загрузить в Ozon` is the live Ozon actions activate/deactivate write path per ADR-0033 and requires accepted result, drift-check and confirmation for each non-empty write group. Active/candidate_and_active + not_upload_ready rows are mandatory `deactivate_from_action`: UI shows the full deactivate group with row-level reasons and requests one group confirmation for all deactivate rows. Without this group confirmation upload is blocked as `review_pending_deactivate_confirmation` / `ozon_api_upload_blocked_deactivate_unconfirmed`; add/update does not silently proceed.
+
+`Скачать Excel для ручной загрузки` downloads the ADR-0032 Stage 1-compatible manual upload artifact after accepted Stage 2.2 calculation result; the file is secondary to API upload and must keep `Снять с акции` rows visible when deactivate rows exist.
+
 ## Операции
 
 ### Списки операций
@@ -313,14 +360,14 @@ Excel route `WB -> Скидки -> Excel` остаётся доступным ш
 | Раздел | Операции: все операции, мои операции, проверки, обработки, проблемные/требующие внимания, архив/история. |
 | Роли/права | Section access к Операциям; scenario-specific view rights; object access к stores/accounts. |
 | Входные точки | Верхняя навигация, Главная, карточки магазина/товара, result screens. |
-| Данные | visible_id, marketplace, module, mode, store/account, classifier (`type` для check/process, `step_code` для Stage 2.1 API), status, initiator, start/end, errors/warnings, file/output availability. |
+| Данные | visible_id, marketplace, module, mode, store/account, classifier (`type` для check/process, `step_code` для Stage 2.1 WB API and Stage 2.2 Ozon API), status, initiator, start/end, errors/warnings, file/output availability. |
 | Действия | Открыть карточку, скачать output/detail при праве, перейти к повторной проверке/обработке, открыть связанные store/files. |
 | Контролы | Tabs/views, table, filters, search, sort, pagination, export list. |
-| Фильтры/поиск/сортировка/пагинация | Marketplace, store/account, module, mode, type for check/process, API step_code for Stage 2.1, status, user, period, errors/warnings; search by visible_id; сортировка по времени/status; пагинация. |
+| Фильтры/поиск/сортировка/пагинация | Marketplace, store/account, module, mode, type for check/process, API step_code for Stage 2.1 and Stage 2.2, status, user, period, errors/warnings; search by visible_id; сортировка по времени/status; пагинация. |
 | Сообщения/статусы | Нет операций, скрыто по object access, output expired, interrupted_failed, process requires attention. |
 | Переходы | Operation card, WB/Ozon scenario, store card. |
 | Сценарии | Контроль, поиск, история и разбор проблем. |
-| Критерии готовности | Списки не показывают недоступные stores; check/process разделены по `type`; Stage 2.1 API steps разделены по `step_code` and not shown as check/process; archive/history не удаляет metadata. |
+| Критерии готовности | Списки не показывают недоступные stores; check/process разделены по `type`; Stage 2.1 WB API and Stage 2.2 Ozon API steps разделены по `step_code` and not shown as check/process; Stage 2.2 filters/cards show `marketplace=ozon`, `mode=api`, `module=actions`; archive/history не удаляет metadata. |
 
 ### Карточка операции
 
@@ -330,14 +377,14 @@ Excel route `WB -> Скидки -> Excel` остаётся доступным ш
 | Раздел | Операции и переходы из WB/Ozon results. |
 | Роли/права | Operation view прав соответствующего сценария; detail/download rights по действиям; object access. |
 | Входные точки | Список operations, result screens, карточки store/product, audit/techlog links. |
-| Данные | visible_id, marketplace/module/mode, store, classifier/status (`type` for check/process or `step_code` for Stage 2.1 API), initiator, start/end, input file versions, output file, check basis if applicable, applied parameters, logic version, summary, errors/warnings, detail rows, warning confirmations if applicable, audit/techlog links. |
+| Данные | visible_id, marketplace/module/mode, store, classifier/status (`type` for check/process or `step_code` for Stage 2.1 WB API and Stage 2.2 Ozon API), initiator, start/end, input file versions, output file, check basis if applicable, applied parameters, logic version, summary, errors/warnings, detail rows, warning confirmations if applicable, audit/techlog links. |
 | Действия | Скачать output/detail, открыть file/store/product/audit/techlog, повторить check/process новой operation. |
 | Контролы | Summary blocks, file/version links, parameter snapshot, detail table, links, download buttons. |
 | Фильтры/поиск/сортировка/пагинация | Detail rows: row number/product/reason/status/problem field; sort by row/status/reason; pagination. |
 | Сообщения/статусы | Operation immutable, file expired, technical details hidden, process blocked/failed/interrupted. |
 | Переходы | Related check/process, store card, product card, audit record, techlog record. |
 | Сценарии | Explainability, support, repeat operations. |
-| Критерии готовности | Все обязательные поля ТЗ §17.3 отображены; Stage 2.1 API operation card shows `step_code` instead of forcing check/process type; завершённая operation не редактируется; links сохраняют конкретные versions. |
+| Критерии готовности | Все обязательные поля ТЗ §17.3 отображены; Stage 2.1 WB API and Stage 2.2 Ozon API operation cards show `step_code` instead of forcing check/process type; Stage 2.2 card shows `marketplace=ozon`, `mode=api`, `module=actions`; завершённая operation не редактируется; links сохраняют конкретные versions. |
 
 ## Справочники
 

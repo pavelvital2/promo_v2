@@ -23,8 +23,8 @@
           <td>{{ item.changed_at }}</td>
           <td>{{ item.changed_by|default:"system" }}</td>
           <td>{{ item.field_code }}</td>
-          <td>{{ item.old_value }}</td>
-          <td>{{ item.new_value }}</td>
+          <td>{{ item.old_value_display }}</td>
+          <td>{{ item.new_value_display }}</td>
           <td>{{ item.source }}</td>
         </tr>
       {% empty %}

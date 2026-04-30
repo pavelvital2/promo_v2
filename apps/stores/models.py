@@ -41,6 +41,10 @@ def _is_store_visible_id_service_update_allowed() -> bool:
 
 
 def is_sensitive_metadata_key(key) -> bool:
+    from apps.discounts.wb_api.redaction import is_secret_like_key
+
+    if is_secret_like_key(key):
+        return True
     key_text = str(key).lower()
     compact_key = "".join(character for character in key_text if character.isalnum())
     return any(
@@ -275,6 +279,21 @@ class ConnectionBlock(models.Model):
         super().clean()
         if self.is_stage1_used:
             raise ValidationError("Connection blocks are stage 2 preparation and are not used in stage 1.")
+        if self.store_id:
+            if (
+                self.module == "wb_api"
+                or self.connection_type == "wb_header_api_key"
+            ) and self.store.marketplace != StoreAccount.Marketplace.WB:
+                raise ValidationError("WB API connection is available only for WB stores.")
+            if (
+                self.module == "ozon_api"
+                or self.connection_type == "ozon_client_id_api_key"
+            ) and self.store.marketplace != StoreAccount.Marketplace.OZON:
+                raise ValidationError("Ozon API connection is available only for Ozon stores.")
+            if self.module == "wb_api" and self.connection_type != "wb_header_api_key":
+                raise ValidationError("WB API connection requires WB API connection type.")
+            if self.module == "ozon_api" and self.connection_type != "ozon_client_id_api_key":
+                raise ValidationError("Ozon API connection requires Ozon API connection type.")
         if contains_sensitive_metadata_key(self.metadata) or contains_sensitive_metadata_value(
             self.metadata,
         ):

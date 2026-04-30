@@ -133,8 +133,8 @@
 - module;
 - mode: `excel`, future `api`;
 - store/account;
-- type: `check` или `process` только для check/process-сценариев; для Stage 2.1 API steps без модели check/process поле nullable/blank/not_applicable по миграционному решению;
-- step_code: обязательный primary classifier для Stage 2.1 API steps и future non-check/process steps;
+- type: `check` или `process` только для check/process-сценариев; для Stage 2.1 WB API and Stage 2.2 Ozon API steps без модели check/process поле nullable/blank/not_applicable по миграционному решению;
+- step_code: обязательный primary classifier для Stage 2.1 WB API, Stage 2.2 Ozon API and future non-check/process steps;
 - status;
 - initiator_user_id;
 - execution_context: от чьего имени и в каком контуре выполнялась operation;
@@ -319,6 +319,86 @@ Connection statuses:
 - `check_failed`;
 - `disabled`;
 - `archived`.
+
+## Stage 2.2 Ozon API additions
+
+Трассировка: `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md`; `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`; ADR-0022..ADR-0028.
+
+Stage 2.2 uses the same PostgreSQL DB and immutable operations/files/audit invariants. Physical model choice is conservative: implementation may use dedicated tables below or equivalent existing `Operation`/detail/snapshot storage only if it preserves the same queryable contract, immutable basis and row-level traceability.
+
+### Operation classification
+
+For `mode=api`, `marketplace=ozon`, `module=actions`, `Operation.step_code` is mandatory and must be one of:
+
+- `ozon_api_connection_check`;
+- `ozon_api_actions_download`;
+- `ozon_api_elastic_active_products_download`;
+- `ozon_api_elastic_candidate_products_download`;
+- `ozon_api_elastic_product_data_download`;
+- `ozon_api_elastic_calculation`;
+- `ozon_api_elastic_upload`.
+
+`Operation.type` must not be `check` or `process` for these API steps.
+
+### Snapshot/result entities
+
+| Сущность | Назначение | Ключевые поля | Связи |
+| --- | --- | --- | --- |
+| OzonApiRequestSnapshot | safe snapshot API request/response | operation_id, store_id, endpoint_code, method, request_safe, response_safe, status_code, checksum, created_at | operation, store |
+| OzonActionSnapshot | actions list snapshot | operation_id, store_id, fetched_at, actions_count, elastic_actions_count, safe_snapshot_ref | operation, store |
+| OzonElasticActionRowSnapshot | active/candidate action row | operation_id, action_id, source_group, product_id, offer_id nullable, action_price, price_min_elastic, price_max_elastic, boost fields, row_status, reason_code, source_details/collision_details, safe_snapshot_ref | operation, store |
+| OzonElasticProductDataSnapshot | joined product info/stocks basis | operation_id, action_id, product_count, stock_rows_count, source_checksum, safe_snapshot_ref | operation, store |
+| OzonElasticProductDataRow | canonical input row | snapshot_id, product_id, offer_id, name, source_group, source_details/collision_details, J_min_price, O_price_min_elastic, P_price_max_elastic, R_stock_present, row_status, reason_code | product data snapshot |
+| OzonElasticCalculationResult | calculation summary and review | operation_id, action_id, basis_snapshot_ids, review_state, deactivate_confirmation_status, reviewed_by, reviewed_at, accepted_basis_checksum, summary | calculation operation |
+| OzonElasticCalculationRow | row result | result_id, product_id, offer_id, source_group, source_details/collision_details, reason_code, planned_action, calculated_action_price, upload_ready, deactivate_required, deactivate_reason_code, deactivate_reason | calculation result |
+| OzonElasticUploadBatch | upload batch | operation_id, batch_no, operation_kind, payload_checksum, rows_count, ozon_request_id_safe nullable, result_status, safe_snapshot_ref | upload operation |
+| OzonElasticUploadDetail | row-level upload result | batch_id, product_id, offer_id, requested_action_price, result_status, reason_code, error_safe | upload batch |
+
+If dedicated physical models are deferred, `Operation.summary`, `OperationDetailRow`, safe snapshots and file metadata must still expose every field required by `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`.
+
+### Ozon API reason/result codes
+
+Ozon Excel business reason codes remain:
+
+- `missing_min_price`;
+- `no_stock`;
+- `no_boost_prices`;
+- `use_max_boost_price`;
+- `use_min_price`;
+- `below_min_price_threshold`;
+- `insufficient_ozon_input_data`.
+
+Ozon API-specific codes:
+
+- `ozon_api_action_not_elastic`;
+- `ozon_api_action_not_found`;
+- `ozon_api_missing_elastic_fields`;
+- `ozon_api_missing_product_info`;
+- `ozon_api_missing_stock_info`;
+- `ozon_api_product_not_eligible`;
+- `ozon_api_upload_blocked_by_drift`;
+- `ozon_api_upload_blocked_deactivate_unconfirmed`;
+- `ozon_api_upload_ready`;
+- `ozon_api_upload_rejected`;
+- `ozon_api_upload_partial_rejected`;
+- `ozon_api_upload_success`;
+- `ozon_api_deactivate_required`;
+- `ozon_api_deactivate_group_confirmed`;
+- `ozon_api_auth_failed`;
+- `ozon_api_rate_limited`;
+- `ozon_api_timeout`;
+- `ozon_api_response_invalid`;
+- `ozon_api_secret_redaction_violation`.
+
+Adding or renaming codes requires documentation update and ADR.
+
+Deactivate-related closed catalogs:
+
+- `deactivate_confirmation_status`: `not_required`, `pending`, `confirmed`;
+- `review_state`: `not_reviewed`, `accepted`, `declined`, `stale`, `review_pending_deactivate_confirmation`;
+- allowed `deactivate_reason_code`: `missing_min_price`, `no_stock`, `no_boost_prices`, `below_min_price_threshold`, `insufficient_ozon_input_data`.
+
+The previous `not_uploaded_user_declined`/`ozon_api_deactivate_declined` model is not part of the accepted Stage 2.2 target model after ADR-0026. Review is calculation result state, not a separate Operation, after ADR-0027.
 
 ## Видимые идентификаторы
 

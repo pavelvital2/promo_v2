@@ -18,5 +18,10 @@
     <p class="status">Доступных Ozon магазинов: {{ ozon_stores|length }}</p>
     {% if ozon_stores %}<a class="button primary" href="{% url 'web:ozon_excel' %}">Открыть Ozon Excel</a>{% endif %}
   </section>
+  <section class="panel">
+    <h2>Ozon -> Акции -> API -> Эластичный бустинг</h2>
+    <p class="status">Доступных Ozon API магазинов: {{ ozon_api_stores|length }}</p>
+    {% if ozon_api_stores %}<a class="button primary" href="{% url 'web:ozon_elastic' %}">Открыть Ozon Elastic API</a>{% endif %}
+  </section>
 </div>
 {% endblock %}

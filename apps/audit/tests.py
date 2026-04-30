@@ -240,3 +240,45 @@ class AuditTask006Tests(TestCase):
                 store=self.store,
                 after_snapshot={"api_key": "abcdef123456"},
             )
+
+        with self.assertRaises(ValueError):
+            create_audit_record(
+                action_code=AuditActionCode.OZON_API_CONNECTION_CHECKED,
+                entity_type="ConnectionBlock",
+                entity_id="1",
+                user=self.full_user,
+                store=self.store,
+                safe_message="Client-Id: 123456",
+            )
+
+        with self.assertRaises(ValueError):
+            create_audit_record(
+                action_code=AuditActionCode.OZON_API_CONNECTION_UPDATED,
+                entity_type="ConnectionBlock",
+                entity_id="1",
+                user=self.full_user,
+                store=self.store,
+                after_snapshot={"Client-Id": "123456"},
+            )
+
+        with self.assertRaises(ValueError):
+            create_audit_record(
+                action_code=AuditActionCode.OZON_API_CONNECTION_CHECKED,
+                entity_type="ConnectionBlock",
+                entity_id="1",
+                user=self.full_user,
+                store=self.store,
+                safe_message='{"client_id": "123456", "api_key": "ozon-api-key-abcdef"}',
+            )
+
+        with self.assertRaises(ValueError):
+            create_audit_record(
+                action_code=AuditActionCode.OZON_API_CONNECTION_UPDATED,
+                entity_type="ConnectionBlock",
+                entity_id="1",
+                user=self.full_user,
+                store=self.store,
+                after_snapshot={
+                    "payload": '{"Client-Id": "123456", "Api-Key": "ozon-api-key-abcdef"}',
+                },
+            )

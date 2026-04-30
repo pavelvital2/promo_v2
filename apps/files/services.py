@@ -62,6 +62,9 @@ def scenario_marketplace(scenario: str) -> str:
         FileObject.Scenario.WB_DISCOUNTS_API_DETAIL_REPORT: FileObject.Marketplace.WB,
         FileObject.Scenario.WB_DISCOUNTS_API_UPLOAD_REPORT: FileObject.Marketplace.WB,
         FileObject.Scenario.OZON_DISCOUNTS_EXCEL: FileObject.Marketplace.OZON,
+        FileObject.Scenario.OZON_API_ELASTIC_RESULT_REPORT: FileObject.Marketplace.OZON,
+        FileObject.Scenario.OZON_API_ELASTIC_MANUAL_UPLOAD_EXCEL: FileObject.Marketplace.OZON,
+        FileObject.Scenario.OZON_API_ELASTIC_UPLOAD_REPORT: FileObject.Marketplace.OZON,
     }
     try:
         return mapping[scenario]
@@ -215,6 +218,9 @@ def download_permission_code(file_object: FileObject) -> str:
         FileObject.Scenario.WB_DISCOUNTS_API_RESULT_EXCEL: "wb.api.discounts.result.download",
         FileObject.Scenario.WB_DISCOUNTS_API_DETAIL_REPORT: "wb.api.discounts.result.download",
         FileObject.Scenario.WB_DISCOUNTS_API_UPLOAD_REPORT: "wb.api.discounts.result.download",
+        FileObject.Scenario.OZON_API_ELASTIC_RESULT_REPORT: "ozon.api.elastic.files.download",
+        FileObject.Scenario.OZON_API_ELASTIC_MANUAL_UPLOAD_EXCEL: "ozon.api.elastic.files.download",
+        FileObject.Scenario.OZON_API_ELASTIC_UPLOAD_REPORT: "ozon.api.elastic.files.download",
     }
     if file_object.scenario in scenario_permissions:
         return scenario_permissions[file_object.scenario]

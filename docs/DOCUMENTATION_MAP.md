@@ -52,6 +52,8 @@
 | `docs/product/WB_API_PRICE_EXPORT_SPEC.md` | WB API скачивание цен Stage 2.1 |
 | `docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md` | WB API текущие акции Stage 2.1 |
 | `docs/product/OZON_DISCOUNTS_EXCEL_SPEC.md` | Ozon Excel сценарий скидок |
+| `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md` | Ozon API акция `Эластичный бустинг` Stage 2.2 |
+| `docs/product/OZON_API_ELASTIC_UI_SPEC.md` | UI workflow Ozon API `Эластичный бустинг` Stage 2.2 |
 | `docs/product/modules/README.md` | Модульная карта stage 1 |
 
 ## Stage 1
@@ -70,12 +72,18 @@
 | --- | --- |
 | `docs/stages/stage-2/STAGE_2_SCOPE.md` | Split Stage 2: 2.1 WB API, 2.2 Ozon API |
 | `docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md` | Scope 2.1.1-2.1.4 WB API |
+| `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md` | Scope Ozon API `Эластичный бустинг` Stage 2.2 |
 | `docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md` | Приёмочные сценарии Stage 2.1 |
-| `docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md` | Индекс TASK-011..TASK-017 |
+| `docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md` | Индекс TASK-011..TASK-017 and TASK-019..TASK-026 |
 | `docs/tasks/implementation/stage-2/TASK-011..TASK-017` | Task-scoped задачи Stage 2.1 |
+| `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md` | Design task Stage 2.2 |
+| `docs/tasks/implementation/stage-2/TASK-019..TASK-026` | Task-scoped задачи Stage 2.2 Ozon API |
 | `docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md` | Test protocol Stage 2.1 |
 | `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 2.1 |
 | `docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 2.1 |
+| `docs/testing/STAGE_2_2_OZON_TEST_PROTOCOL.md` | Test protocol Stage 2.2 |
+| `docs/testing/STAGE_2_2_OZON_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 2.2 |
+| `docs/traceability/STAGE_2_2_OZON_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 2.2 |
 
 ## Control Documents
 
@@ -83,7 +91,7 @@
 | --- | --- |
 | `docs/gaps/` | `docs/gaps/GAP_REGISTER.md` |
 | `docs/adr/` | `docs/adr/ADR_LOG.md` |
-| `docs/audit/` | `docs/audit/AUDIT_PROTOCOL.md`, `docs/audit/AUDIT_REPORT.md`, `docs/audit/AUDIT_REPORT_ROUND_2.md` |
+| `docs/audit/` | `docs/audit/AUDIT_PROTOCOL.md`, `docs/audit/AUDIT_REPORT.md`, `docs/audit/AUDIT_REPORT_ROUND_2.md`, `docs/audit/AUDIT_FIX_REPORT_STAGE_2_2_OZON_DOCUMENTATION.md` |
 | `docs/testing/` | `docs/testing/TEST_PROTOCOL.md`, `docs/testing/ACCEPTANCE_CHECKLISTS.md` |
 | `docs/operations/` | `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` |
 | `docs/traceability/` | `docs/traceability/TRACEABILITY_MATRIX.md` |

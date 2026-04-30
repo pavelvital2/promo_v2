@@ -179,3 +179,48 @@ Audit safe snapshots не содержат token, authorization headers, raw sec
 | `wb_api_secret_redaction_violation` | critical | защита обнаружила secret в safe контуре | operation nullable |
 
 Sensitive diagnostics доступны только через `sensitive_details_ref` и право `techlog.sensitive.view`, но сами secrets не сохраняются даже туда.
+
+## Stage 2.2 Ozon API audit actions
+
+Трассировка: `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`; ADR-0024, ADR-0027.
+
+`ozon_api_elastic_result_reviewed` is an audit action for calculation result state changes, not an `Operation.step_code`.
+
+| Action code | Когда создаётся | Entity | Связи |
+| --- | --- | --- | --- |
+| `ozon_api_connection_created` | создано Ozon API подключение или secret ref | ConnectionBlock | store, user |
+| `ozon_api_connection_updated` | изменены metadata/status/secret ref подключения | ConnectionBlock | store, user |
+| `ozon_api_connection_checked` | выполнена проверка подключения | ConnectionBlock | store, user |
+| `ozon_api_actions_download_started` | запущено скачивание actions | Operation | operation, store, user |
+| `ozon_api_actions_download_completed` | actions download завершён | Operation | operation, store |
+| `ozon_api_elastic_active_download_completed` | participating products download завершён | Operation | operation, store, action |
+| `ozon_api_elastic_candidates_download_completed` | candidates download завершён | Operation | operation, store, action |
+| `ozon_api_elastic_product_data_download_completed` | product info/stocks join завершён | Operation | operation, store, action |
+| `ozon_api_elastic_calculation_completed` | calculation завершён | Operation | operation, output file |
+| `ozon_api_elastic_result_reviewed` | пользователь принял или не принял результат | CalculationResult | operation, store, user |
+| `ozon_api_elastic_result_file_downloaded` | пользователь скачал result/manual/upload report | FileVersion | operation, file, user |
+| `ozon_api_elastic_upload_confirmed` | пользователь подтвердил add/update upload | Operation | calculation operation, upload operation, user |
+| `ozon_api_elastic_deactivate_group_confirmed` | пользователь одним действием подтвердил всю группу `deactivate_from_action` | CalculationResult | calculation operation, user, deactivate row count |
+| `ozon_api_elastic_upload_blocked_deactivate_unconfirmed` | upload не создан, потому что группа `deactivate_from_action` не подтверждена | CalculationResult | calculation operation, user, deactivate row count |
+| `ozon_api_elastic_upload_started` | upload отправлен или начал batch processing | Operation | operation, store, batches |
+| `ozon_api_elastic_upload_completed` | upload завершён без критического сбоя | Operation | operation, batches |
+| `ozon_api_elastic_upload_failed` | upload завершён ошибкой или прерван | Operation | operation, batches |
+
+Audit safe snapshots never contain Client-Id, Api-Key, authorization headers, raw secret values or raw sensitive API responses.
+
+## Stage 2.2 Ozon API techlog event types
+
+| Event type | Severity baseline | Когда создаётся | Связи |
+| --- | --- | --- | --- |
+| `ozon_api_auth_failed` | error | Ozon API returned auth/access failure | operation/store/connection |
+| `ozon_api_rate_limited` | warning | Ozon API returned 429 or rate limiter exhausted | operation/store |
+| `ozon_api_timeout` | warning | timeout external Ozon API | operation/store |
+| `ozon_api_response_invalid` | error | response schema invalid for expected endpoint | operation/store |
+| `ozon_api_actions_download_failed` | error | actions download failed | operation/store |
+| `ozon_api_elastic_product_data_download_failed` | error | product info/stocks join failed | operation/store/action |
+| `ozon_api_elastic_calculation_failed` | error | calculation failed | operation/store/action |
+| `ozon_api_elastic_upload_failed` | error | upload failed | operation/store/action |
+| `ozon_api_elastic_upload_partial_errors` | warning | partial row-level upload errors | operation/store/action |
+| `ozon_api_secret_redaction_violation` | critical | secret-like value detected in safe contour | operation nullable |
+
+Sensitive diagnostics follow common rules and never store Client-Id, Api-Key, authorization header, bearer/API key or secret-like values.

@@ -26,8 +26,8 @@
 - module;
 - mode;
 - store/account;
-- type: `check` или `process` только для check/process-сценариев; для Stage 2.1 API steps без check/process semantics поле nullable/blank/not_applicable по миграционному решению;
-- step_code: обязательный classifier для Stage 2.1 API steps and future non-check/process steps;
+- type: `check` или `process` только для check/process-сценариев; для Stage 2.1 WB API and Stage 2.2 Ozon API steps без check/process semantics поле nullable/blank/not_applicable по миграционному решению;
+- step_code: обязательный classifier для Stage 2.1 WB API, Stage 2.2 Ozon API and future non-check/process steps;
 - status;
 - initiator;
 - execution context;
@@ -136,7 +136,7 @@ Process:
 - visible_id;
 - marketplace/module/mode;
 - store/account;
-- classifier/status: `type` for check/process operations or `step_code` for Stage 2.1 API operations;
+- classifier/status: `type` for check/process operations or `step_code` for Stage 2.1 WB API / Stage 2.2 Ozon API operations;
 - initiator;
 - start/end time;
 - input files and versions;
@@ -201,3 +201,35 @@ Status mapping 2.1.4:
 - API failure after uploadID -> `completed_with_error` until status can be resolved.
 
 Повтор каждого Stage 2.1 step создаёт новую operation. UploadID хранится по каждому batch and operation remains immutable after completion.
+
+## Stage 2.2 Ozon API operations
+
+Трассировка: `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md`; `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`; ADR-0023, ADR-0025, ADR-0026, ADR-0027.
+
+Stage 2.2 adds `mode=api` for Ozon actions. Excel mode Stage 1 remains available.
+
+Ozon API operations use `Operation.step_code` as mandatory primary classifier. `Operation.type` is not `check/process` for these API steps and must be `NULL` / blank / `not_applicable` according to the migration decision.
+
+| Step code | Тип действия | Меняет Ozon |
+| --- | --- | --- |
+| `ozon_api_connection_check` | read-only connection check | нет |
+| `ozon_api_actions_download` | read-only actions download | нет |
+| `ozon_api_elastic_active_products_download` | read-only participating products download | нет |
+| `ozon_api_elastic_candidate_products_download` | read-only candidates download | нет |
+| `ozon_api_elastic_product_data_download` | read-only product info/stocks join | нет |
+| `ozon_api_elastic_calculation` | internal calculation + result files | нет |
+| `ozon_api_elastic_upload` | live Ozon actions activate/update/deactivate after confirmations per ADR-0033 | да |
+
+Result review is not a separate operation and has no `Operation.step_code`. It is an immutable review state on the calculation result with audit actions for `accepted`, `declined`, `stale` and `review_pending_deactivate_confirmation` transitions.
+
+`ozon_api_elastic_upload` is forbidden without:
+
+- successful accepted calculation;
+- active Ozon API connection;
+- if add/update rows exist, explicit add/update confirmation;
+- pre-upload drift-check;
+- if deactivate rows exist, one group confirmation for all `deactivate_from_action` rows.
+
+If deactivate group confirmation is absent, upload does not start and add/update must not proceed silently. The accepted result remains pending as `review_pending_deactivate_confirmation` / `ozon_api_upload_blocked_deactivate_unconfirmed`; no `not_uploaded_user_declined` terminal scenario is part of the Stage 2.2 target model.
+
+`ozon_api_elastic_upload` must not call `/v1/product/import/prices`; add/update/deactivate request mapping follows the current official Ozon actions schema and preserves row-level reporting.

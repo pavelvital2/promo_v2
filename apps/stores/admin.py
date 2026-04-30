@@ -5,6 +5,7 @@ from .services import (
     CONNECTION_HISTORY_FIELDS,
     STORE_CHANGE_FIELDS,
     _connection_field_value,
+    _validate_connection_marketplace_compatibility,
     _store_field_value,
     record_store_change,
 )
@@ -86,6 +87,11 @@ class ConnectionBlockAdmin(admin.ModelAdmin):
         return bool(obj.protected_secret_ref)
 
     def save_model(self, request, obj, form, change):
+        _validate_connection_marketplace_compatibility(
+            store=obj.store,
+            module=obj.module,
+            connection_type=obj.connection_type,
+        )
         old_values = {}
         if change:
             previous = ConnectionBlock.objects.get(pk=obj.pk)

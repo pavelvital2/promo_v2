@@ -104,6 +104,34 @@ class TechLogEventType(models.TextChoices):
         "wb_api_secret_redaction_violation",
         "WB API secret redaction violation",
     )
+    OZON_API_AUTH_FAILED = "ozon_api_auth_failed", "Ozon API auth failed"
+    OZON_API_RATE_LIMITED = "ozon_api_rate_limited", "Ozon API rate limited"
+    OZON_API_TIMEOUT = "ozon_api_timeout", "Ozon API timeout"
+    OZON_API_RESPONSE_INVALID = "ozon_api_response_invalid", "Ozon API response invalid"
+    OZON_API_ACTIONS_DOWNLOAD_FAILED = (
+        "ozon_api_actions_download_failed",
+        "Ozon API actions download failed",
+    )
+    OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD_FAILED = (
+        "ozon_api_elastic_product_data_download_failed",
+        "Ozon API Elastic product data download failed",
+    )
+    OZON_API_ELASTIC_CALCULATION_FAILED = (
+        "ozon_api_elastic_calculation_failed",
+        "Ozon API Elastic calculation failed",
+    )
+    OZON_API_ELASTIC_UPLOAD_FAILED = (
+        "ozon_api_elastic_upload_failed",
+        "Ozon API Elastic upload failed",
+    )
+    OZON_API_ELASTIC_UPLOAD_PARTIAL_ERRORS = (
+        "ozon_api_elastic_upload_partial_errors",
+        "Ozon API Elastic upload partial errors",
+    )
+    OZON_API_SECRET_REDACTION_VIOLATION = (
+        "ozon_api_secret_redaction_violation",
+        "Ozon API secret redaction violation",
+    )
 
 
 TECHLOG_EVENT_SEVERITY_BASELINE = {
@@ -131,6 +159,16 @@ TECHLOG_EVENT_SEVERITY_BASELINE = {
     TechLogEventType.WB_API_UPLOAD_PARTIAL_ERRORS: TechLogSeverity.WARNING,
     TechLogEventType.WB_API_QUARANTINE_DETECTED: TechLogSeverity.WARNING,
     TechLogEventType.WB_API_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
+    TechLogEventType.OZON_API_AUTH_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.OZON_API_RATE_LIMITED: TechLogSeverity.WARNING,
+    TechLogEventType.OZON_API_TIMEOUT: TechLogSeverity.WARNING,
+    TechLogEventType.OZON_API_RESPONSE_INVALID: TechLogSeverity.ERROR,
+    TechLogEventType.OZON_API_ACTIONS_DOWNLOAD_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.OZON_API_ELASTIC_CALCULATION_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.OZON_API_ELASTIC_UPLOAD_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.OZON_API_ELASTIC_UPLOAD_PARTIAL_ERRORS: TechLogSeverity.WARNING,
+    TechLogEventType.OZON_API_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
 }
 
 

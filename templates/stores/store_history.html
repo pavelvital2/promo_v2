@@ -4,7 +4,7 @@
 <h1>История: {{ store.visible_id }} {{ store.name }}</h1>
 <section class="panel">
   <table><thead><tr><th>Время</th><th>User</th><th>Field</th><th>Old</th><th>New</th><th>Source</th></tr></thead><tbody>
-    {% for item in page.object_list %}<tr><td>{{ item.changed_at }}</td><td>{{ item.changed_by }}</td><td>{{ item.field_code }}</td><td>{{ item.old_value }}</td><td>{{ item.new_value }}</td><td>{{ item.source }}</td></tr>{% empty %}<tr><td colspan="6" class="empty">История пуста.</td></tr>{% endfor %}
+    {% for item in page.object_list %}<tr><td>{{ item.changed_at }}</td><td>{{ item.changed_by }}</td><td>{{ item.field_code }}</td><td>{{ item.old_value_display }}</td><td>{{ item.new_value_display }}</td><td>{{ item.source }}</td></tr>{% empty %}<tr><td colspan="6" class="empty">История пуста.</td></tr>{% endfor %}
   </tbody></table>
   {% include "web/_pagination.html" %}
 </section>

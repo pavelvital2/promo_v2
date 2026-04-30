@@ -1,6 +1,6 @@
 # STAGE_2_1_WB_SCOPE.md
 
-Трассировка: `tz_stage_2.1.txt` §2-§17; ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020.
+Трассировка: `tz_stage_2.1.txt` §2-§17; ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021.
 
 ## Назначение
 
@@ -61,6 +61,19 @@ startDateTime <= now_utc < endDateTime
 8. Сформировать отдельный Excel promo file на каждую regular current promotion.
 
 Zip/package всех promo файлов не входит в обязательный Stage 2.1 scope и может быть добавлен отдельным enhancement после acceptance базового flow.
+
+### WB auto promotions product-source decision
+
+По ADR-0021 WB API не является источником состава товаров auto promotions. `calendar/promotions` и `calendar/promotions/details` могут подтвердить саму auto promotion, её dates/counts/details, но не дают расчётный список `nmID`.
+
+Для будущего расчёта WB auto promotions требуется отдельный внешний product-source artifact: Excel/export из личного кабинета WB или другой утверждённый заказчиком источник. После загрузки такого artifact WB API можно использовать для обогащения строк карточками, ценами, остатками, заказами/продажами и проверками актуальности, но не для восстановления отсутствующего состава auto-акции.
+
+Запрещено использовать как замену состава auto promotion:
+
+- все карточки магазина;
+- товары regular promotions;
+- пустые promo files;
+- синтетические строки, собранные из summary/count fields.
 
 ## 2.1.3 Расчёт скидок
 
@@ -133,6 +146,7 @@ Quarantine errors отображаются отдельно и не скрыва
 
 - size price conflict: строка блокируется для upload до отдельного правила;
 - auto promotions without nomenclatures: акция сохраняется без выдуманных строк товаров;
+- WB auto promotions calculation source: требуется внешний product-source artifact, WB API не восстанавливает состав auto-акции;
 - promo files: отдельный Excel по акции, zip optional enhancement;
 - partial errors: `completed_with_warnings`;
 - price drift: блокер upload.

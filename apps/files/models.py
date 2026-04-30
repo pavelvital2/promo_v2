@@ -102,6 +102,18 @@ class FileObject(models.Model):
             "wb_discounts_api_upload_report",
             "WB discounts API upload report",
         )
+        OZON_API_ELASTIC_RESULT_REPORT = (
+            "ozon_api_elastic_result_report",
+            "Ozon API Elastic result report",
+        )
+        OZON_API_ELASTIC_MANUAL_UPLOAD_EXCEL = (
+            "ozon_api_elastic_manual_upload_excel",
+            "Ozon API Elastic manual upload Excel",
+        )
+        OZON_API_ELASTIC_UPLOAD_REPORT = (
+            "ozon_api_elastic_upload_report",
+            "Ozon API Elastic upload report",
+        )
 
     class Marketplace(models.TextChoices):
         WB = "wb", "WB"
@@ -144,6 +156,7 @@ class FileObject(models.Model):
                     models.Q(scenario="wb_discounts_excel", marketplace="wb")
                     | models.Q(scenario__startswith="wb_discounts_api_", marketplace="wb")
                     | models.Q(scenario="ozon_discounts_excel", marketplace="ozon")
+                    | models.Q(scenario__startswith="ozon_api_elastic_", marketplace="ozon")
                 ),
                 name="file_object_scenario_marketplace_match",
             ),
@@ -162,6 +175,9 @@ class FileObject(models.Model):
             self.Scenario.WB_DISCOUNTS_API_DETAIL_REPORT: self.Marketplace.WB,
             self.Scenario.WB_DISCOUNTS_API_UPLOAD_REPORT: self.Marketplace.WB,
             self.Scenario.OZON_DISCOUNTS_EXCEL: self.Marketplace.OZON,
+            self.Scenario.OZON_API_ELASTIC_RESULT_REPORT: self.Marketplace.OZON,
+            self.Scenario.OZON_API_ELASTIC_MANUAL_UPLOAD_EXCEL: self.Marketplace.OZON,
+            self.Scenario.OZON_API_ELASTIC_UPLOAD_REPORT: self.Marketplace.OZON,
         }.get(self.scenario)
         if expected_marketplace and self.marketplace != expected_marketplace:
             raise ValidationError("File scenario and marketplace must match.")

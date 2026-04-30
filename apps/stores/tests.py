@@ -1,6 +1,8 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models.deletion import ProtectedError
 from django.test import TestCase
@@ -13,8 +15,28 @@ from apps.identity_access.seeds import (
     ROLE_OBSERVER,
     seed_identity_access,
 )
+from apps.operations.models import (
+    LaunchMethod,
+    Marketplace,
+    Operation,
+    OperationMode,
+    OperationModule,
+    OperationStepCode,
+    OperationType,
+    ProcessStatus,
+    Run,
+    RunStatus,
+)
 from apps.audit.models import AuditActionCode, AuditRecord
 from apps.techlog.models import TechLogEventType, TechLogRecord
+from apps.stores.admin import ConnectionBlockAdmin
+from apps.discounts.ozon_api.client import (
+    OzonApiAuthError,
+    OzonApiCredentials,
+    OzonApiInvalidResponseError,
+    OzonApiRateLimitError,
+    OzonApiTemporaryError,
+)
 from apps.discounts.wb_api.client import (
     WBApiAuthError,
     WBApiInvalidResponseError,
@@ -25,10 +47,14 @@ from apps.discounts.wb_api.client import (
 from .models import BusinessGroup, ConnectionBlock, StoreAccount, StoreAccountChangeHistory
 from .services import (
     API_STAGE_2_NOTICE,
+    OZON_API_CONNECTION_TYPE,
+    OZON_API_MODULE,
     WB_API_CONNECTION_TYPE,
     WB_API_MODULE,
+    check_ozon_api_connection,
     check_wb_api_connection,
     connection_metadata_display,
+    default_ozon_secret_resolver,
     default_secret_resolver,
     save_connection_block,
     update_store_account,
@@ -37,6 +63,8 @@ from .services import (
 
 
 SENTINEL_TOKEN = "Bearer abcdefghijklmnopqrstuvwxyz1234567890"
+SENTINEL_OZON_CLIENT_ID = "123456"
+SENTINEL_OZON_API_KEY = "ozon-api-key-abcdefghijklmnopqrstuvwxyz"
 
 
 class FakeWBApiClient:
@@ -52,6 +80,21 @@ class FakeWBApiClient:
         if type(self).error:
             raise type(self).error(type(self).error.safe_message)
         return {"data": {"listGoods": []}}
+
+
+class FakeOzonApiClient:
+    error = None
+    credentials_seen = None
+    store_scope_seen = None
+
+    def __init__(self, *, credentials, store_scope, **kwargs):
+        type(self).credentials_seen = credentials
+        type(self).store_scope_seen = store_scope
+
+    def check_connection(self):
+        if type(self).error:
+            raise type(self).error(type(self).error.safe_message)
+        return {"result": []}
 
 
 class StoreTask003Tests(TestCase):
@@ -240,10 +283,14 @@ class StoreTask003Tests(TestCase):
                     {
                         "owner": "integration-team",
                         "apiToken": "nested-secret-value",
+                        "Client-Id": "123456",
                         "config": {"password": "nested-password-value"},
                     },
                 ],
-                "public": {"label": "safe label"},
+                "public": {
+                    "label": "safe label",
+                    "note": "Bearer abcdefghijklmnopqrstuvwxyz1234567890",
+                },
             },
         )
 
@@ -251,6 +298,26 @@ class StoreTask003Tests(TestCase):
         self.assertIn("safe label", display)
         self.assertNotIn("nested-secret-value", display)
         self.assertNotIn("nested-password-value", display)
+        self.assertNotIn("Client-Id", display)
+        self.assertNotIn("123456", display)
+        self.assertNotIn("abcdefghijklmnopqrstuvwxyz", display)
+
+    def test_connection_metadata_display_redacts_scalar_json_secret_payloads(self):
+        display = connection_metadata_display(
+            {
+                "owner": "integration-team",
+                "payload": '{"client_id": "123456", "api_key": "ozon-api-key-abcdef"}',
+                "jsonish": '"Client-Id": "123456", "Api-Key": "ozon-api-key-abcdef"',
+            },
+        )
+
+        self.assertIn("integration-team", display)
+        self.assertIn("[redacted]", display)
+        self.assertNotIn("client_id", display)
+        self.assertNotIn("Client-Id", display)
+        self.assertNotIn("Api-Key", display)
+        self.assertNotIn("123456", display)
+        self.assertNotIn("ozon-api-key", display)
 
     def test_connection_secret_ref_requires_secret_edit_permission(self):
         connection = ConnectionBlock(
@@ -390,6 +457,31 @@ class StoreTask003Tests(TestCase):
         self.assertContains(response, "integration-team")
         self.assertNotContains(response, "legacy-nested-secret")
 
+    def test_history_display_redacts_legacy_secret_like_metadata_values(self):
+        StoreAccountChangeHistory.objects.create(
+            store=self.wb_store,
+            field_code="connection.metadata",
+            old_value='{"public": "{\\"Client-Id\\": \\"123456\\"}"}',
+            new_value=(
+                '{"public": "{\\"client_id\\": \\"123456\\", '
+                '\\"Api-Key\\": \\"ozon-api-key-abcdef\\"}"}'
+            ),
+            source="bulk",
+        )
+
+        self.client.force_login(self.global_admin)
+        response = self.client.get(
+            reverse("stores:store_history", args=[self.wb_store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+
+        self.assertContains(response, "[redacted]")
+        self.assertNotContains(response, "Client-Id")
+        self.assertNotContains(response, "client_id")
+        self.assertNotContains(response, "Api-Key")
+        self.assertNotContains(response, "123456")
+        self.assertNotContains(response, "ozon-api-key")
+
 
 class StoreTask011WBApiConnectionTests(TestCase):
     @classmethod
@@ -443,6 +535,9 @@ class StoreTask011WBApiConnectionTests(TestCase):
         FakeWBApiClient.error = None
         FakeWBApiClient.token_seen = None
         FakeWBApiClient.store_scope_seen = None
+        FakeOzonApiClient.error = None
+        FakeOzonApiClient.credentials_seen = None
+        FakeOzonApiClient.store_scope_seen = None
 
     def _create_connection(self):
         return save_connection_block(
@@ -483,7 +578,17 @@ class StoreTask011WBApiConnectionTests(TestCase):
     def test_metadata_rejects_secret_like_keys_and_values(self):
         secret_cases = (
             {"authorization": "safe-looking"},
+            {"client_id": "123456"},
+            {"client-id": "123456"},
+            {"Client-Id": "123456"},
             {"public_note": SENTINEL_TOKEN},
+            {"public_note": "Client-Id: 123456"},
+            {
+                "public_note": (
+                    '{"client_id": "123456", "api_key": "ozon-api-key-abcdef"}'
+                ),
+            },
+            {"public_note": '"Client-Id": "123456", "Api-Key": "ozon-api-key-abcdef"'},
             {"nested": [{"label": "token=abcdef123456"}]},
         )
         for index, metadata in enumerate(secret_cases):
@@ -710,6 +815,257 @@ class StoreTask011WBApiConnectionTests(TestCase):
                 metadata={},
             )
 
+    def _create_ozon_connection(self):
+        return save_connection_block(
+            self.global_admin,
+            ConnectionBlock(store=self.ozon_store),
+            module=OZON_API_MODULE,
+            connection_type=OZON_API_CONNECTION_TYPE,
+            protected_secret_ref="vault://ozon-api/store-001",
+            metadata={"label": "actions check"},
+        )
+
+    def _resolve_ozon_secret(self, protected_secret_ref):
+        self.assertEqual(protected_secret_ref, "vault://ozon-api/store-001")
+        return OzonApiCredentials(
+            client_id=SENTINEL_OZON_CLIENT_ID,
+            api_key=SENTINEL_OZON_API_KEY,
+        )
+
+    def test_ozon_api_connection_save_check_and_redaction(self):
+        connection = self._create_ozon_connection()
+
+        self.assertEqual(connection.status, ConnectionBlock.Status.CONFIGURED)
+        self.assertEqual(connection.module, OZON_API_MODULE)
+        self.assertEqual(connection.connection_type, OZON_API_CONNECTION_TYPE)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.OZON_API_CONNECTION_CREATED,
+                entity_type="ConnectionBlock",
+                entity_id=str(connection.pk),
+                store=self.ozon_store,
+            ).exists(),
+        )
+
+        result = check_ozon_api_connection(
+            self.global_admin,
+            connection,
+            client_factory=FakeOzonApiClient,
+            secret_resolver=self._resolve_ozon_secret,
+        )
+
+        self.assertEqual(result.status, ConnectionBlock.Status.ACTIVE)
+        self.assertEqual(result.last_check_status, "success")
+        self.assertEqual(FakeOzonApiClient.credentials_seen.client_id, SENTINEL_OZON_CLIENT_ID)
+        self.assertEqual(FakeOzonApiClient.credentials_seen.api_key, SENTINEL_OZON_API_KEY)
+        self.assertEqual(FakeOzonApiClient.store_scope_seen, self.ozon_store.visible_id)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.OZON_API_CONNECTION_CHECKED,
+                entity_id=str(connection.pk),
+                operation__marketplace=Marketplace.OZON,
+                operation__mode=OperationMode.API,
+                operation__module=OperationModule.OZON_API,
+                operation__operation_type=OperationType.NOT_APPLICABLE,
+                operation__step_code=OperationStepCode.OZON_API_CONNECTION_CHECK,
+                operation__status=ProcessStatus.COMPLETED_SUCCESS,
+            ).exists(),
+        )
+        operation = Operation.objects.get(
+            marketplace=Marketplace.OZON,
+            mode=OperationMode.API,
+            module=OperationModule.OZON_API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_CONNECTION_CHECK,
+            store=self.ozon_store,
+        )
+        self.assertEqual(operation.summary["last_check_status"], "success")
+        all_db_text = " ".join(
+            [
+                str(ConnectionBlock.objects.values_list("protected_secret_ref", "metadata")),
+                str(AuditRecord.objects.values_list("safe_message", "before_snapshot", "after_snapshot")),
+                str(TechLogRecord.objects.values_list("safe_message", "sensitive_details_ref")),
+            ],
+        )
+        self.assertNotIn(SENTINEL_OZON_CLIENT_ID, all_db_text)
+        self.assertNotIn(SENTINEL_OZON_API_KEY, all_db_text)
+        self.assertIn("vault://ozon-api/store-001", all_db_text)
+
+    def test_ozon_default_secret_resolver_reads_single_protected_env_ref(self):
+        env_ref = "env://PROMO_V2_TASK019_OZON_SECRET"
+        payload = (
+            '{"client_id": "'
+            + SENTINEL_OZON_CLIENT_ID
+            + '", "api_key": "'
+            + SENTINEL_OZON_API_KEY
+            + '"}'
+        )
+
+        with patch.dict(os.environ, {"PROMO_V2_TASK019_OZON_SECRET": payload}, clear=False):
+            credentials = default_ozon_secret_resolver(env_ref)
+
+        self.assertEqual(credentials.client_id, SENTINEL_OZON_CLIENT_ID)
+        self.assertEqual(credentials.api_key, SENTINEL_OZON_API_KEY)
+
+        for ref in ("vault://ozon/store-001", "env://invalid-name", "env://PROMO_V2_MISSING_SECRET"):
+            with self.subTest(ref=ref), self.assertRaises(OzonApiInvalidResponseError):
+                default_ozon_secret_resolver(ref)
+
+    def test_ozon_connection_check_failure_mapping_and_safe_techlog(self):
+        connection = self._create_ozon_connection()
+        cases = (
+            (OzonApiAuthError, "auth_failed", TechLogEventType.OZON_API_AUTH_FAILED),
+            (OzonApiRateLimitError, "rate_limited", TechLogEventType.OZON_API_RATE_LIMITED),
+            (OzonApiTemporaryError, "temporary", TechLogEventType.OZON_API_TIMEOUT),
+            (OzonApiInvalidResponseError, "invalid_response", TechLogEventType.OZON_API_RESPONSE_INVALID),
+        )
+        for error_class, check_status, event_type in cases:
+            FakeOzonApiClient.error = error_class
+
+            result = check_ozon_api_connection(
+                self.global_admin,
+                connection,
+                client_factory=FakeOzonApiClient,
+                secret_resolver=self._resolve_ozon_secret,
+            )
+
+            self.assertEqual(result.status, ConnectionBlock.Status.CHECK_FAILED)
+            self.assertEqual(result.last_check_status, check_status)
+            operation = Operation.objects.filter(
+                marketplace=Marketplace.OZON,
+                mode=OperationMode.API,
+                module=OperationModule.OZON_API,
+                operation_type=OperationType.NOT_APPLICABLE,
+                step_code=OperationStepCode.OZON_API_CONNECTION_CHECK,
+                store=self.ozon_store,
+            ).latest("id")
+            self.assertEqual(operation.status, ProcessStatus.COMPLETED_WITH_ERROR)
+            self.assertEqual(operation.error_count, 1)
+            self.assertTrue(
+                TechLogRecord.objects.filter(
+                    event_type=event_type,
+                    entity_type="ConnectionBlock",
+                    entity_id=str(connection.pk),
+                    operation=operation,
+                ).exists(),
+            )
+            persisted = str(
+                TechLogRecord.objects.values_list("safe_message", "sensitive_details_ref"),
+            )
+            self.assertNotIn(SENTINEL_OZON_CLIENT_ID, persisted)
+            self.assertNotIn(SENTINEL_OZON_API_KEY, persisted)
+
+    def test_ozon_connection_check_without_secret_still_completes_operation(self):
+        connection = save_connection_block(
+            self.global_admin,
+            ConnectionBlock(store=self.ozon_store),
+            module=OZON_API_MODULE,
+            connection_type=OZON_API_CONNECTION_TYPE,
+            metadata={"label": "missing secret"},
+        )
+
+        result = check_ozon_api_connection(self.global_admin, connection)
+
+        self.assertEqual(result.status, ConnectionBlock.Status.NOT_CONFIGURED)
+        operation = Operation.objects.get(
+            marketplace=Marketplace.OZON,
+            mode=OperationMode.API,
+            module=OperationModule.OZON_API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_CONNECTION_CHECK,
+            store=self.ozon_store,
+        )
+        self.assertEqual(operation.status, ProcessStatus.COMPLETED_WITH_ERROR)
+        self.assertEqual(operation.summary["last_check_status"], "not_configured")
+        self.assertTrue(AuditRecord.objects.filter(operation=operation).exists())
+
+    def test_ozon_connection_view_manage_and_object_access_are_enforced(self):
+        connection = self._create_ozon_connection()
+
+        self.client.force_login(self.manager)
+        response = self.client.get(
+            reverse("stores:store_card", args=[self.ozon_store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.global_admin)
+        response = self.client.get(
+            reverse("stores:store_card", args=[self.ozon_store.visible_id]),
+            HTTP_HOST="localhost",
+        )
+        self.assertContains(response, "[ref-set]")
+        self.assertNotContains(response, "vault://ozon-api/store-001")
+
+        response = self.client.get(
+            reverse("stores:connection_edit", args=[self.ozon_store.visible_id, connection.pk]),
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "vault://ozon-api/store-001")
+
+    def test_ozon_api_operation_classifier_accepts_connection_check_and_actions_download(self):
+        run = Run.objects.create(
+            marketplace=Marketplace.OZON,
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=self.ozon_store,
+            initiated_by=self.global_admin,
+            status=RunStatus.CREATED,
+            launch_method=LaunchMethod.MANUAL,
+        )
+
+        operation = Operation.objects.create(
+            marketplace=Marketplace.OZON,
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_CONNECTION_CHECK,
+            status=ProcessStatus.CREATED,
+            run=run,
+            store=self.ozon_store,
+            initiator_user=self.global_admin,
+            launch_method=LaunchMethod.MANUAL,
+            logic_version="task-019",
+        )
+
+        self.assertEqual(operation.marketplace, Marketplace.OZON)
+        self.assertEqual(operation.mode, OperationMode.API)
+        self.assertEqual(operation.step_code, OperationStepCode.OZON_API_CONNECTION_CHECK)
+        self.assertEqual(operation.operation_type, OperationType.NOT_APPLICABLE)
+
+        operation = Operation.objects.create(
+            marketplace=Marketplace.OZON,
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ACTIONS_DOWNLOAD,
+            status=ProcessStatus.CREATED,
+            run=run,
+            store=self.ozon_store,
+            initiator_user=self.global_admin,
+            launch_method=LaunchMethod.MANUAL,
+            logic_version="task-020",
+        )
+
+        self.assertEqual(operation.step_code, OperationStepCode.OZON_API_ACTIONS_DOWNLOAD)
+        self.assertEqual(operation.operation_type, OperationType.NOT_APPLICABLE)
+
+        with self.assertRaises(ValidationError):
+            Operation(
+                marketplace=Marketplace.OZON,
+                module=OperationModule.OZON_API,
+                mode=OperationMode.API,
+                operation_type=OperationType.CHECK,
+                step_code=OperationStepCode.OZON_API_CONNECTION_CHECK,
+                status=ProcessStatus.CREATED,
+                run=run,
+                store=self.ozon_store,
+                initiator_user=self.global_admin,
+                launch_method=LaunchMethod.MANUAL,
+                logic_version="task-019",
+            ).full_clean()
+
     def test_wb_api_connection_ui_and_service_are_denied_for_ozon_store(self):
         self.client.force_login(self.global_admin)
 
@@ -717,15 +1073,7 @@ class StoreTask011WBApiConnectionTests(TestCase):
             reverse("stores:store_card", args=[self.ozon_store.visible_id]),
             HTTP_HOST="localhost",
         )
-        self.assertNotContains(card_response, "Add connection block")
-        self.assertNotContains(card_response, "Добавить connection block")
-        self.assertNotContains(card_response, "Connection blocks")
-
-        create_response = self.client.get(
-            reverse("stores:connection_create", args=[self.ozon_store.visible_id]),
-            HTTP_HOST="localhost",
-        )
-        self.assertEqual(create_response.status_code, 403)
+        self.assertContains(card_response, "Connection blocks")
 
         with self.assertRaises(PermissionDenied):
             save_connection_block(
@@ -737,13 +1085,48 @@ class StoreTask011WBApiConnectionTests(TestCase):
                 metadata={},
             )
 
+        with self.assertRaises(ValidationError):
+            ConnectionBlock.objects.create(
+                store=self.ozon_store,
+                module=WB_API_MODULE,
+                connection_type=WB_API_CONNECTION_TYPE,
+                protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
+                metadata={},
+            )
+        with self.assertRaises(ValidationError):
+            ConnectionBlock.objects.create(
+                store=self.store,
+                module=OZON_API_MODULE,
+                connection_type=OZON_API_CONNECTION_TYPE,
+                protected_secret_ref="env://PROMO_V2_TASK019_OZON_SECRET",
+                metadata={},
+            )
+        with self.assertRaises(PermissionDenied):
+            ConnectionBlockAdmin(ConnectionBlock, AdminSite()).save_model(
+                SimpleNamespace(user=self.global_admin),
+                ConnectionBlock(
+                    store=self.ozon_store,
+                    module=WB_API_MODULE,
+                    connection_type=WB_API_CONNECTION_TYPE,
+                    protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
+                    metadata={},
+                ),
+                None,
+                False,
+            )
+
         legacy_connection = ConnectionBlock.objects.create(
             store=self.ozon_store,
-            module=WB_API_MODULE,
-            connection_type=WB_API_CONNECTION_TYPE,
+            module="future_api_legacy",
+            connection_type="protected_reference",
             protected_secret_ref="env://PROMO_V2_TASK011_WB_SECRET",
             metadata={},
         )
+        ConnectionBlock.objects.filter(pk=legacy_connection.pk).update(
+            module=WB_API_MODULE,
+            connection_type=WB_API_CONNECTION_TYPE,
+        )
+        legacy_connection.refresh_from_db()
         edit_response = self.client.get(
             reverse("stores:connection_edit", args=[self.ozon_store.visible_id, legacy_connection.pk]),
             HTTP_HOST="localhost",

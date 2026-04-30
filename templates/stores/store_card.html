@@ -7,6 +7,7 @@
   {% if can_edit %}<a class="button" href="{% url 'stores:store_edit' store.visible_id %}">Изменить</a>{% endif %}
   {% if can_view_history %}<a class="button" href="{% url 'stores:store_history' store.visible_id %}">История</a>{% endif %}
   {% if can_open_wb_api %}<a class="button" href="{% url 'web:wb_api' %}?store={{ store.pk }}">WB API</a>{% endif %}
+  {% if can_open_ozon_elastic %}<a class="button" href="{% url 'web:ozon_elastic' %}?store={{ store.pk }}">Ozon Elastic API</a>{% endif %}
 </div>
 <section class="panel">
   <div class="kv">
@@ -17,7 +18,7 @@
     <strong>Комментарий</strong><span>{{ store.comments }}</span>
   </div>
 </section>
-{% if is_wb_store %}
+{% if is_wb_store or is_ozon_store %}
   <section class="panel" style="margin-top:16px">
     <h2>Connection blocks</h2>
     <p class="status">{{ api_stage_2_notice }}</p>

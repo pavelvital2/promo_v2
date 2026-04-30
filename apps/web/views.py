@@ -16,6 +16,12 @@ from django.utils.dateparse import parse_date
 
 from apps.audit.models import AuditActionCode, AuditRecord, AuditSourceContext
 from apps.audit.services import audit_records_visible_to, create_audit_record
+from apps.discounts.ozon_api import actions as ozon_api_actions
+from apps.discounts.ozon_api import calculation as ozon_api_calculation
+from apps.discounts.ozon_api import product_data as ozon_api_product_data
+from apps.discounts.ozon_api import products as ozon_api_products
+from apps.discounts.ozon_api import review as ozon_api_review
+from apps.discounts.ozon_api import upload as ozon_api_upload
 from apps.discounts.ozon_excel import services as ozon_services
 from apps.discounts.wb_api.client import WBApiError
 from apps.discounts.wb_api.calculation import services as wb_api_calculation_services
@@ -71,6 +77,8 @@ from apps.platform_settings.services import effective_parameter_rows, save_wb_st
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import (
     API_STAGE_2_NOTICE,
+    OZON_API_CONNECTION_TYPE,
+    OZON_API_MODULE,
     WB_API_CONNECTION_TYPE,
     WB_API_MODULE,
     connection_metadata_display,
@@ -94,7 +102,12 @@ NAV_ITEMS = (
     NavItem(
         "Маркетплейсы",
         "web:marketplaces",
-        ("wb_discounts_excel.view", "wb_discounts_api.view", "ozon_discounts_excel.view"),
+        (
+            "wb_discounts_excel.view",
+            "wb_discounts_api.view",
+            "ozon_discounts_excel.view",
+            "ozon_api.view",
+        ),
     ),
     NavItem("Операции", "web:operation_list", ("operations.view",)),
     NavItem("Справочники", "web:reference_index", ("stores.view", "products.view")),
@@ -144,6 +157,31 @@ WB_API_STEP_LABELS = {
     OperationStepCode.WB_API_DISCOUNT_UPLOAD: "2.1.4 Загрузить по API",
 }
 WB_API_STEPS = tuple(WB_API_STEP_LABELS)
+OZON_API_ACTION_PERMISSION_CODES = (
+    "ozon.api.operation.view",
+    "ozon.api.connection.view",
+    "ozon.api.connection.manage",
+    "ozon.api.actions.view",
+    "ozon.api.actions.download",
+    "ozon.api.elastic.active_products.download",
+    "ozon.api.elastic.candidates.download",
+    "ozon.api.elastic.product_data.download",
+    "ozon.api.elastic.calculate",
+    "ozon.api.elastic.review",
+    "ozon.api.elastic.files.download",
+    "ozon.api.elastic.upload",
+    "ozon.api.elastic.upload.confirm",
+    "ozon.api.elastic.deactivate.confirm",
+)
+OZON_API_STEP_LABELS = {
+    OperationStepCode.OZON_API_ACTIONS_DOWNLOAD: "Скачать доступные акции",
+    OperationStepCode.OZON_API_ELASTIC_ACTIVE_PRODUCTS_DOWNLOAD: "Скачать товары участвующие в акции",
+    OperationStepCode.OZON_API_ELASTIC_CANDIDATE_PRODUCTS_DOWNLOAD: "Скачать товары кандидаты в акцию",
+    OperationStepCode.OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD: "Скачать данные по полученным товарам",
+    OperationStepCode.OZON_API_ELASTIC_CALCULATION: "Обработать",
+    OperationStepCode.OZON_API_ELASTIC_UPLOAD: "Загрузить в Ozon",
+}
+OZON_API_STEPS = tuple(OZON_API_STEP_LABELS)
 
 
 def _common_context(request: HttpRequest, *, section: str = "") -> dict:
@@ -384,12 +422,16 @@ def _summary_items(value) -> list[tuple[str, object]]:
 def _operation_classifier(operation: Operation) -> str:
     if operation.marketplace == "wb" and operation.mode == OperationMode.API:
         return operation.step_code or OperationType.NOT_APPLICABLE
+    if operation.marketplace == "ozon" and operation.mode == OperationMode.API:
+        return operation.step_code or OperationType.NOT_APPLICABLE
     return operation.operation_type
 
 
 def _operation_classifier_label(operation: Operation) -> str:
     if operation.marketplace == "wb" and operation.mode == OperationMode.API:
         return WB_API_STEP_LABELS.get(operation.step_code, operation.step_code or "api")
+    if operation.marketplace == "ozon" and operation.mode == OperationMode.API:
+        return OZON_API_STEP_LABELS.get(operation.step_code, operation.step_code or "api")
     return operation.operation_type
 
 
@@ -406,6 +448,12 @@ def _can_view_operation(user, operation: Operation) -> bool:
             operation.module == OperationModule.WB_API
             and operation.step_code in WB_API_STEPS
             and has_permission(user, "wb.api.operation.view", operation.store)
+        )
+    if operation.marketplace == "ozon" and operation.mode == OperationMode.API:
+        return (
+            operation.module == OperationModule.OZON_API
+            and operation.step_code in OZON_API_STEPS
+            and has_permission(user, "ozon.api.operation.view", operation.store)
         )
     permission_map = (
         SCENARIO_CHECK_RESULT_PERMISSION
@@ -457,6 +505,40 @@ def _successful_wb_api_calculations(store: StoreAccount):
     )
 
 
+def _successful_ozon_api_operations(store: StoreAccount, step_code: str):
+    return (
+        Operation.objects.filter(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=step_code,
+            store=store,
+            status__in=[ProcessStatus.COMPLETED_SUCCESS, ProcessStatus.COMPLETED_WITH_WARNINGS],
+        )
+        .order_by("-finished_at", "-id")
+    )
+
+
+def _ozon_api_calculations(store: StoreAccount):
+    return (
+        Operation.objects.filter(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            store=store,
+            status__in=[
+                ProcessStatus.COMPLETED_SUCCESS,
+                ProcessStatus.COMPLETED_WITH_WARNINGS,
+                ProcessStatus.COMPLETED_WITH_ERROR,
+            ],
+        )
+        .order_by("-finished_at", "-id")
+    )
+
+
 def _wb_api_stores(user):
     stores = visible_stores_queryset(user).filter(marketplace=StoreAccount.Marketplace.WB)
     allowed_ids = [
@@ -468,9 +550,28 @@ def _wb_api_stores(user):
     return StoreAccount.objects.filter(pk__in=allowed_ids).select_related("group").order_by("name", "id")
 
 
+def _ozon_api_stores(user):
+    stores = visible_stores_queryset(user).filter(marketplace=StoreAccount.Marketplace.OZON)
+    allowed_ids = [
+        store.pk
+        for store in stores
+        if has_permission(user, "ozon.api.operation.view", store)
+        or any(has_permission(user, code, store) for code in OZON_API_ACTION_PERMISSION_CODES)
+    ]
+    return StoreAccount.objects.filter(pk__in=allowed_ids).select_related("group").order_by("name", "id")
+
+
 def _selected_wb_api_store(request: HttpRequest) -> StoreAccount | None:
     store_id = request.POST.get("store") or request.GET.get("store")
     stores = _wb_api_stores(request.user)
+    if not store_id:
+        return stores.first()
+    return stores.filter(pk=store_id).first()
+
+
+def _selected_ozon_api_store(request: HttpRequest) -> StoreAccount | None:
+    store_id = request.POST.get("store") or request.GET.get("store")
+    stores = _ozon_api_stores(request.user)
     if not store_id:
         return stores.first()
     return stores.filter(pk=store_id).first()
@@ -491,10 +592,47 @@ def _active_connection_for_ui(store: StoreAccount | None):
     )
 
 
+def _ozon_active_connection_for_ui(store: StoreAccount | None):
+    if store is None:
+        return None
+    return (
+        ConnectionBlock.objects.filter(
+            store=store,
+            module=OZON_API_MODULE,
+            connection_type=OZON_API_CONNECTION_TYPE,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+
+
 def _connection_context(user, store: StoreAccount | None) -> dict:
     connection = _active_connection_for_ui(store)
     can_view = bool(store and has_permission(user, "wb.api.connection.view", store))
     can_manage = bool(store and has_permission(user, "wb.api.connection.manage", store))
+    if connection and can_view:
+        connection_info = {
+            "last_checked_at": connection.last_checked_at,
+            "last_check_status": connection.last_check_status,
+            "has_protected_ref": bool(connection.protected_secret_ref),
+            "metadata_display": connection_metadata_display(connection.metadata),
+        }
+    else:
+        connection_info = None
+    status = connection.status if connection else ConnectionBlock.Status.NOT_CONFIGURED
+    return {
+        "connection": connection_info,
+        "connection_status": status,
+        "connection_is_active": status == ConnectionBlock.Status.ACTIVE,
+        "can_view_connection": can_view,
+        "can_manage_connection": can_manage,
+    }
+
+
+def _ozon_connection_context(user, store: StoreAccount | None) -> dict:
+    connection = _ozon_active_connection_for_ui(store)
+    can_view = bool(store and has_permission(user, "ozon.api.connection.view", store))
+    can_manage = bool(store and has_permission(user, "ozon.api.connection.manage", store))
     if connection and can_view:
         connection_info = {
             "last_checked_at": connection.last_checked_at,
@@ -583,6 +721,8 @@ def home(request: HttpRequest) -> HttpResponse:
             quick_actions.append({"label": label, "url_name": route})
     if _wb_api_stores(request.user).exists():
         quick_actions.append({"label": "WB API", "url_name": "web:wb_api"})
+    if _ozon_api_stores(request.user).exists():
+        quick_actions.append({"label": "Ozon Elastic API", "url_name": "web:ozon_elastic"})
 
     return _render(
         request,
@@ -608,10 +748,16 @@ def marketplaces(request: HttpRequest) -> HttpResponse:
     wb_stores = _scenario_stores(request.user, "wb")
     ozon_stores = _scenario_stores(request.user, "ozon")
     wb_api_stores = _wb_api_stores(request.user)
+    ozon_api_stores = _ozon_api_stores(request.user)
     return _render(
         request,
         "web/marketplaces.html",
-        {"wb_stores": wb_stores, "ozon_stores": ozon_stores, "wb_api_stores": wb_api_stores},
+        {
+            "wb_stores": wb_stores,
+            "ozon_stores": ozon_stores,
+            "wb_api_stores": wb_api_stores,
+            "ozon_api_stores": ozon_api_stores,
+        },
         section="marketplaces",
     )
 
@@ -624,6 +770,31 @@ def wb_excel(request: HttpRequest) -> HttpResponse:
 @login_required
 def ozon_excel(request: HttpRequest) -> HttpResponse:
     return _excel_screen(request, marketplace="ozon")
+
+
+@login_required
+def ozon_elastic(request: HttpRequest) -> HttpResponse:
+    stores = _ozon_api_stores(request.user)
+    store = _selected_ozon_api_store(request)
+    if store is None and stores.exists():
+        raise PermissionDenied("No object access for selected Ozon store.")
+    if store and not (
+        has_permission(request.user, "ozon.api.operation.view", store)
+        or has_permission(request.user, "ozon.api.actions.view", store)
+    ):
+        raise PermissionDenied("No permission or object access for Ozon Elastic workflow.")
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if store is None:
+            messages.error(request, "Не выбран доступный Ozon магазин/кабинет.")
+        else:
+            response = _handle_ozon_elastic_post(request, store, action)
+            if response:
+                return response
+
+    context = _ozon_elastic_master_context(request, stores, store)
+    return _render(request, "web/ozon_elastic.html", context, section="marketplaces")
 
 
 @login_required
@@ -851,6 +1022,369 @@ def _wb_api_master_context(request: HttpRequest, stores, store: StoreAccount | N
                 **_step_context(request.user, latest_by_step.get(OperationStepCode.WB_API_DISCOUNT_UPLOAD)),
             },
         ],
+        "result_operation": result_operation,
+        "api_stage_2_notice": API_STAGE_2_NOTICE,
+        **connection,
+    }
+
+
+def _ozon_elastic_redirect(store: StoreAccount, operation: Operation | None = None):
+    url = f"{reverse('web:ozon_elastic')}?store={store.pk}"
+    if operation is not None:
+        url = f"{url}&operation={operation.visible_id}"
+    return redirect(url)
+
+
+def _handle_ozon_elastic_post(request: HttpRequest, store: StoreAccount, action: str | None):
+    try:
+        if action == "download_actions":
+            operation = ozon_api_actions.download_ozon_actions(actor=request.user, store=store)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "select_action":
+            ozon_api_actions.select_elastic_action(
+                actor=request.user,
+                store=store,
+                action_id=request.POST.get("action_id", ""),
+            )
+            messages.success(request, "Акция Эластичный бустинг выбрана.")
+            return _ozon_elastic_redirect(store)
+        if action == "download_active":
+            operation = ozon_api_products.download_active_products(actor=request.user, store=store)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "download_candidates":
+            operation = ozon_api_products.download_candidate_products(actor=request.user, store=store)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "download_product_data":
+            operation = ozon_api_product_data.download_product_data(actor=request.user, store=store)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "calculate":
+            operation = ozon_api_calculation.calculate_elastic_result(actor=request.user, store=store)
+            return _ozon_elastic_redirect(store, operation)
+
+        calculation_id = request.POST.get("calculation_operation_id") or 0
+        calculation = get_object_or_404(_ozon_api_calculations(store), pk=calculation_id)
+        if action == "accept_result":
+            operation = ozon_api_review.accept_elastic_result(actor=request.user, operation=calculation)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "decline_result":
+            operation = ozon_api_review.decline_elastic_result(actor=request.user, operation=calculation)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "confirm_deactivate":
+            operation = ozon_api_upload.confirm_deactivate_group(actor=request.user, operation=calculation)
+            return _ozon_elastic_redirect(store, operation)
+        if action == "upload":
+            operation = ozon_api_upload.upload_elastic_result(
+                actor=request.user,
+                operation=calculation,
+                add_update_confirmed=request.POST.get("add_update_confirmed") == "yes",
+            )
+            return _ozon_elastic_redirect(store, operation)
+
+        messages.error(request, "Неизвестное действие.")
+        return None
+    except (PermissionDenied, ValidationError) as exc:
+        messages.error(request, _error_text(exc))
+        return None
+
+
+def _latest_ozon_operation_by_step(store: StoreAccount | None) -> dict:
+    latest_by_step = {}
+    if not store:
+        return latest_by_step
+    for operation in (
+        Operation.objects.filter(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code__in=OZON_API_STEPS,
+            store=store,
+        )
+        .order_by("-created_at", "-id")
+    ):
+        latest_by_step.setdefault(operation.step_code, operation)
+    return latest_by_step
+
+
+def _latest_accepted_or_reviewable_calculation(store: StoreAccount | None):
+    if not store:
+        return None
+    return _ozon_api_calculations(store).first()
+
+
+def _calculation_rows(operation: Operation | None) -> list[dict]:
+    if not operation or not isinstance(operation.summary, dict):
+        return []
+    snapshot = operation.summary.get("accepted_calculation_snapshot")
+    if isinstance(snapshot, dict) and snapshot.get("calculation_rows"):
+        return list(snapshot.get("calculation_rows") or [])
+    return list(operation.summary.get("calculation_rows") or [])
+
+
+def _filter_ozon_rows(request: HttpRequest, rows: list[dict]) -> list[dict]:
+    filters = {
+        "planned_action": request.GET.get("planned_action", "").strip(),
+        "reason_code": request.GET.get("reason_code", "").strip(),
+        "source_group": request.GET.get("source_group", "").strip(),
+        "upload_ready": request.GET.get("upload_ready", "").strip(),
+    }
+    filtered = rows
+    for key in ("planned_action", "reason_code", "source_group"):
+        if filters[key]:
+            filtered = [row for row in filtered if str(row.get(key) or "") == filters[key]]
+    if filters["upload_ready"]:
+        expected = filters["upload_ready"] == "true"
+        filtered = [row for row in filtered if bool(row.get("upload_ready")) == expected]
+    return filtered
+
+
+def _file_version_download_context(user, version_id: int | None):
+    if not version_id:
+        return None
+    version = FileVersion.objects.select_related("file", "file__store").filter(pk=version_id).first()
+    if not version:
+        return None
+    return {
+        "version": version,
+        "can_download": has_permission(user, download_permission_code(version.file), version.file.store),
+    }
+
+
+def _ozon_operation_summary_items(operation: Operation | None, keys: tuple[str, ...]) -> list[tuple[str, object]]:
+    summary = operation.summary if operation and isinstance(operation.summary, dict) else {}
+    return [(key, summary.get(key, "")) for key in keys if key in summary]
+
+
+def _ozon_elastic_master_context(request: HttpRequest, stores, store: StoreAccount | None) -> dict:
+    connection = _ozon_connection_context(request.user, store)
+    latest_by_step = _latest_ozon_operation_by_step(store)
+    actions_operation = latest_by_step.get(OperationStepCode.OZON_API_ACTIONS_DOWNLOAD)
+    elastic_actions = []
+    if actions_operation and isinstance(actions_operation.summary, dict):
+        elastic_actions = list(actions_operation.summary.get("elastic_actions") or [])
+    selected_action = ozon_api_actions.get_selected_elastic_action_basis(store) if store else None
+    selected_action_id = str((selected_action or {}).get("action_id") or "")
+    active_operation = latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_ACTIVE_PRODUCTS_DOWNLOAD)
+    candidate_operation = latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_CANDIDATE_PRODUCTS_DOWNLOAD)
+    product_data_operation = latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD)
+    calculation = _latest_accepted_or_reviewable_calculation(store)
+    rows = _calculation_rows(calculation)
+    filtered_rows = _filter_ozon_rows(request, rows)
+    groups_count = calculation.summary.get("groups_count", {}) if calculation and isinstance(calculation.summary, dict) else {}
+    deactivate_count = int(groups_count.get("deactivate_from_action") or 0)
+    add_update_count = int(groups_count.get("add_to_action") or 0) + int(groups_count.get("update_action_price") or 0)
+    review_state = calculation.summary.get("review_state", "") if calculation and isinstance(calculation.summary, dict) else ""
+    deactivate_status = (
+        calculation.summary.get("deactivate_confirmation_status", "")
+        if calculation and isinstance(calculation.summary, dict)
+        else ""
+    )
+    manual_file = _file_version_download_context(
+        request.user,
+        calculation.summary.get("manual_upload_file_version_id") if calculation and isinstance(calculation.summary, dict) else None,
+    )
+    result_file = _file_version_download_context(
+        request.user,
+        calculation.summary.get("result_report_file_version_id") if calculation and isinstance(calculation.summary, dict) else None,
+    )
+    deactivate_preview = []
+    if calculation and review_state in {"accepted", "review_pending_deactivate_confirmation"}:
+        try:
+            deactivate_preview = ozon_api_upload.deactivate_confirmation_preview(calculation)
+        except ValidationError:
+            deactivate_preview = []
+
+    operation_visible_id = request.GET.get("operation", "").strip()
+    result_operation = None
+    if operation_visible_id and store:
+        result_operation = (
+            Operation.objects.filter(
+                visible_id=operation_visible_id,
+                store=store,
+                marketplace="ozon",
+                module=OperationModule.OZON_API,
+                mode=OperationMode.API,
+                step_code__in=OZON_API_STEPS,
+            )
+            .first()
+        )
+        if result_operation:
+            _require_operation_view(request.user, result_operation)
+
+    selected_action_ready = bool(selected_action_id)
+    active_ready = bool(
+        active_operation
+        and active_operation.status in {ProcessStatus.COMPLETED_SUCCESS, ProcessStatus.COMPLETED_WITH_WARNINGS}
+        and active_operation.summary.get("action_id") == selected_action_id
+    )
+    candidate_ready = bool(
+        candidate_operation
+        and candidate_operation.status in {ProcessStatus.COMPLETED_SUCCESS, ProcessStatus.COMPLETED_WITH_WARNINGS}
+        and candidate_operation.summary.get("action_id") == selected_action_id
+    )
+    product_data_ready = bool(
+        product_data_operation
+        and product_data_operation.status in {ProcessStatus.COMPLETED_SUCCESS, ProcessStatus.COMPLETED_WITH_WARNINGS}
+        and product_data_operation.summary.get("action_id") == selected_action_id
+    )
+    can_upload = bool(
+        calculation
+        and review_state == "accepted"
+        and connection["connection_is_active"]
+        and has_permission(request.user, "ozon.api.elastic.upload", store)
+        and has_permission(request.user, "ozon.api.elastic.upload.confirm", store)
+        and (not deactivate_count or deactivate_status == "confirmed")
+    )
+    if deactivate_count:
+        can_upload = bool(can_upload and has_permission(request.user, "ozon.api.elastic.deactivate.confirm", store))
+
+    steps = [
+        {
+            "number": 1,
+            "code": OperationStepCode.OZON_API_ACTIONS_DOWNLOAD,
+            "title": "Скачать доступные акции",
+            "action": "download_actions",
+            "button": "Скачать доступные акции",
+            "can_run": bool(store and connection["connection_is_active"] and has_permission(request.user, "ozon.api.actions.download", store)),
+            "readonly_text": "Read-only: скачивает список Ozon actions.",
+            "summary_items": _ozon_operation_summary_items(actions_operation, ("actions_count", "elastic_actions_count", "ambiguous_actions_count")),
+            **_step_context(request.user, actions_operation),
+        },
+        {
+            "number": 2,
+            "code": "select_action",
+            "title": "Выбрать акцию",
+            "action": "select_action",
+            "button": "Выбрать акцию",
+            "can_run": bool(store and elastic_actions and has_permission(request.user, "ozon.api.actions.download", store)),
+            "readonly_text": "Доступны только approved Elastic actions из последнего snapshot.",
+            "operation": actions_operation,
+            "summary_items": [],
+            "output_links": [],
+        },
+        {
+            "number": 3,
+            "code": OperationStepCode.OZON_API_ELASTIC_ACTIVE_PRODUCTS_DOWNLOAD,
+            "title": "Скачать товары участвующие в акции",
+            "action": "download_active",
+            "button": "Скачать товары участвующие в акции",
+            "can_run": bool(store and connection["connection_is_active"] and selected_action_ready and has_permission(request.user, "ozon.api.elastic.active_products.download", store)),
+            "readonly_text": "Read-only: скачивает active products выбранной акции.",
+            "summary_items": _ozon_operation_summary_items(active_operation, ("products_count", "missing_elastic_fields_count", "source_group")),
+            **_step_context(request.user, active_operation),
+        },
+        {
+            "number": 4,
+            "code": OperationStepCode.OZON_API_ELASTIC_CANDIDATE_PRODUCTS_DOWNLOAD,
+            "title": "Скачать товары кандидаты в акцию",
+            "action": "download_candidates",
+            "button": "Скачать товары кандидаты в акцию",
+            "can_run": bool(store and connection["connection_is_active"] and selected_action_ready and has_permission(request.user, "ozon.api.elastic.candidates.download", store)),
+            "readonly_text": "Read-only: скачивает candidate products выбранной акции.",
+            "summary_items": _ozon_operation_summary_items(candidate_operation, ("products_count", "missing_elastic_fields_count", "source_group")),
+            **_step_context(request.user, candidate_operation),
+        },
+        {
+            "number": 5,
+            "code": OperationStepCode.OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD,
+            "title": "Скачать данные по полученным товарам",
+            "action": "download_product_data",
+            "button": "Скачать данные по полученным товарам",
+            "can_run": bool(store and connection["connection_is_active"] and active_ready and candidate_ready and has_permission(request.user, "ozon.api.elastic.product_data.download", store)),
+            "readonly_text": "Read-only: скачивает product info/stocks для union product_id.",
+            "summary_items": _ozon_operation_summary_items(product_data_operation, ("source_rows_count", "product_count", "stock_rows_count", "diagnostics_counts")),
+            **_step_context(request.user, product_data_operation),
+        },
+        {
+            "number": 6,
+            "code": OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            "title": "Обработать",
+            "action": "calculate",
+            "button": "Обработать",
+            "can_run": bool(store and product_data_ready and has_permission(request.user, "ozon.api.elastic.calculate", store)),
+            "readonly_text": "Расчёт не меняет Ozon; результат формирует report.",
+            "summary_items": _ozon_operation_summary_items(calculation, ("rows_count", "groups_count", "review_state", "deactivate_confirmation_status")),
+            **_step_context(request.user, calculation),
+        },
+        {
+            "number": 7,
+            "code": "review",
+            "title": "Принять результат / Не принять результат",
+            "can_run": bool(calculation and has_permission(request.user, "ozon.api.elastic.review", store)),
+            "operation": calculation,
+            "summary_items": [],
+            "output_links": [],
+        },
+        {
+            "number": 8,
+            "code": "download_result",
+            "title": "Скачать Excel результата",
+            "can_run": bool(result_file and result_file["can_download"]),
+            "operation": calculation,
+            "summary_items": [],
+            "output_links": [],
+        },
+        {
+            "number": 9,
+            "code": "download_manual",
+            "title": "Скачать Excel для ручной загрузки",
+            "can_run": bool(manual_file and manual_file["can_download"]),
+            "operation": calculation,
+            "summary_items": [],
+            "output_links": [],
+        },
+        {
+            "number": 10,
+            "code": OperationStepCode.OZON_API_ELASTIC_UPLOAD,
+            "title": "Загрузить в Ozon",
+            "action": "upload",
+            "button": "Загрузить в Ozon",
+            "can_run": can_upload,
+            "readonly_text": "Write: live Ozon actions activate/deactivate после confirmations и drift-check.",
+            "summary_items": _ozon_operation_summary_items(latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD), ("result_code", "success_count", "rejected_count", "write_batch_size", "min_interval_ms")),
+            **_step_context(request.user, latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD)),
+        },
+    ]
+
+    return {
+        "stores": stores,
+        "selected_store": store,
+        "steps": steps,
+        "elastic_actions": elastic_actions,
+        "selected_action": selected_action,
+        "selected_action_id": selected_action_id,
+        "calculation": calculation,
+        "review_state": review_state or "not_reviewed",
+        "deactivate_confirmation_status": deactivate_status,
+        "groups_count": groups_count,
+        "required_counters": {
+            "actions downloaded": (actions_operation.summary or {}).get("actions_count", 0) if actions_operation else 0,
+            "elastic actions found": len(elastic_actions),
+            "selected action_id": selected_action_id,
+            "active products count": (active_operation.summary or {}).get("products_count", 0) if active_operation else 0,
+            "candidate products count": (candidate_operation.summary or {}).get("products_count", 0) if candidate_operation else 0,
+            "product info rows count": (product_data_operation.summary or {}).get("product_count", 0) if product_data_operation else 0,
+            "stock rows count": (product_data_operation.summary or {}).get("stock_rows_count", 0) if product_data_operation else 0,
+            "add count": groups_count.get("add_to_action", 0),
+            "update count": groups_count.get("update_action_price", 0),
+            "deactivate count": groups_count.get("deactivate_from_action", 0),
+            "skip candidate count": groups_count.get("skip_candidate", 0),
+            "blocked/error count": groups_count.get("blocked", 0),
+            "upload success count": (latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD).summary or {}).get("success_count", 0) if latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD) else 0,
+            "upload rejected count": (latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD).summary or {}).get("rejected_count", 0) if latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD) else 0,
+        },
+        "rows_page": _paginate(request, filtered_rows, 50),
+        "row_filters": {
+            "planned_action": request.GET.get("planned_action", "").strip(),
+            "reason_code": request.GET.get("reason_code", "").strip(),
+            "source_group": request.GET.get("source_group", "").strip(),
+            "upload_ready": request.GET.get("upload_ready", "").strip(),
+        },
+        "deactivate_preview": deactivate_preview,
+        "deactivate_count": deactivate_count,
+        "add_update_count": add_update_count,
+        "result_file": result_file,
+        "manual_file": manual_file,
         "result_operation": result_operation,
         "api_stage_2_notice": API_STAGE_2_NOTICE,
         **connection,
@@ -1202,10 +1736,16 @@ def operation_card(request: HttpRequest, visible_id: str) -> HttpResponse:
             Q(product_ref__icontains=q) | Q(message__icontains=q) | Q(problem_field__icontains=q)
         )
     output_links = operation.output_files.select_related("file_version", "file_version__file")
-    is_api_operation = operation.marketplace == "wb" and operation.mode == OperationMode.API
+    is_api_operation = operation.mode == OperationMode.API and operation.marketplace in {"wb", "ozon"}
     if is_api_operation:
-        can_view_details = has_permission(request.user, "wb.api.operation.view", operation.store)
-        can_download_output = has_permission(request.user, "wb.api.discounts.result.download", operation.store)
+        view_permission = "wb.api.operation.view" if operation.marketplace == "wb" else "ozon.api.operation.view"
+        default_download_permission = (
+            "wb.api.discounts.result.download"
+            if operation.marketplace == "wb"
+            else "ozon.api.elastic.files.download"
+        )
+        can_view_details = has_permission(request.user, view_permission, operation.store)
+        can_download_output = has_permission(request.user, default_download_permission, operation.store)
         can_download_detail = can_download_output
         for link in output_links:
             link.can_download = _can_download_link(request.user, link)

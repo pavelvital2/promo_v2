@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 
 SECRET_KEY_MARKERS = (
     "authorization",
     "bearer",
+    "client_id",
+    "client-id",
+    "clientid",
     "token",
     "api_key",
     "apikey",
@@ -17,7 +21,14 @@ SECRET_KEY_MARKERS = (
 SECRET_VALUE_PATTERNS = (
     re.compile(r"\bAuthorization\s*[:=]\s*[A-Za-z0-9._~+/=-]{6,}", re.IGNORECASE),
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
-    re.compile(r"\b(api[_-]?key|token|secret|password)\s*[:=]\s*[A-Za-z0-9._~+/=-]{6,}", re.IGNORECASE),
+    re.compile(
+        r"\b(api[_-]?key|client[_-]?id|token|secret|password)\s*[:=]\s*[A-Za-z0-9._~+/=-]{6,}",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'"(?:authorization|bearer|api[_-]?key|client[_-]?id|clientid|apikey|token|secret|password)"\s*:',
+        re.IGNORECASE,
+    ),
     re.compile(r"\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b"),
 )
 
@@ -34,6 +45,15 @@ def contains_secret_like_value(value) -> bool:
     if isinstance(value, bytes):
         value = value.decode("utf-8", errors="ignore")
     text = str(value)
+    stripped = text.strip()
+    if stripped.startswith(("{", "[")) and stripped.endswith(("}", "]")):
+        try:
+            parsed = json.loads(stripped)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if isinstance(parsed, dict | list):
+                return contains_secret_like(parsed)
     return any(pattern.search(text) for pattern in SECRET_VALUE_PATTERNS)
 
 

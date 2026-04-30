@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from apps.audit.models import AuditActionCode, AuditRecord
+from apps.discounts.ozon_api.actions import SELECTED_ACTION_METADATA_KEY
 from apps.discounts.wb_api.client import WBApiInvalidResponseError
 from apps.identity_access.models import AccessEffect, Permission, Role, StoreAccess, UserPermissionOverride
 from apps.identity_access.seeds import ROLE_LOCAL_ADMIN, ROLE_OBSERVER, ROLE_OWNER, seed_identity_access
@@ -178,6 +179,204 @@ class HomeSmokeTests(TestCase):
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertEqual(response.status_code, 200)
+
+    def test_ozon_elastic_master_page_renders_hierarchy_and_button_order(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="ozon_api",
+            connection_type="ozon_client_id_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://OZON_TEST_SECRET",
+        )
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ACTIONS_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            summary={
+                "actions_count": 2,
+                "elastic_actions_count": 1,
+                "elastic_actions": [
+                    {
+                        "action_id": "101",
+                        "title": "Эластичный бустинг",
+                        "action_type": "MARKETPLACE_MULTI_LEVEL_DISCOUNT_ON_AMOUNT",
+                    }
+                ],
+            },
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Маркетплейсы -> Ozon -> Акции -> API -> Эластичный бустинг", html)
+        expected_order = [
+            "Скачать доступные акции",
+            "Выбрать акцию",
+            "Скачать товары участвующие в акции",
+            "Скачать товары кандидаты в акцию",
+            "Скачать данные по полученным товарам",
+            "Обработать",
+            "Принять результат",
+            "Скачать Excel результата",
+            "Скачать Excel для ручной загрузки",
+            "Загрузить в Ozon",
+        ]
+        position = -1
+        for text in expected_order:
+            next_position = html.find(text, position + 1)
+            self.assertGreater(next_position, position, text)
+            position = next_position
+        self.assertIn("101 Эластичный бустинг", html)
+
+    def test_ozon_elastic_select_action_saves_basis_and_stays_on_master_page(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        connection = ConnectionBlock.objects.create(
+            store=store,
+            module="ozon_api",
+            connection_type="ozon_client_id_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://OZON_TEST_SECRET",
+        )
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ACTIONS_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            summary={
+                "elastic_actions": [
+                    {
+                        "action_id": "101",
+                        "title": "Эластичный бустинг",
+                        "action_type": "MARKETPLACE_MULTI_LEVEL_DISCOUNT_ON_AMOUNT",
+                    }
+                ],
+            },
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("web:ozon_elastic"),
+            {"store": store.pk, "action": "select_action", "action_id": "101"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"{reverse('web:ozon_elastic')}?store={store.pk}")
+        connection.refresh_from_db()
+        selected = connection.metadata[SELECTED_ACTION_METADATA_KEY]
+        self.assertEqual(selected["action_id"], "101")
+
+    def test_ozon_elastic_review_and_deactivate_rows_are_visible(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="ozon_api",
+            connection_type="ozon_client_id_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://OZON_TEST_SECRET",
+        )
+        row = {
+            "product_id": "2001",
+            "offer_id": "OFFER-1",
+            "name": "Product 1",
+            "source_group": "active",
+            "J_min_price": "",
+            "O_price_min_elastic": "100",
+            "P_price_max_elastic": "120",
+            "R_stock_present": "5",
+            "current_action_price": "110",
+            "calculated_action_price": "",
+            "reason_code": "missing_min_price",
+            "reason": "Missing minimum price.",
+            "planned_action": "deactivate_from_action",
+            "upload_ready": False,
+            "deactivate_required": True,
+            "deactivate_reason_code": "missing_min_price",
+            "deactivate_reason": "Missing minimum price.",
+        }
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            summary={
+                "review_state": "review_pending_deactivate_confirmation",
+                "deactivate_confirmation_status": "pending",
+                "groups_count": {"deactivate_from_action": 1},
+                "calculation_rows": [row],
+                "accepted_basis_checksum": "checksum",
+                "accepted_calculation_snapshot": {
+                    "action_id": "101",
+                    "calculation_rows": [row],
+                },
+            },
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "review_pending_deactivate_confirmation")
+        self.assertContains(response, "deactivate_from_action")
+        self.assertContains(response, "Подтвердить снятие с акции")
+        self.assertContains(response, "2001")
 
     def test_anonymous_home_redirects_to_login(self) -> None:
         response = self.client.get(reverse("web:home"))

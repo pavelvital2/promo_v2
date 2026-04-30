@@ -13,6 +13,9 @@
   {% if can_open_wb_api %}
     <p><a href="{% url 'web:wb_api' %}?store={{ store.pk }}">WB API</a></p>
   {% endif %}
+  {% if can_open_ozon_elastic %}
+    <p><a href="{% url 'web:ozon_elastic' %}?store={{ store.pk }}">Ozon Elastic API</a></p>
+  {% endif %}
 
   <section>
     <h2>Details</h2>
@@ -28,7 +31,7 @@
     </dl>
   </section>
 
-  {% if is_wb_store %}
+  {% if is_wb_store or is_ozon_store %}
     <section>
       <h2>Connection</h2>
       <p class="status">{{ api_stage_2_notice }}</p>

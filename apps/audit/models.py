@@ -132,6 +132,61 @@ class AuditActionCode(models.TextChoices):
         "wb_api_discount_upload_failed",
         "WB API discount upload failed",
     )
+    OZON_API_CONNECTION_CREATED = "ozon_api_connection_created", "Ozon API connection created"
+    OZON_API_CONNECTION_UPDATED = "ozon_api_connection_updated", "Ozon API connection updated"
+    OZON_API_CONNECTION_CHECKED = "ozon_api_connection_checked", "Ozon API connection checked"
+    OZON_API_ACTIONS_DOWNLOAD_STARTED = (
+        "ozon_api_actions_download_started",
+        "Ozon API actions download started",
+    )
+    OZON_API_ACTIONS_DOWNLOAD_COMPLETED = (
+        "ozon_api_actions_download_completed",
+        "Ozon API actions download completed",
+    )
+    OZON_API_ELASTIC_ACTIVE_DOWNLOAD_COMPLETED = (
+        "ozon_api_elastic_active_download_completed",
+        "Ozon API Elastic active products download completed",
+    )
+    OZON_API_ELASTIC_CANDIDATES_DOWNLOAD_COMPLETED = (
+        "ozon_api_elastic_candidates_download_completed",
+        "Ozon API Elastic candidates download completed",
+    )
+    OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD_COMPLETED = (
+        "ozon_api_elastic_product_data_download_completed",
+        "Ozon API Elastic product data download completed",
+    )
+    OZON_API_ELASTIC_CALCULATION_COMPLETED = (
+        "ozon_api_elastic_calculation_completed",
+        "Ozon API Elastic calculation completed",
+    )
+    OZON_API_ELASTIC_RESULT_REVIEWED = (
+        "ozon_api_elastic_result_reviewed",
+        "Ozon API Elastic result reviewed",
+    )
+    OZON_API_ELASTIC_UPLOAD_CONFIRMED = (
+        "ozon_api_elastic_upload_confirmed",
+        "Ozon API Elastic upload confirmed",
+    )
+    OZON_API_ELASTIC_DEACTIVATE_GROUP_CONFIRMED = (
+        "ozon_api_elastic_deactivate_group_confirmed",
+        "Ozon API Elastic deactivate group confirmed",
+    )
+    OZON_API_ELASTIC_UPLOAD_BLOCKED_DEACTIVATE_UNCONFIRMED = (
+        "ozon_api_elastic_upload_blocked_deactivate_unconfirmed",
+        "Ozon API Elastic upload blocked by unconfirmed deactivate group",
+    )
+    OZON_API_ELASTIC_UPLOAD_STARTED = (
+        "ozon_api_elastic_upload_started",
+        "Ozon API Elastic upload started",
+    )
+    OZON_API_ELASTIC_UPLOAD_COMPLETED = (
+        "ozon_api_elastic_upload_completed",
+        "Ozon API Elastic upload completed",
+    )
+    OZON_API_ELASTIC_UPLOAD_FAILED = (
+        "ozon_api_elastic_upload_failed",
+        "Ozon API Elastic upload failed",
+    )
 
 
 class AuditSourceContext(models.TextChoices):

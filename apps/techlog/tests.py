@@ -104,6 +104,26 @@ class TechLogTask006Tests(TestCase):
         with self.assertRaises(ProtectedError):
             TechLogRecord.objects.filter(pk=record.pk).delete()
 
+    def test_techlog_rejects_ozon_client_id_safe_contour(self):
+        with self.assertRaises(ValueError):
+            create_techlog_record(
+                severity=TechLogSeverity.ERROR,
+                event_type=TechLogEventType.OZON_API_SECRET_REDACTION_VIOLATION,
+                source_component="tests",
+                operation=self.operation,
+                safe_message="client_id=123456",
+            )
+
+        with self.assertRaises(ValueError):
+            create_techlog_record(
+                severity=TechLogSeverity.ERROR,
+                event_type=TechLogEventType.OZON_API_SECRET_REDACTION_VIOLATION,
+                source_component="tests",
+                operation=self.operation,
+                safe_message="Safe message.",
+                sensitive_details_ref="Client-Id: 123456",
+            )
+
     def test_limited_full_and_sensitive_techlog_visibility_scopes(self):
         visible_record = create_techlog_record(
             severity=TechLogSeverity.ERROR,
@@ -259,4 +279,23 @@ class TechLogTask006Tests(TestCase):
                 store=self.store,
                 safe_message="Auth failed.",
                 sensitive_details_ref="Bearer abcdefghijklmnopqrstuvwxyz1234567890",
+            )
+
+        with self.assertRaises(ValueError):
+            create_techlog_record(
+                severity=TechLogSeverity.ERROR,
+                event_type=TechLogEventType.OZON_API_AUTH_FAILED,
+                source_component="tests",
+                store=self.store,
+                safe_message='{"client-id": "123456", "api_key": "ozon-api-key-abcdef"}',
+            )
+
+        with self.assertRaises(ValueError):
+            create_techlog_record(
+                severity=TechLogSeverity.ERROR,
+                event_type=TechLogEventType.OZON_API_AUTH_FAILED,
+                source_component="tests",
+                store=self.store,
+                safe_message="Auth failed.",
+                sensitive_details_ref='{"Client-Id": "123456", "Api-Key": "ozon-api-key-abcdef"}',
             )

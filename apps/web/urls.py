@@ -17,6 +17,11 @@ urlpatterns = [
         name="wb_api_upload_confirm",
     ),
     path("marketplaces/ozon/discounts/excel/", views.ozon_excel, name="ozon_excel"),
+    path(
+        "marketplaces/ozon/actions/api/elastic-boosting/",
+        views.ozon_elastic,
+        name="ozon_elastic",
+    ),
     path("operations/", views.operation_list, name="operation_list"),
     path("operations/<str:visible_id>/", views.operation_card, name="operation_card"),
     path("operations/<str:visible_id>/result/", views.operation_result, name="operation_result"),

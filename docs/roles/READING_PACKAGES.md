@@ -175,6 +175,35 @@
 
 ТЗ: только разделы `tz_stage_2.1.txt`, указанные в конкретном TASK-011..TASK-017. Не читать всё итоговое ТЗ целиком. WB Stage 2.1 не смешивается с Ozon Stage 2.2.
 
+## Разработчик Ozon API Stage 2.2
+
+Обязательно:
+
+- `AGENTS.md`
+- `docs/README.md`
+- `docs/DOCUMENTATION_MAP.md`
+- `docs/orchestration/AGENTS.md`
+- concrete task file `docs/tasks/implementation/stage-2/TASK-019..TASK-026`
+- `docs/stages/stage-2/STAGE_2_SCOPE.md`
+- `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md`
+- `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`
+- `docs/product/OZON_API_ELASTIC_UI_SPEC.md`
+- `docs/product/OZON_DISCOUNTS_EXCEL_SPEC.md` for shared calculation tasks
+- `docs/architecture/API_CONNECTIONS_SPEC.md`
+- `docs/product/OPERATIONS_SPEC.md`
+- `docs/architecture/DATA_MODEL.md`
+- `docs/architecture/FILE_CONTOUR.md`
+- `docs/architecture/AUDIT_AND_TECHLOG_SPEC.md`
+- `docs/product/PERMISSIONS_MATRIX.md`
+- `docs/testing/STAGE_2_2_OZON_TEST_PROTOCOL.md`
+- `docs/testing/STAGE_2_2_OZON_ACCEPTANCE_CHECKLISTS.md`
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+Условно: `docs/product/UI_SPEC.md` for UI-facing tasks, `docs/traceability/STAGE_2_2_OZON_TRACEABILITY_MATRIX.md` for audit/release tasks.
+
+ТЗ: only task-scoped sections explicitly issued by orchestrator. Do not read whole final TZ by default. Do not implement blocked slices while `GAP-0014`..`GAP-0022` remain open for that slice. WB Stage 2.1 не смешивается с Ozon Stage 2.2.
+
 ## Frontend/UI Агент WB API Stage 2.1
 
 Обязательно:
@@ -221,6 +250,18 @@
 - проверяемый TASK-011..TASK-017
 
 ТЗ Stage 2.1: только разделы, указанные в task.
+
+Для Stage 2.2 Ozon API тестировщик читает:
+
+- `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md`
+- `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`
+- `docs/product/OZON_API_ELASTIC_UI_SPEC.md`
+- `docs/testing/STAGE_2_2_OZON_TEST_PROTOCOL.md`
+- `docs/testing/STAGE_2_2_OZON_ACCEPTANCE_CHECKLISTS.md`
+- `docs/traceability/STAGE_2_2_OZON_TRACEABILITY_MATRIX.md`
+- проверяемый TASK-019..TASK-026
+
+ТЗ Stage 2.2: только разделы, указанные task/orchestrator. Open Stage 2.2 GAP не закрываются тестировщиком предположениями.
 
 ## Техрайтер
 

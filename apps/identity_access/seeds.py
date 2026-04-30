@@ -112,6 +112,35 @@ PERMISSION_DEFINITIONS = {
         Permission.ScopeType.STORE,
     ),
     "wb.api.operation.view": ("WB API: просмотр операций", Permission.ScopeType.STORE),
+    "ozon.api.connection.view": ("Ozon API: просмотр подключения", Permission.ScopeType.STORE),
+    "ozon.api.connection.manage": ("Ozon API: управление подключением", Permission.ScopeType.STORE),
+    "ozon.api.actions.view": ("Ozon API: просмотр actions/Elastic workflow", Permission.ScopeType.STORE),
+    "ozon.api.actions.download": ("Ozon API: скачать доступные акции", Permission.ScopeType.STORE),
+    "ozon.api.elastic.active_products.download": (
+        "Ozon API: скачать товары участвующие в акции",
+        Permission.ScopeType.STORE,
+    ),
+    "ozon.api.elastic.candidates.download": (
+        "Ozon API: скачать кандидаты в акцию",
+        Permission.ScopeType.STORE,
+    ),
+    "ozon.api.elastic.product_data.download": (
+        "Ozon API: скачать product info/stocks",
+        Permission.ScopeType.STORE,
+    ),
+    "ozon.api.elastic.calculate": ("Ozon API: рассчитать Elastic Boosting", Permission.ScopeType.STORE),
+    "ozon.api.elastic.review": ("Ozon API: принять/не принять результат", Permission.ScopeType.STORE),
+    "ozon.api.elastic.upload": ("Ozon API: выполнить API upload add/update", Permission.ScopeType.STORE),
+    "ozon.api.elastic.upload.confirm": (
+        "Ozon API: подтвердить API upload add/update",
+        Permission.ScopeType.STORE,
+    ),
+    "ozon.api.elastic.deactivate.confirm": (
+        "Ozon API: подтвердить группу deactivate",
+        Permission.ScopeType.STORE,
+    ),
+    "ozon.api.elastic.files.download": ("Ozon API: скачать Stage 2.2 файлы", Permission.ScopeType.STORE),
+    "ozon.api.operation.view": ("Ozon API: просмотр операций", Permission.ScopeType.STORE),
 }
 
 SECTION_DEFINITIONS = {
@@ -130,6 +159,7 @@ SECTION_DEFINITIONS = {
     "audit.view": ("audit", "view", "Аудит"),
     "techlog.view": ("techlog", "view", "Техжурнал"),
     "wb_discounts_api.view": ("wb_discounts_api", "view", "WB API"),
+    "ozon_discounts_api.view": ("ozon_discounts_api", "view", "Ozon API"),
 }
 
 
@@ -163,6 +193,11 @@ WB_API_CONNECTION_CODES = {
     "wb.api.connection.manage",
     "wb.api.operation.view",
 }
+OZON_API_CONNECTION_CODES = {
+    "ozon.api.connection.view",
+    "ozon.api.connection.manage",
+    "ozon.api.operation.view",
+}
 WB_API_MANAGER_CODES = {
     "wb.api.prices.download",
     "wb.api.prices.file.download",
@@ -172,6 +207,17 @@ WB_API_MANAGER_CODES = {
     "wb.api.discounts.result.download",
     "wb.api.operation.view",
 }
+OZON_API_MANAGER_CODES = {
+    "ozon.api.actions.view",
+    "ozon.api.actions.download",
+    "ozon.api.elastic.active_products.download",
+    "ozon.api.elastic.candidates.download",
+    "ozon.api.elastic.product_data.download",
+    "ozon.api.elastic.calculate",
+    "ozon.api.elastic.review",
+    "ozon.api.elastic.files.download",
+    "ozon.api.operation.view",
+}
 
 LOCAL_ADMIN_PERMISSION_CODES = (
     {code for code in ADMIN_PERMISSION_CODES if not code.startswith("roles.")}
@@ -179,6 +225,7 @@ LOCAL_ADMIN_PERMISSION_CODES = (
     | STORE_SETTINGS_CODES
     | AUDIT_TECHLOG_CODES
     | WB_API_CONNECTION_CODES
+    | OZON_API_CONNECTION_CODES
 ) - {
     "users.owner.manage",
     "roles.edit",
@@ -189,6 +236,7 @@ LOCAL_ADMIN_PERMISSION_CODES = (
 MANAGER_PERMISSION_CODES = (
     SCENARIO_CODES
     | WB_API_MANAGER_CODES
+    | OZON_API_MANAGER_CODES
     | {
         "stores.list.view",
         "stores.card.view",
@@ -241,6 +289,7 @@ ROLE_SECTION_CODES = {
         "home.view",
         "stores.view",
         "wb_discounts_api.view",
+        "ozon_discounts_api.view",
         "settings_store.view",
         "users.view",
         "permissions.view",
@@ -252,6 +301,7 @@ ROLE_SECTION_CODES = {
         "home.view",
         "wb_discounts_excel.view",
         "wb_discounts_api.view",
+        "ozon_discounts_api.view",
         "ozon_discounts_excel.view",
         "operations.view",
         "stores.view",

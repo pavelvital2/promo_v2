@@ -127,3 +127,24 @@ Download rights:
 - upload report: `wb.api.operation.view` plus explicit download right if added.
 
 Файлы и snapshots не содержат WB API tokens, authorization headers или secret-like values.
+
+## Stage 2.2 Ozon API file scenarios
+
+Трассировка: `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`.
+
+Stage 2.2 uses the same `FileObject/FileVersion/OperationInputFile/OperationOutputFile`, checksum, retention and download rights. Physical files remain available for 3 days; metadata and operation history remain according to common rules.
+
+| Scenario | Kind | Создаётся | Используется как input |
+| --- | --- | --- | --- |
+| `ozon_api_elastic_result_report` | output | `ozon_api_elastic_calculation` | control report; not upload source of truth |
+| `ozon_api_elastic_manual_upload_excel` | output | TASK-024 post-acceptance generation from accepted Stage 2.2 calculation result, by ADR-0032 Stage 1-compatible template decision | secondary manual Ozon cabinet upload/control by user |
+| `ozon_api_elastic_upload_report` | output | `ozon_api_elastic_upload` | not business input |
+| `ozon_api_elastic_detail_report` | output | any Stage 2.2 step when detail export requested | not business input |
+
+Upload source of truth is immutable accepted calculation snapshot. Downloaded Excel files cannot be edited and re-uploaded back into the API flow as accepted basis.
+
+Manual upload Excel uses the current Stage 1 Ozon Excel template/format as a Stage 1-compatible manual upload file by customer decision 2026-04-30 / ADR-0032. It must be explicitly marked as manual upload Excel по Stage 1-compatible template, generated only after TASK-024 result acceptance from the immutable accepted Stage 2.2 calculation snapshot, and must not modify Stage 1 Ozon Excel business rules. Add/update rows write K=`Да` and L=`calculated_action_price`. Deactivate rows must remain visible; if the Stage 1-compatible template cannot directly represent deactivate action, the workbook/report includes a separate sheet/section `Снять с акции` with row-level reasons.
+
+Download right: `ozon.api.elastic.files.download` plus object access and retention availability.
+
+Ozon files and snapshots must not contain Client-Id, Api-Key, authorization headers, bearer/API key values or raw sensitive API responses.

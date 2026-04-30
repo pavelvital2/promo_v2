@@ -1,6 +1,6 @@
 # WB_API_PROMOTIONS_EXPORT_SPEC.md
 
-Трассировка: `tz_stage_2.1.txt` §7; ADR-0018, ADR-0020.
+Трассировка: `tz_stage_2.1.txt` §7; ADR-0018, ADR-0020, ADR-0021.
 
 ## Назначение
 
@@ -113,6 +113,17 @@ Zip/package всех promo files не является обязательным 
 - не создавать promo Excel с пустыми фиктивными строками;
 - показывать ограничение в UI и detail report.
 
+WB API не является источником состава товаров auto promotions. Если будущая задача требует расчёт именно по WB auto promotion, входным prerequisite является внешний product-source artifact со списком товаров auto-акции: Excel/export из личного кабинета WB или другой утверждённый источник. Такой artifact должен пройти отдельные правила загрузки, проверки, traceability и acceptance до использования в расчёте.
+
+После получения внешнего списка товаров WB API может использоваться для обогащения и проверки строк:
+
+- карточки и идентификаторы товара;
+- текущие цены/скидки;
+- остатки;
+- заказы/продажи за период, если это требуется для отдельного supply-planning или аналитического сценария.
+
+Нельзя подменять внешний список товаров auto promotion всеми карточками магазина, товарами regular promotions или summary/count fields из details.
+
 ## Reason/result codes
 
 | Code | Когда применяется |
@@ -129,4 +140,5 @@ Zip/package всех promo files не является обязательным 
 - Нельзя использовать будущие, ближайшие, все или последние акции вместо current filter.
 - Нельзя вызывать `POST /api/v1/calendar/promotions/upload` в Stage 2.1.
 - Нельзя выдумывать товарные строки для auto promotions.
+- Нельзя считать все карточки магазина составом auto promotion без внешнего product-source artifact.
 - Нельзя сохранять authorization headers или tokens в snapshots.

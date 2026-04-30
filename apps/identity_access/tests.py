@@ -96,6 +96,11 @@ class IdentityAccessTests(TestCase):
             access_level=StoreAccess.AccessLevel.WORK,
         )
         StoreAccess.objects.create(
+            user=cls.manager,
+            store=cls.ozon_store,
+            access_level=StoreAccess.AccessLevel.WORK,
+        )
+        StoreAccess.objects.create(
             user=cls.observer,
             store=cls.wb_store,
             access_level=StoreAccess.AccessLevel.VIEW,
@@ -121,6 +126,101 @@ class IdentityAccessTests(TestCase):
             "wb_discounts_excel.download_output",
             ROLE_PERMISSION_CODES[ROLE_OBSERVER],
         )
+        self.assertIn("ozon.api.connection.view", PERMISSION_DEFINITIONS)
+        self.assertIn("ozon.api.connection.manage", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertIn("ozon.api.actions.download", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
+        self.assertNotIn("ozon.api.connection.manage", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
+        self.assertIn("ozon.api.elastic.active_products.download", PERMISSION_DEFINITIONS)
+        self.assertIn("ozon.api.elastic.candidates.download", PERMISSION_DEFINITIONS)
+        self.assertIn(
+            "ozon.api.elastic.active_products.download",
+            ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER],
+        )
+        self.assertIn(
+            "ozon.api.elastic.candidates.download",
+            ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER],
+        )
+        self.assertIn("ozon.api.elastic.product_data.download", PERMISSION_DEFINITIONS)
+        self.assertIn(
+            "ozon.api.elastic.product_data.download",
+            ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.active_products.download",
+            ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.product_data.download",
+            ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.candidates.download",
+            ROLE_PERMISSION_CODES[ROLE_OBSERVER],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.product_data.download",
+            ROLE_PERMISSION_CODES[ROLE_OBSERVER],
+        )
+        self.assertTrue(has_permission(self.owner, "ozon.api.actions.download", self.ozon_store))
+        self.assertTrue(has_permission(self.global_admin, "ozon.api.actions.download", self.ozon_store))
+        self.assertIn("ozon.api.elastic.calculate", PERMISSION_DEFINITIONS)
+        self.assertIn(
+            "ozon.api.elastic.calculate",
+            ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.calculate",
+            ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.calculate",
+            ROLE_PERMISSION_CODES[ROLE_OBSERVER],
+        )
+        self.assertTrue(has_permission(self.owner, "ozon.api.elastic.calculate", self.ozon_store))
+        self.assertTrue(has_permission(self.global_admin, "ozon.api.elastic.calculate", self.ozon_store))
+        self.assertIn("ozon.api.elastic.files.download", PERMISSION_DEFINITIONS)
+        self.assertIn(
+            "ozon.api.elastic.files.download",
+            ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.files.download",
+            ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.files.download",
+            ROLE_PERMISSION_CODES[ROLE_OBSERVER],
+        )
+        self.assertTrue(has_permission(self.owner, "ozon.api.elastic.files.download", self.ozon_store))
+        self.assertTrue(has_permission(self.global_admin, "ozon.api.elastic.files.download", self.ozon_store))
+        self.assertTrue(has_permission(self.manager, "ozon.api.elastic.files.download", self.ozon_store))
+        self.assertIn("ozon.api.elastic.review", PERMISSION_DEFINITIONS)
+        self.assertIn(
+            "ozon.api.elastic.review",
+            ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.review",
+            ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN],
+        )
+        self.assertNotIn(
+            "ozon.api.elastic.review",
+            ROLE_PERMISSION_CODES[ROLE_OBSERVER],
+        )
+        self.assertTrue(has_permission(self.owner, "ozon.api.elastic.review", self.ozon_store))
+        self.assertTrue(has_permission(self.global_admin, "ozon.api.elastic.review", self.ozon_store))
+        self.assertTrue(has_permission(self.manager, "ozon.api.elastic.review", self.ozon_store))
+        upload_ozon_permissions = {
+            "ozon.api.elastic.upload",
+            "ozon.api.elastic.upload.confirm",
+            "ozon.api.elastic.deactivate.confirm",
+        }
+        self.assertTrue(upload_ozon_permissions <= set(PERMISSION_DEFINITIONS))
+        self.assertTrue(upload_ozon_permissions <= ROLE_PERMISSION_CODES[ROLE_OWNER])
+        self.assertTrue(upload_ozon_permissions <= ROLE_PERMISSION_CODES[ROLE_GLOBAL_ADMIN])
+        self.assertFalse(upload_ozon_permissions & ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
+        self.assertFalse(upload_ozon_permissions & ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertFalse(upload_ozon_permissions & ROLE_PERMISSION_CODES[ROLE_OBSERVER])
 
     def test_seed_command_is_idempotent(self):
         before = {
