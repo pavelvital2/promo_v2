@@ -1272,7 +1272,7 @@ class OzonActionsDownloadTests(TestCase):
         with default_storage.open(manual_version.storage_path, "rb") as handle:
             workbook = load_workbook(handle, read_only=True)
             self.assertIn("Товары и цены", workbook.sheetnames)
-            self.assertIn("Снять с акции", workbook.sheetnames)
+            self.assertEqual(workbook.sheetnames, ["Описание", "Товары и цены"])
             sheet = workbook["Товары и цены"]
             template = load_workbook(MANUAL_UPLOAD_TEMPLATE_PATH, read_only=True)
             template_sheet = template["Товары и цены"]
@@ -1285,15 +1285,14 @@ class OzonActionsDownloadTests(TestCase):
             self.assertIsNotNone(first[0])
             self.assertEqual(first[10], "Да")
             self.assertIsNotNone(first[11])
+            self.assertEqual(sheet.max_row, len(reviewed.summary["accepted_calculation_snapshot"]["calculation_rows"]) + 3)
+            self.assertTrue(
+                any(
+                    row[10] is None and row[11] is None
+                    for row in sheet.iter_rows(min_row=4, values_only=True)
+                )
+            )
             template.close()
-            deactivate = workbook["Снять с акции"]
-            deactivate_rows = list(deactivate.iter_rows(min_row=2, values_only=True))
-            self.assertEqual(len(deactivate_rows), 4)
-            headers = [cell.value for cell in next(deactivate.iter_rows(min_row=1, max_row=1))]
-            reason_index = headers.index("deactivate_reason_code")
-            self.assertTrue(all(row[reason_index] for row in deactivate_rows))
-            note = workbook["Примечание"]
-            self.assertIn("Stage 1-compatible", note["A1"].value)
             workbook.close()
         self.assertTrue(
             AuditRecord.objects.filter(

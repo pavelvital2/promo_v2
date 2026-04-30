@@ -113,6 +113,10 @@ def _add_update_rows(snapshot: dict) -> list[dict]:
     ]
 
 
+def _manual_upload_rows(snapshot: dict) -> list[dict]:
+    return list(snapshot.get("calculation_rows") or [])
+
+
 def _deactivate_rows(snapshot: dict) -> list[dict]:
     return [
         row
@@ -141,8 +145,12 @@ def _set_manual_row(sheet, row_no: int, row: dict) -> None:
     sheet.cell(row=row_no, column=5, value=row.get("name"))
     sheet.cell(row=row_no, column=9, value=row.get("current_action_price"))
     sheet.cell(row=row_no, column=10, value=row.get("J_min_price"))
-    sheet.cell(row=row_no, column=11, value="Да")
-    sheet.cell(row=row_no, column=12, value=row.get("calculated_action_price"))
+    if row.get("upload_ready"):
+        sheet.cell(row=row_no, column=11, value="Да")
+        sheet.cell(row=row_no, column=12, value=row.get("calculated_action_price"))
+    else:
+        sheet.cell(row=row_no, column=11, value=None)
+        sheet.cell(row=row_no, column=12, value=None)
     sheet.cell(row=row_no, column=15, value=row.get("O_price_min_elastic"))
     sheet.cell(row=row_no, column=16, value=row.get("P_price_max_elastic"))
     sheet.cell(row=row_no, column=18, value=row.get("R_stock_present"))
@@ -156,39 +164,8 @@ def _write_manual_upload_excel(*, snapshot: dict, store: StoreAccount, actor, op
     workbook, sheet = _manual_upload_template_workbook()
     workbook.properties.title = MANUAL_UPLOAD_NOTE
     workbook.properties.subject = "manual upload Excel по Stage 1-compatible template"
-    for row_no, row in enumerate(_add_update_rows(snapshot), start=4):
+    for row_no, row in enumerate(_manual_upload_rows(snapshot), start=4):
         _set_manual_row(sheet, row_no, row)
-
-    note = workbook.create_sheet("Примечание")
-    note["A1"] = "manual upload Excel по Stage 1-compatible template"
-    note["A2"] = "API upload remains the primary write path; this workbook is a secondary manual artifact."
-
-    deactivate = workbook.create_sheet("Снять с акции")
-    deactivate.append(
-        [
-            "product_id",
-            "offer_id",
-            "name",
-            "current_action_price",
-            "source_group",
-            "reason_code",
-            "deactivate_reason_code",
-            "deactivate_reason",
-        ]
-    )
-    for row in _deactivate_rows(snapshot):
-        deactivate.append(
-            [
-                row.get("product_id"),
-                row.get("offer_id"),
-                row.get("name"),
-                row.get("current_action_price"),
-                row.get("source_group"),
-                row.get("reason_code"),
-                row.get("deactivate_reason_code"),
-                row.get("deactivate_reason"),
-            ]
-        )
 
     buffer = BytesIO()
     workbook.save(buffer)
