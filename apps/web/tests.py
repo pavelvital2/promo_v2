@@ -47,6 +47,20 @@ class BootstrapSmokeTests(SimpleTestCase):
             [("result_code", "ok")],
         )
 
+    def test_summary_items_hide_large_operation_payloads_from_user_summary(self) -> None:
+        self.assertEqual(
+            _summary_items(
+                {
+                    "products_count": 484,
+                    "products": [{"product_id": "1"}],
+                    "canonical_rows": [{"product_id": "1"}],
+                    "calculation_rows": [{"product_id": "1"}],
+                    "accepted_calculation_snapshot": {"rows": [{"product_id": "1"}]},
+                }
+            ),
+            [("products_count", 484)],
+        )
+
 
 class DeploymentReadinessTests(SimpleTestCase):
     repo_root = Path(__file__).resolve().parents[2]
