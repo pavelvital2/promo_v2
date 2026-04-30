@@ -48,7 +48,7 @@ DEACTIVATE_NOT_REQUIRED = "not_required"
 MANUAL_UPLOAD_LOGICAL_NAME = "ozon_api_elastic_manual_upload_excel.xlsx"
 MANUAL_UPLOAD_NOTE = "Stage 1-compatible manual upload artifact for Ozon Elastic Boosting."
 MANUAL_UPLOAD_TEMPLATE_PATH = (
-    Path(__file__).resolve().parents[3] / "test_files" / "Ozon" / "products-1977747.xlsx"
+    Path(__file__).resolve().parents[3] / "resources" / "templates" / "ozon" / "products-1977747.xlsx"
 )
 MANUAL_UPLOAD_DATA_START_ROW = 4
 MANUAL_UPLOAD_MAX_COLUMN = 56
