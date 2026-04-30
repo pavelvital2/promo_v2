@@ -31,6 +31,7 @@ from apps.discounts.ozon_api.client import (
 )
 from apps.discounts.ozon_api.calculation import calculate_elastic_result
 from apps.discounts.ozon_api.review import (
+    MANUAL_UPLOAD_TEMPLATE_PATH,
     accept_elastic_result,
     decline_elastic_result,
     is_upload_allowed_by_review,
@@ -1273,12 +1274,18 @@ class OzonActionsDownloadTests(TestCase):
             self.assertIn("Товары и цены", workbook.sheetnames)
             self.assertIn("Снять с акции", workbook.sheetnames)
             sheet = workbook["Товары и цены"]
-            self.assertEqual(sheet["A1"].value, "manual upload Excel по Stage 1-compatible template")
+            template = load_workbook(MANUAL_UPLOAD_TEMPLATE_PATH, read_only=True)
+            template_sheet = template["Товары и цены"]
+            self.assertEqual(sheet["A1"].value, template_sheet["A1"].value)
+            self.assertEqual(sheet["K2"].value, template_sheet["K2"].value)
+            self.assertEqual(sheet["L2"].value, template_sheet["L2"].value)
             data_rows = list(sheet.iter_rows(min_row=4, values_only=True))
             self.assertTrue(data_rows)
             first = data_rows[0]
+            self.assertIsNotNone(first[0])
             self.assertEqual(first[10], "Да")
             self.assertIsNotNone(first[11])
+            template.close()
             deactivate = workbook["Снять с акции"]
             deactivate_rows = list(deactivate.iter_rows(min_row=2, values_only=True))
             self.assertEqual(len(deactivate_rows), 4)

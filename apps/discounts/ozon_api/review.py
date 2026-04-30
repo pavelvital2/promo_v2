@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from io import BytesIO
+from pathlib import Path
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
-from openpyxl import Workbook
+from openpyxl import load_workbook
 
 from apps.audit.models import AuditActionCode, AuditSourceContext
 from apps.audit.services import create_audit_record
@@ -46,6 +47,11 @@ DEACTIVATE_PENDING = "pending"
 DEACTIVATE_NOT_REQUIRED = "not_required"
 MANUAL_UPLOAD_LOGICAL_NAME = "ozon_api_elastic_manual_upload_excel.xlsx"
 MANUAL_UPLOAD_NOTE = "Stage 1-compatible manual upload artifact for Ozon Elastic Boosting."
+MANUAL_UPLOAD_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[3] / "test_files" / "Ozon" / "products-1977747.xlsx"
+)
+MANUAL_UPLOAD_DATA_START_ROW = 4
+MANUAL_UPLOAD_MAX_COLUMN = 56
 
 
 def _assert_review_permission(actor, store: StoreAccount) -> None:
@@ -115,50 +121,43 @@ def _deactivate_rows(snapshot: dict) -> list[dict]:
     ]
 
 
+def _manual_upload_template_workbook():
+    if not MANUAL_UPLOAD_TEMPLATE_PATH.exists():
+        raise ValidationError("Ozon manual upload Excel template is not configured.")
+    workbook = load_workbook(MANUAL_UPLOAD_TEMPLATE_PATH, read_only=False, data_only=False)
+    if "Товары и цены" not in workbook.sheetnames:
+        workbook.close()
+        raise ValidationError("Ozon manual upload Excel template must contain sheet Товары и цены.")
+    sheet = workbook["Товары и цены"]
+    if sheet.max_row >= MANUAL_UPLOAD_DATA_START_ROW:
+        sheet.delete_rows(MANUAL_UPLOAD_DATA_START_ROW, sheet.max_row - MANUAL_UPLOAD_DATA_START_ROW + 1)
+    return workbook, sheet
+
+
+def _set_manual_row(sheet, row_no: int, row: dict) -> None:
+    # Keep the Ozon cabinet template layout: only data row cells are populated.
+    sheet.cell(row=row_no, column=1, value=row.get("product_id"))
+    sheet.cell(row=row_no, column=3, value=row.get("offer_id"))
+    sheet.cell(row=row_no, column=5, value=row.get("name"))
+    sheet.cell(row=row_no, column=9, value=row.get("current_action_price"))
+    sheet.cell(row=row_no, column=10, value=row.get("J_min_price"))
+    sheet.cell(row=row_no, column=11, value="Да")
+    sheet.cell(row=row_no, column=12, value=row.get("calculated_action_price"))
+    sheet.cell(row=row_no, column=15, value=row.get("O_price_min_elastic"))
+    sheet.cell(row=row_no, column=16, value=row.get("P_price_max_elastic"))
+    sheet.cell(row=row_no, column=18, value=row.get("R_stock_present"))
+    for column in range(1, MANUAL_UPLOAD_MAX_COLUMN + 1):
+        cell = sheet.cell(row=row_no, column=column)
+        if cell.value is None:
+            cell.value = ""
+
+
 def _write_manual_upload_excel(*, snapshot: dict, store: StoreAccount, actor, operation: Operation):
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Товары и цены"
+    workbook, sheet = _manual_upload_template_workbook()
     workbook.properties.title = MANUAL_UPLOAD_NOTE
     workbook.properties.subject = "manual upload Excel по Stage 1-compatible template"
-    sheet["A1"] = "manual upload Excel по Stage 1-compatible template"
-    sheet["A2"] = f"action_id: {snapshot.get('action_id')}; action_name: {snapshot.get('action_name')}"
-    headers = [
-        "product_id",
-        "offer_id",
-        "name",
-        "source_group",
-        "planned_action",
-        "reason_code",
-        "current_action_price",
-        "reserved_H",
-        "reserved_I",
-        "J/min_price",
-        "K/participate",
-        "L/calculated_action_price",
-        "reserved_M",
-        "reserved_N",
-        "O/price_min_elastic",
-        "P/price_max_elastic",
-        "reserved_Q",
-        "R/stock_present",
-    ]
-    for index, header in enumerate(headers, start=1):
-        sheet.cell(row=3, column=index, value=header)
     for row_no, row in enumerate(_add_update_rows(snapshot), start=4):
-        sheet.cell(row=row_no, column=1, value=row.get("product_id"))
-        sheet.cell(row=row_no, column=2, value=row.get("offer_id"))
-        sheet.cell(row=row_no, column=3, value=row.get("name"))
-        sheet.cell(row=row_no, column=4, value=row.get("source_group"))
-        sheet.cell(row=row_no, column=5, value=row.get("planned_action"))
-        sheet.cell(row=row_no, column=6, value=row.get("reason_code"))
-        sheet.cell(row=row_no, column=7, value=row.get("current_action_price"))
-        sheet.cell(row=row_no, column=10, value=row.get("J_min_price"))
-        sheet.cell(row=row_no, column=11, value="Да")
-        sheet.cell(row=row_no, column=12, value=row.get("calculated_action_price"))
-        sheet.cell(row=row_no, column=15, value=row.get("O_price_min_elastic"))
-        sheet.cell(row=row_no, column=16, value=row.get("P_price_max_elastic"))
-        sheet.cell(row=row_no, column=18, value=row.get("R_stock_present"))
+        _set_manual_row(sheet, row_no, row)
 
     note = workbook.create_sheet("Примечание")
     note["A1"] = "manual upload Excel по Stage 1-compatible template"
