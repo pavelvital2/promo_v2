@@ -334,25 +334,28 @@ class HomeSmokeTests(TestCase):
             status=ConnectionBlock.Status.ACTIVE,
             protected_secret_ref="env://OZON_TEST_SECRET",
         )
-        row = {
-            "product_id": "2001",
-            "offer_id": "OFFER-1",
-            "name": "Product 1",
-            "source_group": "active",
-            "J_min_price": "",
-            "O_price_min_elastic": "100",
-            "P_price_max_elastic": "120",
-            "R_stock_present": "5",
-            "current_action_price": "110",
-            "calculated_action_price": "",
-            "reason_code": "missing_min_price",
-            "reason": "Missing minimum price.",
-            "planned_action": "deactivate_from_action",
-            "upload_ready": False,
-            "deactivate_required": True,
-            "deactivate_reason_code": "missing_min_price",
-            "deactivate_reason": "Missing minimum price.",
-        }
+        rows = [
+            {
+                "product_id": f"20{index:02d}",
+                "offer_id": f"OFFER-{index}",
+                "name": f"Product {index}",
+                "source_group": "active",
+                "J_min_price": "",
+                "O_price_min_elastic": "100",
+                "P_price_max_elastic": "120",
+                "R_stock_present": "5",
+                "current_action_price": "110",
+                "calculated_action_price": "",
+                "reason_code": "missing_min_price",
+                "reason": "Missing minimum price.",
+                "planned_action": "deactivate_from_action",
+                "upload_ready": False,
+                "deactivate_required": True,
+                "deactivate_reason_code": "missing_min_price",
+                "deactivate_reason": "Missing minimum price.",
+            }
+            for index in range(1, 12)
+        ]
         run = Run.objects.create(
             marketplace="ozon",
             module=OperationModule.OZON_API,
@@ -374,12 +377,12 @@ class HomeSmokeTests(TestCase):
             summary={
                 "review_state": "review_pending_deactivate_confirmation",
                 "deactivate_confirmation_status": "pending",
-                "groups_count": {"deactivate_from_action": 1},
-                "calculation_rows": [row],
+                "groups_count": {"deactivate_from_action": len(rows)},
+                "calculation_rows": rows,
                 "accepted_basis_checksum": "checksum",
                 "accepted_calculation_snapshot": {
                     "action_id": "101",
-                    "calculation_rows": [row],
+                    "calculation_rows": rows,
                 },
             },
         )
@@ -392,6 +395,7 @@ class HomeSmokeTests(TestCase):
         self.assertContains(response, "deactivate_from_action")
         self.assertContains(response, "Подтвердить снятие с акции")
         self.assertContains(response, "2001")
+        self.assertEqual(len(response.context["rows_page"].object_list), 10)
 
     def test_anonymous_home_redirects_to_login(self) -> None:
         response = self.client.get(reverse("web:home"))

@@ -1392,7 +1392,7 @@ def _ozon_elastic_master_context(request: HttpRequest, stores, store: StoreAccou
             "upload success count": (latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD).summary or {}).get("success_count", 0) if latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD) else 0,
             "upload rejected count": (latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD).summary or {}).get("rejected_count", 0) if latest_by_step.get(OperationStepCode.OZON_API_ELASTIC_UPLOAD) else 0,
         },
-        "rows_page": _paginate(request, filtered_rows, 50),
+        "rows_page": _paginate(request, filtered_rows, 10),
         "row_filters": {
             "planned_action": request.GET.get("planned_action", "").strip(),
             "reason_code": request.GET.get("reason_code", "").strip(),
