@@ -233,6 +233,10 @@ class OzonApiClientTests(SimpleTestCase):
         self.assertTrue(session.calls[0]["url"].endswith(OZON_PRODUCT_INFO_LIST_PATH))
         self.assertTrue(session.calls[2]["url"].endswith(OZON_PRODUCT_INFO_STOCKS_PATH))
         self.assertEqual(session.calls[1]["json"], {"product_id": ["101"]})
+        self.assertEqual(
+            session.calls[3]["json"],
+            {"filter": {"product_id": ["101"], "visibility": "ALL"}, "limit": 100},
+        )
 
     def test_write_activate_deactivate_use_actions_endpoints_without_retry(self):
         session = RecordingSession(

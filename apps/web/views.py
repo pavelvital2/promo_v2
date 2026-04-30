@@ -22,6 +22,7 @@ from apps.discounts.ozon_api import product_data as ozon_api_product_data
 from apps.discounts.ozon_api import products as ozon_api_products
 from apps.discounts.ozon_api import review as ozon_api_review
 from apps.discounts.ozon_api import upload as ozon_api_upload
+from apps.discounts.ozon_api.client import OzonApiError
 from apps.discounts.ozon_excel import services as ozon_services
 from apps.discounts.wb_api.client import WBApiError
 from apps.discounts.wb_api.calculation import services as wb_api_calculation_services
@@ -1082,9 +1083,20 @@ def _handle_ozon_elastic_post(request: HttpRequest, store: StoreAccount, action:
 
         messages.error(request, "Неизвестное действие.")
         return None
-    except (PermissionDenied, ValidationError) as exc:
+    except (PermissionDenied, ValidationError, OzonApiError) as exc:
         messages.error(request, _error_text(exc))
-        return None
+        latest_operation = (
+            Operation.objects.filter(
+                store=store,
+                marketplace="ozon",
+                module=OperationModule.OZON_API,
+                mode=OperationMode.API,
+                step_code__in=OZON_API_STEPS,
+            )
+            .order_by("-id")
+            .first()
+        )
+        return _ozon_elastic_redirect(store, latest_operation)
 
 
 def _latest_ozon_operation_by_step(store: StoreAccount | None) -> dict:

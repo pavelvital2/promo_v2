@@ -178,7 +178,13 @@ class OzonApiClient:
     def product_info_stocks(self, *, product_ids: list[str | int]) -> dict:
         return self.post_json(
             OZON_PRODUCT_INFO_STOCKS_PATH,
-            payload={"product_id": [str(product_id) for product_id in product_ids]},
+            payload={
+                "filter": {
+                    "product_id": [str(product_id) for product_id in product_ids],
+                    "visibility": "ALL",
+                },
+                "limit": self.policy.read_page_size,
+            },
             api_category="stocks",
         )
 

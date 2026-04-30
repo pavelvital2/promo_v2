@@ -79,7 +79,7 @@ def _extract_product_info_rows(response: dict) -> list[dict]:
     if isinstance(result, dict):
         rows = result.get("items") or result.get("products") or result.get("list")
     else:
-        rows = result
+        rows = result or response.get("items")
     if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
         raise OzonApiInvalidResponseError(OzonApiInvalidResponseError.safe_message)
     return rows
