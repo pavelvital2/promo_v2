@@ -56,6 +56,7 @@ class BootstrapSmokeTests(SimpleTestCase):
                     "canonical_rows": [{"product_id": "1"}],
                     "calculation_rows": [{"product_id": "1"}],
                     "accepted_calculation_snapshot": {"rows": [{"product_id": "1"}]},
+                    "accepted_basis_candidate": {"add_to_action": [{"product_id": "1"}]},
                 }
             ),
             [("products_count", 484)],

@@ -422,6 +422,7 @@ def _summary_items(value) -> list[tuple[str, object]]:
         "canonical_rows",
         "calculation_rows",
         "accepted_calculation_snapshot",
+        "accepted_basis_candidate",
     }
     return [(key, child) for key, child in value.items() if key not in hidden_keys]
 
