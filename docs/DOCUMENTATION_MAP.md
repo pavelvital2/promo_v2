@@ -28,6 +28,14 @@
 | `docs/roles/AGENT_ROLES_MATRIX.md` | Матрица ролей и ответственности |
 | `docs/roles/READING_PACKAGES.md` | Пакеты чтения по ролям и типам задач |
 
+## Stage 0
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/tasks/design/stage-0/STAGE_0_OZON_ELASTIC_UI_TZ.md` | Проектное ТЗ Stage 0 для приведения Ozon Elastic UI в порядок |
+| `docs/tasks/implementation/stage-0/OZON_ELASTIC_UI_READING_PACKAGE.md` | Task-scoped пакет чтения для будущей реализации Stage 0 UI Ozon Elastic |
+| `docs/testing/STAGE_0_OZON_ELASTIC_UI_ACCEPTANCE_CHECKLIST.md` | UI acceptance checklist for future Stage 0 Ozon Elastic implementation |
+
 ## Architecture
 
 | Документ | Назначение |
@@ -53,7 +61,7 @@
 | `docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md` | WB API текущие акции Stage 2.1 |
 | `docs/product/OZON_DISCOUNTS_EXCEL_SPEC.md` | Ozon Excel сценарий скидок |
 | `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md` | Ozon API акция `Эластичный бустинг` Stage 2.2 |
-| `docs/product/OZON_API_ELASTIC_UI_SPEC.md` | UI workflow Ozon API `Эластичный бустинг` Stage 2.2 |
+| `docs/product/OZON_API_ELASTIC_UI_SPEC.md` | Stage 0 target UI spec and workflow Ozon API `Эластичный бустинг` Stage 2.2 |
 | `docs/product/modules/README.md` | Модульная карта stage 1 |
 
 ## Stage 1

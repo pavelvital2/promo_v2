@@ -9,10 +9,11 @@
   {% endif %}
 </div>
 <section class="panel">
+  <h2>Кратко</h2>
   <div class="kv">
     <strong>Маркетплейс</strong><span>{{ operation.marketplace }}</span>
     <strong>Модуль / режим</strong><span>{{ operation.module }} / {{ operation.mode }}</span>
-    <strong>Классификатор / статус</strong><span>{{ classifier_label }} / {{ operation.status }}</span>
+    <strong>Классификатор / статус</strong><span>{{ classifier_label }} / {{ operation_status_label }}</span>
     {% if is_api_operation %}<strong>step_code</strong><span>{{ operation.step_code }}</span>{% else %}<strong>Тип</strong><span>{{ operation.operation_type }}</span>{% endif %}
     <strong>Магазин</strong><span>{{ operation.store.visible_id }} {{ operation.store.name }}</span>
     <strong>Инициатор</strong><span>{{ operation.initiator_user.visible_id }} {{ operation.initiator_user.login }}</span>
@@ -27,17 +28,17 @@
   <section class="panel">
     <h2>Входные файлы</h2>
     {% if input_files %}
-      <table><thead><tr><th>Роль</th><th>Файл</th><th>Версия</th><th>Checksum</th><th>Retention</th></tr></thead><tbody>
+      <div class="table-scroll"><table><thead><tr><th>Роль</th><th>Файл</th><th>Версия</th><th>Checksum</th><th>Retention</th></tr></thead><tbody>
         {% for link in input_files %}
           <tr><td>{{ link.role_in_operation }}</td><td>{{ link.file_version.file.visible_id }} {{ link.file_version.original_name }}</td><td>v{{ link.file_version.version_no }}</td><td>{{ link.file_version.checksum_sha256 }}</td><td>{{ link.file_version.retention_until }}</td></tr>
         {% endfor %}
-      </tbody></table>
+      </tbody></table></div>
     {% else %}<div class="empty">Нет связанных входных файлов.</div>{% endif %}
   </section>
   <section class="panel">
     <h2>Выходные файлы</h2>
     {% if output_links %}
-      <table><thead><tr><th>Тип</th><th>Файл</th><th>Версия</th><th>Действие</th></tr></thead><tbody>
+      <div class="table-scroll"><table><thead><tr><th>Тип</th><th>Файл</th><th>Версия</th><th>Действие</th></tr></thead><tbody>
         {% for link in output_links %}
           <tr>
             <td>{{ link.output_kind }}</td>
@@ -48,7 +49,7 @@
             </td>
           </tr>
         {% endfor %}
-      </tbody></table>
+      </tbody></table></div>
     {% else %}<div class="empty">Output workbook не создан для этой операции.</div>{% endif %}
   </section>
 </div>
@@ -56,20 +57,34 @@
 <section class="panel" style="margin-top:16px">
   <h2>Applied parameters snapshot</h2>
   {% if parameter_snapshots %}
-    <table><thead><tr><th>Код</th><th>Значение</th><th>Источник</th><th>Версия</th><th>Effective</th></tr></thead><tbody>
+    <div class="table-scroll"><table><thead><tr><th>Код</th><th>Значение</th><th>Источник</th><th>Версия</th><th>Effective</th></tr></thead><tbody>
       {% for item in parameter_snapshots %}
         <tr><td>{{ item.parameter_code }}</td><td>{{ item.applied_value }}</td><td>{{ item.source }}</td><td>{{ item.parameter_version }}</td><td>{{ item.effective_at }}</td></tr>
       {% endfor %}
-    </tbody></table>
+    </tbody></table></div>
   {% else %}<div class="empty">Для операции нет пользовательских параметров.</div>{% endif %}
 </section>
 
 <section class="panel" style="margin-top:16px">
-  <h2>Summary</h2>
+  <h2>Краткий результат</h2>
   {% if summary_items %}
-    <table><tbody>{% for key, value in summary_items %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</tbody></table>
+    <div class="table-scroll"><table><tbody>{% for key, value in summary_items %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</tbody></table></div>
   {% else %}<div class="empty">Summary не заполнен.</div>{% endif %}
 </section>
+
+{% if is_api_operation %}
+  <section class="panel" style="margin-top:16px">
+    <h2>Технические блоки</h2>
+    {% if technical_summary_items %}
+      {% for item in technical_summary_items %}
+        <details>
+          <summary>{{ item.key }}</summary>
+          <pre class="pre technical-pre">{{ item.value }}</pre>
+        </details>
+      {% endfor %}
+    {% else %}<div class="empty">Технические summary/basis/source/API details не заполнены.</div>{% endif %}
+  </section>
+{% endif %}
 
 <section class="panel" style="margin-top:16px">
   <h2>Детализация строк</h2>
@@ -81,11 +96,13 @@
       <button>Фильтровать</button>
     </form>
     {% if detail_page.object_list %}
-      <table><thead><tr><th>Строка</th><th>Product</th><th>Status</th><th>Reason</th><th>Level</th><th>Field</th><th>Value</th><th>Message</th></tr></thead><tbody>
-        {% for row in detail_page.object_list %}
-          <tr><td>{{ row.row_no }}</td><td>{{ row.product_ref }}</td><td>{{ row.row_status }}</td><td>{{ row.reason_code }}</td><td>{{ row.message_level }}</td><td>{{ row.problem_field }}</td><td>{{ row.final_value }}</td><td>{{ row.message }}</td></tr>
-        {% endfor %}
-      </tbody></table>
+      <div class="table-scroll">
+        <table><thead><tr><th>Строка</th><th>Product</th><th>Status</th><th>Reason</th><th>Level</th><th>Field</th><th>Value</th><th>Message</th></tr></thead><tbody>
+          {% for row in detail_page.object_list %}
+            <tr><td>{{ row.row_no }}</td><td>{{ row.product_ref }}</td><td>{{ row.row_status }}</td><td>{{ row.reason_code }}</td><td>{{ row.message_level }}</td><td>{{ row.problem_field }}</td><td><pre class="pre technical-pre">{{ row.final_value }}</pre></td><td>{{ row.message }}</td></tr>
+          {% endfor %}
+        </tbody></table>
+      </div>
       {% include "web/_pagination.html" with page=detail_page %}
     {% else %}<div class="empty">Нет строк детализации.</div>{% endif %}
   {% else %}

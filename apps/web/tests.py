@@ -44,7 +44,7 @@ class BootstrapSmokeTests(SimpleTestCase):
     def test_summary_items_hide_safe_snapshot_from_user_summary(self) -> None:
         self.assertEqual(
             _summary_items({"result_code": "ok", "safe_snapshot": {"technical": "payload"}}),
-            [("result_code", "ok")],
+            [],
         )
 
     def test_summary_items_hide_large_operation_payloads_from_user_summary(self) -> None:
@@ -245,16 +245,13 @@ class HomeSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn("Маркетплейсы -> Ozon -> Акции -> API -> Эластичный бустинг", html)
+        self.assertIn("Маркетплейсы / Ozon / Акции / API / Эластичный бустинг", html)
         expected_order = [
             "Скачать доступные акции",
             "Выбрать акцию",
-            "Скачать товары участвующие в акции",
-            "Скачать товары кандидаты в акцию",
-            "Скачать данные по полученным товарам",
+            "Скачать товары и данные по ним",
             "Обработать",
-            "Принять результат",
-            "Скачать Excel результата",
+            "Принять / не принять результат",
             "Скачать Excel для ручной загрузки",
             "Загрузить в Ozon",
         ]
@@ -319,6 +316,37 @@ class HomeSmokeTests(TestCase):
         connection.refresh_from_db()
         selected = connection.metadata[SELECTED_ACTION_METADATA_KEY]
         self.assertEqual(selected["action_id"], "101")
+
+    def test_ozon_elastic_requires_actions_view_not_operation_view_only(self) -> None:
+        observer_role = Role.objects.get(code=ROLE_OBSERVER)
+        user = get_user_model().objects.create_user(
+            login="op-view-only",
+            password="password",
+            display_name="Operation View Only",
+            primary_role=observer_role,
+        )
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=user,
+            store=store,
+            effect=AccessEffect.ALLOW,
+            access_level=StoreAccess.AccessLevel.VIEW,
+        )
+        UserPermissionOverride.objects.create(
+            user=user,
+            store=store,
+            permission=Permission.objects.get(code="ozon.api.operation.view"),
+            effect=AccessEffect.ALLOW,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+
+        self.assertEqual(response.status_code, 403)
 
     def test_ozon_elastic_review_and_deactivate_rows_are_visible(self) -> None:
         user = self._owner()
@@ -388,14 +416,370 @@ class HomeSmokeTests(TestCase):
         )
         self.client.force_login(user)
 
-        response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+        response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk, "tab": "result"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "review_pending_deactivate_confirmation")
-        self.assertContains(response, "deactivate_from_action")
-        self.assertContains(response, "Подтвердить снятие с акции")
+        self.assertContains(response, "Будет снято с акции")
+        self.assertContains(response, "Не проходит расчёт сейчас")
+        self.assertContains(response, "Ошибки")
         self.assertContains(response, "2001")
-        self.assertEqual(len(response.context["rows_page"].object_list), 10)
+        deactivate_group = next(group for group in response.context["result_groups"] if group["key"] == "deactivate")
+        self.assertEqual(deactivate_group["count"], 11)
+        self.assertEqual(len(deactivate_group["rows"]), 10)
+
+        workflow_response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+        workflow_html = workflow_response.content.decode()
+        self.assertNotIn("accepted_basis_checksum", workflow_html)
+        self.assertNotIn("deactivate_from_action", workflow_html)
+        self.assertContains(workflow_response, "Подтвердить снятие с акции")
+
+    def test_ozon_elastic_statuses_are_human_readable(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="ozon_api",
+            connection_type="ozon_client_id_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://OZON_TEST_SECRET",
+        )
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            summary={
+                "review_state": "review_pending_deactivate_confirmation",
+                "groups_count": {"add_to_action": 1},
+                "calculation_rows": [],
+            },
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+
+        self.assertContains(response, "Требуется подтверждение снятия с акции")
+        self.assertContains(response, "Выполнено")
+        self.assertNotContains(response, "review_pending_deactivate_confirmation")
+        self.assertNotContains(response, "completed_success")
+
+    def test_ozon_elastic_connection_status_is_human_readable_in_header_and_workflow(self) -> None:
+        user = self._owner()
+        self.client.force_login(user)
+        cases = [
+            (ConnectionBlock.Status.ACTIVE, "Активно"),
+            (ConnectionBlock.Status.CHECK_FAILED, "Проверка не пройдена"),
+            (None, "Не настроено"),
+        ]
+
+        for index, (status, expected_label) in enumerate(cases, start=1):
+            with self.subTest(status=status or ConnectionBlock.Status.NOT_CONFIGURED):
+                store = StoreAccount.objects.create(
+                    name=f"Ozon Store {index}",
+                    marketplace=StoreAccount.Marketplace.OZON,
+                    cabinet_type=StoreAccount.CabinetType.STORE,
+                )
+                if status is not None:
+                    ConnectionBlock.objects.create(
+                        store=store,
+                        module="ozon_api",
+                        connection_type="ozon_client_id_api_key",
+                        status=status,
+                        protected_secret_ref="env://OZON_TEST_SECRET",
+                    )
+
+                response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+
+                self.assertEqual(response.status_code, 200)
+                html = response.content.decode()
+                match = re.search(
+                    r"Подключение Ozon API</strong><span><span class=\"badge[^\"]*\">([^<]+)</span>",
+                    html,
+                )
+                self.assertIsNotNone(match)
+                self.assertEqual(match.group(1), expected_label)
+                self.assertNotIn(status or ConnectionBlock.Status.NOT_CONFIGURED, match.group(1))
+                self.assertNotIn("active Ozon API connection", html)
+                self.assertNotIn("check_failed", html)
+                self.assertNotIn("not_configured", html)
+
+    def test_ozon_elastic_filters_upload_report_and_completion_block(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="ozon_api",
+            connection_type="ozon_client_id_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://OZON_TEST_SECRET",
+        )
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        manual_version = create_file_version(
+            store=store,
+            uploaded_by=user,
+            uploaded_file=SimpleUploadedFile("manual.xlsx", b"manual"),
+            scenario=FileObject.Scenario.OZON_API_ELASTIC_MANUAL_UPLOAD_EXCEL,
+            kind=FileObject.Kind.OUTPUT,
+            logical_name="ozon_api_elastic_manual_upload_excel.xlsx",
+        )
+        upload_report_version = create_file_version(
+            store=store,
+            uploaded_by=user,
+            uploaded_file=SimpleUploadedFile("upload.xlsx", b"upload"),
+            scenario=FileObject.Scenario.OZON_API_ELASTIC_UPLOAD_REPORT,
+            kind=FileObject.Kind.OUTPUT,
+            logical_name="ozon_api_elastic_upload_report.xlsx",
+        )
+        rows = [
+            {
+                "product_id": "1001",
+                "offer_id": "SKU-1001",
+                "name": "Needle filter product",
+                "source_group": "candidate",
+                "planned_action": "add_to_action",
+                "reason": "Ready.",
+                "upload_ready": True,
+                "upload_status": "success",
+            },
+            {
+                "product_id": "1002",
+                "offer_id": "SKU-1002",
+                "name": "Other product",
+                "source_group": "candidate",
+                "planned_action": "add_to_action",
+                "reason": "Rejected.",
+                "upload_ready": True,
+                "upload_status": "rejected",
+                "reason_code": "ozon_api_upload_rejected",
+            },
+        ]
+        calculation = Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            summary={
+                "review_state": "accepted",
+                "groups_count": {"add_to_action": 2},
+                "manual_upload_file_version_id": manual_version.pk,
+                "calculation_rows": rows,
+            },
+        )
+        Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_UPLOAD,
+            status=ProcessStatus.COMPLETED_WITH_WARNINGS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            check_basis_operation=calculation,
+            logic_version="test",
+            summary={
+                "success_count": 1,
+                "rejected_count": 1,
+                "upload_report_file_version_id": upload_report_version.pk,
+            },
+        )
+        self.client.force_login(user)
+
+        result_response = self.client.get(
+            reverse("web:ozon_elastic"),
+            {"store": store.pk, "tab": "result", "q": "Needle", "upload_status": "success", "upload_ready": "true"},
+        )
+        workflow_response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+
+        self.assertContains(result_response, "Поиск товара")
+        self.assertContains(result_response, "Статус загрузки")
+        self.assertContains(result_response, "Готово к загрузке")
+        self.assertContains(result_response, "Needle filter product")
+        self.assertNotContains(result_response, "Other product")
+        self.assertContains(result_response, "ozon_api_elastic_upload_report")
+        self.assertContains(workflow_response, "Загрузка завершена")
+        self.assertContains(workflow_response, "Отправлено строк")
+        self.assertContains(workflow_response, "Принято Ozon")
+        self.assertContains(workflow_response, "Отклонено Ozon")
+        self.assertContains(workflow_response, "Stage 1-compatible template")
+
+    def test_ozon_elastic_diagnostics_requires_logs_permissions_and_redacts_secrets(self) -> None:
+        owner = self._owner()
+        manager_role = Role.objects.get(code="marketplace_manager")
+        manager = get_user_model().objects.create_user(
+            login="manager",
+            password="password",
+            display_name="Manager",
+            primary_role=manager_role,
+        )
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            effect=AccessEffect.ALLOW,
+            access_level=StoreAccess.AccessLevel.WORK,
+        )
+        ConnectionBlock.objects.create(
+            store=store,
+            module="ozon_api",
+            connection_type="ozon_client_id_api_key",
+            status=ConnectionBlock.Status.ACTIVE,
+            protected_secret_ref="env://OZON_TEST_SECRET",
+        )
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=owner,
+        )
+        Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=run,
+            store=store,
+            initiator_user=owner,
+            logic_version="test",
+            summary={
+                "basis": {"Client-Id": "secret-client", "Authorization": "Bearer secret-token"},
+                "accepted_basis_checksum": "checksum",
+                "groups_count": {"add_to_action": 1},
+                "calculation_rows": [],
+            },
+        )
+
+        self.client.force_login(manager)
+        manager_response = self.client.get(reverse("web:ozon_elastic"), {"store": store.pk})
+        self.assertNotContains(manager_response, "Диагностика")
+        for code in (
+            "audit.list.view",
+            "audit.card.view",
+            "techlog.list.view",
+            "techlog.card.view",
+            "logs.scope.limited",
+        ):
+            UserPermissionOverride.objects.create(
+                user=manager,
+                store=store,
+                permission=Permission.objects.get(code=code),
+                effect=AccessEffect.ALLOW,
+            )
+        manager_diag_response = self.client.get(
+            reverse("web:ozon_elastic"),
+            {"store": store.pk, "tab": "diagnostics"},
+        )
+        self.assertNotContains(manager_diag_response, "Операционные доказательства")
+
+        self.client.force_login(owner)
+        owner_response = self.client.get(
+            reverse("web:ozon_elastic"),
+            {"store": store.pk, "tab": "diagnostics"},
+        )
+        self.assertContains(owner_response, "Диагностика")
+        self.assertContains(owner_response, "Операционные доказательства")
+        self.assertContains(owner_response, "Основание расчёта")
+        self.assertContains(owner_response, "Снимки, checksums и source operations")
+        self.assertContains(owner_response, "API metadata")
+        self.assertContains(owner_response, "Audit / Techlog")
+        self.assertContains(owner_response, "Технические коды")
+        self.assertContains(owner_response, "[redacted]")
+        self.assertNotContains(owner_response, "secret-client")
+        self.assertNotContains(owner_response, "secret-token")
+
+    def test_operation_card_keeps_raw_structures_out_of_short_summary(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="Ozon Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        run = Run.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        operation = Operation.objects.create(
+            marketplace="ozon",
+            module=OperationModule.OZON_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.OZON_API_ELASTIC_CALCULATION,
+            status=ProcessStatus.RUNNING,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+            summary={
+                "rows_count": 2,
+                "groups_count": {"add_to_action": 1},
+                "basis": {"action_id": "101"},
+                "result_code": "ozon_api_calculation_completed",
+            },
+        )
+        OperationDetailRow.objects.create(
+            operation=operation,
+            row_no=1,
+            product_ref="1001",
+            row_status="ok",
+            reason_code="",
+            message_level="info",
+            message="ok",
+            final_value={"long": "x" * 120},
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:operation_card", args=[operation.visible_id]))
+
+        html = response.content.decode()
+        short_block = html.split("Технические блоки", 1)[0]
+        self.assertIn("rows_count", short_block)
+        self.assertNotIn("groups_count", short_block)
+        self.assertNotIn("result_code", short_block)
+        self.assertContains(response, "groups_count")
+        self.assertContains(response, "table-scroll")
 
     def test_anonymous_home_redirects_to_login(self) -> None:
         response = self.client.get(reverse("web:home"))

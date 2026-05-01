@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Ozon Elastic API{% endblock %}
 {% block content %}
-<h1>Маркетплейсы -> Ozon -> Акции -> API -> Эластичный бустинг</h1>
+<h1>Маркетплейсы / Ozon / Акции / API / Эластичный бустинг</h1>
 <div class="toolbar">
   <a class="button" href="{% url 'web:marketplaces' %}">Маркетплейсы</a>
   <a class="button" href="{% url 'web:ozon_excel' %}">Ozon Excel</a>
@@ -23,180 +23,303 @@
 
 {% if selected_store %}
   <section class="panel" style="margin-top:16px">
-    <h2>Подключение Ozon API</h2>
     <div class="kv">
-      <strong>Статус</strong><span><span class="badge {% if not connection_is_active %}warning{% endif %}">{{ connection_status }}</span></span>
-      <strong>Stage 2.2</strong><span>{{ api_stage_2_notice }}</span>
-      {% if can_view_connection and connection %}
-        <strong>Secret ref</strong><span>{% if connection.has_protected_ref %}[ref-set]{% else %}[empty]{% endif %}</span>
-        <strong>Last check</strong><span>{{ connection.last_checked_at|default:"" }} {{ connection.last_check_status }}</span>
-        <strong>Metadata</strong><span>{{ connection.metadata_display }}</span>
+      <strong>Магазин / кабинет</strong><span>{{ selected_store.visible_id }} {{ selected_store.name }}</span>
+      <strong>Подключение Ozon API</strong><span><span class="badge {% if not connection_is_active %}warning{% endif %}">{{ connection_status_label }}</span></span>
+      <strong>Выбранная акция</strong><span>{% if selected_action %}{{ selected_action.action_id }} {{ selected_action.title|default:"" }}{% else %}Не выбрана{% endif %}</span>
+      <strong>Состояние</strong><span>{{ latest_status_label }}</span>
+      <strong>Операции</strong><span>{% if result_operation %}<a href="{% url 'web:operation_card' result_operation.visible_id %}">{{ result_operation.visible_id }}</a>{% else %}Связанные карточки появятся после действий.{% endif %}</span>
+    </div>
+    {% if not connection_is_active %}<p class="status">Действия Stage 2.2 заблокированы: подключение Ozon API не активно.</p>{% endif %}
+  </section>
+
+  <nav class="tabs" aria-label="Разделы Ozon Elastic">
+    <a class="{% if active_tab == 'workflow' %}active{% endif %}" href="?store={{ selected_store.pk }}&tab=workflow">Рабочий процесс</a>
+    <a class="{% if active_tab == 'result' %}active{% endif %}" href="?store={{ selected_store.pk }}&tab=result">Результат</a>
+    {% if can_view_diagnostics %}
+      <a class="{% if active_tab == 'diagnostics' %}active{% endif %}" href="?store={{ selected_store.pk }}&tab=diagnostics">Диагностика</a>
+    {% endif %}
+  </nav>
+
+  {% if active_tab == 'workflow' %}
+    <section class="panel">
+      <h2>Рабочий процесс</h2>
+      <p class="status">Расчёт учитывает товары, уже участвующие в акции, и товары-кандидаты.</p>
+      <div class="workflow-steps">
+        {% for step in steps %}
+          <article class="workflow-step">
+            <div class="step-head">
+              <h3>{{ step.number }}. {{ step.title }}</h3>
+              <span class="badge {% if step.operation.error_count %}error{% endif %}">
+                {% if step.status_label %}{{ step.status_label }}{% elif step.operation %}{{ step.operation_status_label }}{% elif step.can_run %}Готов к запуску{% else %}Недоступен{% endif %}
+              </span>
+            </div>
+            {% if step.readonly_text %}<p class="status">{{ step.readonly_text }}</p>{% endif %}
+            {% if step.operation %}
+              <p class="status">
+                Завершено: {{ step.operation.finished_at|default:"-" }};
+                ошибки: {{ step.operation.error_count }};
+                предупреждения: {{ step.operation.warning_count }}.
+                {% if can_view_diagnostics %}<a href="?store={{ selected_store.pk }}&tab=diagnostics">Детали</a>{% endif %}
+              </p>
+            {% endif %}
+            {% if step.summary_items %}
+              <dl class="compact-kv">
+                {% for key, value in step.summary_items %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+              </dl>
+            {% endif %}
+            {% if step.workflow_result_summary %}
+              <dl class="compact-kv">
+                {% for key, value in step.workflow_result_summary %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+              </dl>
+            {% endif %}
+
+            {% if step.code == "select_action" %}
+              <form method="post" class="toolbar">
+                {% csrf_token %}
+                <input type="hidden" name="store" value="{{ selected_store.pk }}">
+                <label>Акция
+                  <select name="action_id" {% if not step.can_run %}disabled{% endif %}>
+                    {% for action in elastic_actions %}
+                      <option value="{{ action.action_id }}" {% if selected_action_id == action.action_id %}selected{% endif %}>{{ action.action_id }} {{ action.title }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <button class="primary" type="submit" name="action" value="select_action" data-loading-text="Сохраняем..." {% if not step.can_run %}disabled{% endif %}>Выбрать акцию</button>
+              </form>
+              {% if not elastic_actions %}<p class="status">В последнем снимке нет подходящих Elastic Boosting actions.</p>{% endif %}
+            {% elif step.substeps %}
+              <div class="substep-grid">
+                {% for substep in step.substeps %}
+                  <div class="substep">
+                    <strong>{{ substep.title }}</strong>
+                    {% if substep.operation %}
+                      <p class="status">{{ substep.operation_status_label }}; завершено: {{ substep.operation.finished_at|default:"-" }}</p>
+                    {% endif %}
+                    {% if substep.summary_items %}
+                      <dl class="compact-kv">
+                        {% for key, value in substep.summary_items %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+                      </dl>
+                    {% endif %}
+                    <form method="post">
+                      {% csrf_token %}
+                      <input type="hidden" name="store" value="{{ selected_store.pk }}">
+                      <button type="submit" name="action" value="{{ substep.action }}" data-loading-text="Выполняем..." {% if not substep.can_run %}disabled{% endif %}>{{ substep.button }}</button>
+                    </form>
+                  </div>
+                {% endfor %}
+              </div>
+            {% elif step.code == "review" %}
+              <form method="post" class="toolbar">
+                {% csrf_token %}
+                <input type="hidden" name="store" value="{{ selected_store.pk }}">
+                {% if calculation %}<input type="hidden" name="calculation_operation_id" value="{{ calculation.pk }}">{% endif %}
+                <button class="primary" type="submit" name="action" value="accept_result" data-loading-text="Принимаем..." {% if not step.can_run %}disabled{% endif %}>Принять результат</button>
+                <button type="submit" name="action" value="decline_result" data-loading-text="Сохраняем..." {% if not step.can_run %}disabled{% endif %}>Не принять результат</button>
+              </form>
+              {% if deactivate_count %}<p class="status">Перед принятием проверьте группу "Будет снято с акции": {{ deactivate_count }} строк.</p>{% endif %}
+            {% elif step.code == "download_manual" %}
+              {% if manual_file %}
+                <p><a class="button primary" href="{% url 'web:download_file' manual_file.version.pk %}" {% if not manual_file.can_download %}aria-disabled="true"{% endif %}>Скачать Excel для ручной загрузки</a></p>
+                <p class="status">Excel для ручной загрузки - Stage 1-compatible template. API upload остаётся основным способом загрузки.</p>
+              {% else %}
+                <div class="empty">Файл появится после принятия результата.</div>
+              {% endif %}
+            {% elif step.code == "ozon_api_elastic_upload" %}
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="store" value="{{ selected_store.pk }}">
+                {% if calculation %}<input type="hidden" name="calculation_operation_id" value="{{ calculation.pk }}">{% endif %}
+                {% if add_update_count %}<p><label><input type="checkbox" name="add_update_confirmed" value="yes" required> Подтверждаю обновление/добавление: {{ add_update_count }} строк</label></p>{% endif %}
+                {% if deactivate_count %}
+                  <p class="status">Снятие с акции: {{ deactivate_count }} строк. Требуется отдельное групповое подтверждение; без него загрузка заблокирована.</p>
+                  <button type="submit" name="action" value="confirm_deactivate" data-loading-text="Подтверждаем..." {% if not deactivate_preview or deactivate_confirmation_status == "confirmed" %}disabled{% endif %}>Подтвердить снятие с акции</button>
+                {% endif %}
+                <button class="primary" type="submit" name="action" value="upload" data-loading-text="Загружаем..." {% if not step.can_run %}disabled{% endif %}>Загрузить в Ozon</button>
+              </form>
+              {% if upload_completion %}
+                <div class="result-group" style="margin-top:12px">
+                  <h3>Загрузка завершена</h3>
+                  <dl class="compact-kv">
+                    <dt>Статус загрузки</dt><dd>{{ upload_completion.status_label }}</dd>
+                    <dt>Отправлено строк</dt><dd>{{ upload_completion.sent_count }}</dd>
+                    <dt>Принято Ozon</dt><dd>{{ upload_completion.accepted_count }}</dd>
+                    <dt>Отклонено Ozon</dt><dd>{{ upload_completion.rejected_count }}</dd>
+                    <dt>Карточка операции</dt><dd><a href="{% url 'web:operation_card' upload_completion.operation.visible_id %}">{{ upload_completion.operation.visible_id }}</a></dd>
+                    <dt>Excel для ручной загрузки</dt><dd>{% if manual_file %}<a href="{% url 'web:download_file' manual_file.version.pk %}">Stage 1-compatible template</a>{% else %}-{% endif %}</dd>
+                  </dl>
+                  {% if upload_completion.rejected_count %}<p class="status"><a href="?store={{ selected_store.pk }}&tab=result&upload_status=rejected">Отклонено Ozon</a></p>{% endif %}
+                </div>
+              {% endif %}
+            {% else %}
+              <form method="post" class="toolbar">
+                {% csrf_token %}
+                <input type="hidden" name="store" value="{{ selected_store.pk }}">
+                <button class="primary" type="submit" name="action" value="{{ step.action }}" data-loading-text="Выполняем..." {% if not step.can_run %}disabled{% endif %}>{{ step.button }}</button>
+              </form>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% elif active_tab == 'result' %}
+    <section class="panel">
+      <h2>Результат</h2>
+      {% if calculation %}
+        <p class="status">Расчёт выполнен по товарам, уже участвующим в акции, и товарам-кандидатам.</p>
       {% else %}
-        <strong>Детали</strong><span>Скрыто правами доступа или подключение отсутствует.</span>
+        <div class="empty">Завершите шаг "Обработать", чтобы увидеть результат.</div>
       {% endif %}
-      <strong>Connection</strong><span>{% if can_manage_connection %}<a href="{% url 'stores:store_card' selected_store.visible_id %}">Открыть карточку магазина / connection</a>{% else %}-{% endif %}</span>
-    </div>
-    {% if not connection_is_active %}<p class="status">Действия Stage 2.2 заблокированы: требуется active Ozon API connection.</p>{% endif %}
-  </section>
+      <form method="get" class="toolbar">
+        <input type="hidden" name="store" value="{{ selected_store.pk }}">
+        <input type="hidden" name="tab" value="result">
+        <label>Источник
+          <select name="source_group">
+            <option value="">Все</option>
+            {% for option in source_options %}<option value="{{ option.value }}" {% if row_filters.source_group == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Действие
+          <select name="planned_action">
+            <option value="">Все</option>
+            {% for option in action_options %}<option value="{{ option.value }}" {% if row_filters.planned_action == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Причина / статус<input name="reason_code" value="{{ row_filters.reason_code }}"></label>
+        <label>Готовность
+          <select name="upload_ready">
+            <option value="">Все</option>
+            <option value="true" {% if row_filters.upload_ready == "true" %}selected{% endif %}>Готово к загрузке</option>
+            <option value="false" {% if row_filters.upload_ready == "false" %}selected{% endif %}>Не готово к загрузке</option>
+          </select>
+        </label>
+        <label>Статус загрузки
+          <select name="upload_status">
+            <option value="">Все</option>
+            {% for option in upload_status_options %}<option value="{{ option.value }}" {% if row_filters.upload_status == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Поиск товара<input name="q" value="{{ row_filters.q }}" placeholder="product id, offer id или название"></label>
+        <button type="submit">Фильтровать</button>
+      </form>
 
-  <section class="panel" style="margin-top:16px">
-    <h2>Текущее состояние</h2>
-    <div class="kv">
-      <strong>Выбранная акция</strong>
-      <span>{% if selected_action %}{{ selected_action.action_id }}{% else %}Не выбрана{% endif %}</span>
-      <strong>Review state</strong><span>{{ review_state }}</span>
-      <strong>Deactivate confirmation</strong><span>{{ deactivate_confirmation_status|default:"-" }}</span>
-      <strong>Группы результата</strong><span>{{ groups_count }}</span>
-    </div>
-  </section>
+      {% for group in result_groups %}
+        <section class="result-group">
+          <h3>{{ group.label }} <span class="badge">{{ group.count }}</span></h3>
+          {% if group.rows %}
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Product ID</th><th>Offer ID</th><th>Название</th><th>Источник</th><th>Цена в акции</th><th>Расчётная цена</th><th>Данные расчёта</th><th>Причина</th><th>Действие</th></tr></thead>
+                <tbody>
+                  {% for row in group.rows %}
+                    <tr>
+                      <td>{{ row.product_id }}</td>
+                      <td>{{ row.offer_id }}</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.source_label }}</td>
+                      <td>{{ row.current_action_price }}</td>
+                      <td>{{ row.calculated_action_price }}</td>
+                      <td>{{ row.business_summary }}</td>
+                      <td>
+                        {{ row.short_reason }}
+                        <details><summary>Полная причина</summary><p>{{ row.full_reason }}</p><pre class="pre technical-pre">{{ row.safe_details }}</pre>{% if row.technical_details %}<pre class="pre technical-pre">{{ row.technical_details }}</pre>{% endif %}</details>
+                      </td>
+                      <td>{{ row.action_label }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if group.count > 10 %}<p class="status">Показано 10 строк из {{ group.count }}.</p>{% endif %}
+          {% else %}
+            <div class="empty">0 строк.</div>
+          {% endif %}
+        </section>
+      {% endfor %}
+    </section>
 
-  {% if result_operation %}
     <section class="panel" style="margin-top:16px">
-      <h2>Последнее действие {{ result_operation.visible_id }}</h2>
-      <p><a href="{% url 'web:operation_card' result_operation.visible_id %}">Открыть карточку операции</a></p>
-      <p class="status">{{ result_operation.step_code }} / {{ result_operation.status }} / mode={{ result_operation.mode }} / marketplace={{ result_operation.marketplace }} / module={{ result_operation.module }}</p>
+      <h2>Файлы</h2>
+      <div class="file-list">
+        {% if result_file %}
+          <p><a class="button" href="{% url 'web:download_file' result_file.version.pk %}" {% if not result_file.can_download %}aria-disabled="true"{% endif %}>Excel результата</a> <span class="status">v{{ result_file.version.version_no }}; retention {{ result_file.version.retention_until }}</span></p>
+        {% else %}<p class="status">Excel результата появится после расчёта.</p>{% endif %}
+        {% if manual_file %}
+          <p><a class="button primary" href="{% url 'web:download_file' manual_file.version.pk %}" {% if not manual_file.can_download %}aria-disabled="true"{% endif %}>Excel для ручной загрузки - Stage 1-compatible template</a> <span class="status">v{{ manual_file.version.version_no }}; retention {{ manual_file.version.retention_until }}</span></p>
+          {% if deactivate_count %}<p class="status">Workbook/report включает sheet/section "Снять с акции".</p>{% endif %}
+        {% else %}<p class="status">Excel для ручной загрузки появится после принятия результата.</p>{% endif %}
+        {% if upload_file %}
+          <p><a class="button" href="{% url 'web:download_file' upload_file.version.pk %}" {% if not upload_file.can_download %}aria-disabled="true"{% endif %}>Отчёт загрузки Ozon</a> <span class="status">ozon_api_elastic_upload_report; v{{ upload_file.version.version_no }}; retention {{ upload_file.version.retention_until }}</span></p>
+        {% endif %}
+      </div>
+    </section>
+  {% elif active_tab == 'diagnostics' and can_view_diagnostics %}
+    <section class="panel">
+      <h2>Диагностика</h2>
+      <p class="status">Технические данные скрыты из рабочего процесса. Секреты, Client-Id, Api-Key и authorization headers не отображаются.</p>
+      <div class="diagnostic-grid">
+        <section>
+          <h3>Операционные доказательства</h3>
+          {% for item in diagnostic_operations %}
+            <details>
+              <summary>{{ item.title }}{% if item.operation %}: <a href="{% url 'web:operation_card' item.operation.visible_id %}">{{ item.operation.visible_id }}</a>{% endif %}</summary>
+              {% if item.operation %}
+                <dl class="compact-kv">
+                  <dt>marketplace/mode/module</dt><dd>{{ item.operation.marketplace }} / {{ item.operation.mode }} / {{ item.operation.module }}</dd>
+                  <dt>step_code</dt><dd>{{ item.operation.step_code }}</dd>
+                  <dt>status</dt><dd>{{ item.status_label }}</dd>
+                  <dt>start/end</dt><dd>{{ item.operation.started_at }} / {{ item.operation.finished_at }}</dd>
+                  <dt>initiator</dt><dd>{{ item.operation.initiator_user.visible_id }} {{ item.operation.initiator_user.login }}</dd>
+                  <dt>source/check basis</dt><dd>{% if item.operation.check_basis_operation %}<a href="{% url 'web:operation_card' item.operation.check_basis_operation.visible_id %}">{{ item.operation.check_basis_operation.visible_id }}</a>{% else %}-{% endif %}</dd>
+                </dl>
+              {% endif %}
+              {% for raw in item.summary %}
+                <details><summary>{{ raw.key }}</summary><pre class="pre technical-pre">{{ raw.value }}</pre></details>
+              {% endfor %}
+            </details>
+          {% empty %}
+            <div class="empty">Операций пока нет.</div>
+          {% endfor %}
+        </section>
+        <section>
+          <h3>Основание расчёта</h3>
+          <dl class="compact-kv">
+            <dt>selected action_id</dt><dd>{{ selected_action_id|default:"-" }}</dd>
+            <dt>review state</dt><dd>{{ review_state_label }}</dd>
+            <dt>deactivate confirmation</dt><dd>{{ deactivate_confirmation_status|default:"-" }}</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>Снимки, checksums и source operations</h3>
+          {% if result_file %}
+            <p>{% if result_file.can_download %}<a href="{% url 'web:download_file' result_file.version.pk %}">Excel результата</a>{% else %}Excel результата{% endif %} <span class="status">v{{ result_file.version.version_no }}; checksum {{ result_file.version.checksum_sha256 }}</span></p>
+          {% endif %}
+          {% if manual_file %}
+            <p>{% if manual_file.can_download %}<a href="{% url 'web:download_file' manual_file.version.pk %}">Excel для ручной загрузки - Stage 1-compatible template</a>{% else %}Excel для ручной загрузки - Stage 1-compatible template{% endif %} <span class="status">v{{ manual_file.version.version_no }}; checksum {{ manual_file.version.checksum_sha256 }}</span></p>
+          {% endif %}
+          {% if upload_file %}
+            <p>{% if upload_file.can_download %}<a href="{% url 'web:download_file' upload_file.version.pk %}">Отчёт загрузки Ozon</a>{% else %}Отчёт загрузки Ozon{% endif %} <span class="status">ozon_api_elastic_upload_report; v{{ upload_file.version.version_no }}; checksum {{ upload_file.version.checksum_sha256 }}</span></p>
+          {% endif %}
+          {% for raw in diagnostics_items %}
+            <details><summary>{{ raw.key }}</summary><pre class="pre technical-pre">{{ raw.value }}</pre></details>
+          {% empty %}
+            <div class="empty">Расчётных технических данных пока нет.</div>
+          {% endfor %}
+        </section>
+        <section>
+          <h3>API metadata</h3>
+          <p class="status">Endpoint family/method code, response status classes, pagination/rate/batch summaries находятся в свернутых технических блоках без raw sensitive responses.</p>
+        </section>
+        <section>
+          <h3>Audit / Techlog</h3>
+          <p class="status">Связанные audit/techlog records доступны из карточек операций по существующим правам.</p>
+        </section>
+        <section>
+          <h3>Технические коды</h3>
+          <p class="status">source_group, planned_action, reason/result codes и operation status показываются здесь и в карточке операции, а не в рабочем процессе.</p>
+        </section>
+      </div>
     </section>
   {% endif %}
-
-  <section class="panel" style="margin-top:16px">
-    <h2>Счётчики</h2>
-    <table><tbody>
-      {% for key, value in required_counters.items %}
-        <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
-      {% endfor %}
-    </tbody></table>
-  </section>
-
-  <div class="grid" style="margin-top:16px">
-    {% for step in steps %}
-      <section class="panel">
-        <h2>{{ step.number }}. {{ step.title }}</h2>
-        {% if step.readonly_text %}<p class="status">{{ step.readonly_text }}</p>{% endif %}
-        {% if step.operation %}
-          <div class="kv">
-            <strong>Operation</strong><span><a href="{% url 'web:operation_card' step.operation.visible_id %}">{{ step.operation.visible_id }}</a></span>
-            <strong>Классификатор</strong><span>{{ step.operation.step_code }} / {{ step.operation.status }}</span>
-            <strong>Контур</strong><span>mode={{ step.operation.mode }} / marketplace={{ step.operation.marketplace }} / module={{ step.operation.module }}</span>
-            <strong>Финиш</strong><span>{{ step.operation.finished_at|default:"-" }}</span>
-            <strong>Ошибки / warnings</strong><span>{{ step.operation.error_count }} / {{ step.operation.warning_count }}</span>
-          </div>
-        {% endif %}
-        {% if step.summary_items %}
-          <table style="margin-top:12px"><tbody>{% for key, value in step.summary_items %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</tbody></table>
-        {% endif %}
-
-        {% if step.code == "select_action" %}
-          <form method="post" class="toolbar">
-            {% csrf_token %}
-            <input type="hidden" name="store" value="{{ selected_store.pk }}">
-            <label>Approved Elastic action
-              <select name="action_id" {% if not step.can_run %}disabled{% endif %}>
-                {% for action in elastic_actions %}
-                  <option value="{{ action.action_id }}" {% if selected_action_id == action.action_id %}selected{% endif %}>{{ action.action_id }} {{ action.title }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <button class="primary" type="submit" name="action" value="select_action" data-loading-text="Сохраняем..." {% if not step.can_run %}disabled{% endif %}>Выбрать акцию</button>
-          </form>
-          {% if not elastic_actions %}<p class="status">В последнем snapshot нет approved Elastic Boosting actions.</p>{% endif %}
-        {% elif step.code == "review" %}
-          <form method="post" class="toolbar">
-            {% csrf_token %}
-            <input type="hidden" name="store" value="{{ selected_store.pk }}">
-            {% if calculation %}<input type="hidden" name="calculation_operation_id" value="{{ calculation.pk }}">{% endif %}
-            <button class="primary" type="submit" name="action" value="accept_result" data-loading-text="Принимаем..." {% if not step.can_run %}disabled{% endif %}>Принять результат</button>
-            <button type="submit" name="action" value="decline_result" data-loading-text="Сохраняем..." {% if not step.can_run %}disabled{% endif %}>Не принять результат</button>
-          </form>
-        {% elif step.code == "download_result" %}
-          {% if result_file %}
-            <p><a class="button primary" href="{% url 'web:download_file' result_file.version.pk %}" {% if not result_file.can_download %}aria-disabled="true"{% endif %}>Скачать Excel результата</a></p>
-            <p class="status">{{ result_file.version.file.visible_id }} {{ result_file.version.original_name }} / v{{ result_file.version.version_no }} / retention {{ result_file.version.retention_until }}</p>
-          {% else %}
-            <div class="empty">Result report появится после шага "Обработать".</div>
-          {% endif %}
-        {% elif step.code == "download_manual" %}
-          {% if manual_file %}
-            <p><a class="button primary" href="{% url 'web:download_file' manual_file.version.pk %}" {% if not manual_file.can_download %}aria-disabled="true"{% endif %}>Скачать Excel для ручной загрузки</a></p>
-            <p class="status">manual upload Excel по Stage 1-compatible template; API upload остаётся primary write path.</p>
-            <p class="status">{{ manual_file.version.file.visible_id }} {{ manual_file.version.original_name }} / v{{ manual_file.version.version_no }} / retention {{ manual_file.version.retention_until }}</p>
-            {% if deactivate_count %}<p class="status">Файл содержит/сопровождает раздел "Снять с акции" для deactivate rows.</p>{% endif %}
-          {% else %}
-            <div class="empty">Manual upload Excel создаётся только после принятия результата.</div>
-          {% endif %}
-        {% elif step.code == "ozon_api_elastic_upload" %}
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="store" value="{{ selected_store.pk }}">
-            {% if calculation %}<input type="hidden" name="calculation_operation_id" value="{{ calculation.pk }}">{% endif %}
-            <p><label><input type="checkbox" name="add_update_confirmed" value="yes" {% if add_update_count %}required{% endif %}> Подтверждаю add/update group для {{ add_update_count }} строк</label></p>
-            {% if deactivate_count %}
-              <p class="status">Deactivate group: {{ deactivate_count }} строк, status={{ deactivate_confirmation_status }}. Без group confirmation upload заблокирован.</p>
-              <button type="submit" name="action" value="confirm_deactivate" data-loading-text="Подтверждаем..." {% if not deactivate_preview or deactivate_confirmation_status == "confirmed" %}disabled{% endif %}>Подтвердить снятие с акции</button>
-            {% endif %}
-            <button class="primary" type="submit" name="action" value="upload" data-loading-text="Загружаем..." {% if not step.can_run %}disabled{% endif %}>Загрузить в Ozon</button>
-          </form>
-        {% else %}
-          <form method="post" class="toolbar">
-            {% csrf_token %}
-            <input type="hidden" name="store" value="{{ selected_store.pk }}">
-            <button class="primary" type="submit" name="action" value="{{ step.action }}" data-loading-text="Выполняем..." {% if not step.can_run %}disabled{% endif %}>{{ step.button }}</button>
-          </form>
-        {% endif %}
-      </section>
-    {% endfor %}
-  </div>
-
-  <section class="panel" style="margin-top:16px">
-    <h2>Review rows</h2>
-    <form method="get" class="toolbar">
-      <input type="hidden" name="store" value="{{ selected_store.pk }}">
-      <label>planned_action<input name="planned_action" value="{{ row_filters.planned_action }}"></label>
-      <label>reason_code<input name="reason_code" value="{{ row_filters.reason_code }}"></label>
-      <label>source_group<input name="source_group" value="{{ row_filters.source_group }}"></label>
-      <label>upload_ready
-        <select name="upload_ready">
-          <option value="">Все</option>
-          <option value="true" {% if row_filters.upload_ready == "true" %}selected{% endif %}>true</option>
-          <option value="false" {% if row_filters.upload_ready == "false" %}selected{% endif %}>false</option>
-        </select>
-      </label>
-      <button type="submit">Фильтровать</button>
-    </form>
-    {% if rows_page.object_list %}
-      <table><thead><tr><th>product_id</th><th>offer_id</th><th>name</th><th>source_group</th><th>J/O/P/R</th><th>current / calculated</th><th>reason</th><th>planned</th><th>upload</th><th>deactivate reason</th></tr></thead><tbody>
-        {% for row in rows_page.object_list %}
-          <tr>
-            <td>{{ row.product_id }}</td>
-            <td>{{ row.offer_id }}</td>
-            <td>{{ row.name }}</td>
-            <td>{{ row.source_group }}{% if row.source_group == "candidate_and_active" %}<br><span class="status">collision</span>{% endif %}</td>
-            <td>{{ row.J_min_price }} / {{ row.O_price_min_elastic }} / {{ row.P_price_max_elastic }} / {{ row.R_stock_present }}</td>
-            <td>{{ row.current_action_price }} / {{ row.calculated_action_price }}</td>
-            <td>{{ row.reason_code }}</td>
-            <td>{{ row.planned_action }}</td>
-            <td>{{ row.upload_ready }}{% if row.deactivate_required %}<br><span class="status">deactivate_required</span>{% endif %}</td>
-            <td>{{ row.deactivate_reason_code }} {{ row.deactivate_reason }}</td>
-          </tr>
-        {% endfor %}
-      </tbody></table>
-      {% include "web/_pagination.html" with page=rows_page %}
-    {% else %}
-      <div class="empty">Review rows появятся после расчёта.</div>
-    {% endif %}
-  </section>
-
-  <section class="panel" style="margin-top:16px">
-    <h2>Deactivate confirmation</h2>
-    {% if deactivate_preview %}
-      <p class="status">Одна group confirmation применяется ко всей группе deactivate_from_action.</p>
-      <table><thead><tr><th>product_id</th><th>offer_id</th><th>name</th><th>current action_price</th><th>source reason</th><th>deactivate reason</th></tr></thead><tbody>
-        {% for row in deactivate_preview %}
-          <tr><td>{{ row.product_id }}</td><td>{{ row.offer_id }}</td><td>{{ row.name }}</td><td>{{ row.current_action_price }}</td><td>{{ row.reason_code }} {{ row.reason }}</td><td>{{ row.deactivate_reason_code }} {{ row.deactivate_reason }}</td></tr>
-        {% endfor %}
-      </tbody></table>
-    {% else %}
-      <div class="empty">Нет deactivate rows или результат ещё не принят.</div>
-    {% endif %}
-  </section>
 {% endif %}
 {% endblock %}

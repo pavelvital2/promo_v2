@@ -246,12 +246,102 @@
         grid-template-columns: 220px minmax(0, 1fr);
       }
 
+      .kv span,
+      td,
+      th {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
       .pre {
         background: #f2f5f9;
         border-radius: 6px;
         overflow: auto;
         padding: 10px;
         white-space: pre-wrap;
+      }
+
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 16px 0;
+      }
+
+      .tabs a {
+        background: #ffffff;
+        border: 1px solid #c7d1df;
+        border-radius: 6px;
+        color: #172033;
+        padding: 8px 12px;
+      }
+
+      .tabs a.active {
+        background: #174ea6;
+        border-color: #174ea6;
+        color: #ffffff;
+      }
+
+      .workflow-steps,
+      .diagnostic-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .workflow-step,
+      .result-group,
+      .substep {
+        border: 1px solid #e3e9f2;
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .step-head {
+        align-items: start;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      .step-head h3 {
+        margin: 0;
+      }
+
+      .substep-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .compact-kv {
+        display: grid;
+        gap: 6px 12px;
+        grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+        margin: 10px 0;
+      }
+
+      .compact-kv dt {
+        color: #42526e;
+        font-weight: 700;
+      }
+
+      .compact-kv dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .table-scroll {
+        overflow-x: auto;
+        max-width: 100%;
+        width: 100%;
+      }
+
+      .technical-pre {
+        max-height: 260px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
       @media (max-width: 760px) {
@@ -266,6 +356,18 @@
         }
 
         .kv {
+          grid-template-columns: 1fr;
+        }
+
+        .substep-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .step-head {
+          flex-direction: column;
+        }
+
+        .compact-kv {
           grid-template-columns: 1fr;
         }
       }

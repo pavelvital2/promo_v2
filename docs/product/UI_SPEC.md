@@ -305,9 +305,9 @@ Excel route `WB -> Скидки -> Excel` остаётся доступным ш
 
 ## Маркетплейсы -> Ozon -> Акции -> API -> Эластичный бустинг
 
-Трассировка: `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md`; `docs/product/OZON_API_ELASTIC_UI_SPEC.md`.
+Трассировка: `docs/tasks/design/stage-0/STAGE_0_OZON_ELASTIC_UI_TZ.md`; `docs/product/OZON_API_ELASTIC_UI_SPEC.md`.
 
-Stage 2.2 использует отдельный master page. Детальная спецификация находится в `docs/product/OZON_API_ELASTIC_UI_SPEC.md` и является обязательной для implementation tasks TASK-019..TASK-026.
+Stage 2.2 использует отдельный master page. Stage 0 target UI specification находится в `docs/product/OZON_API_ELASTIC_UI_SPEC.md` и является обязательной для будущей реализации приведения Ozon Elastic UI в порядок.
 
 Action selection follows ADR-0029: actions download marks Elastic Boosting candidates by `action_type = MARKETPLACE_MULTI_LEVEL_DISCOUNT_ON_AMOUNT` and title marker `Эластичный бустинг`; user-selected/saved `action_id` is the basis for downstream steps in the selected Ozon store/account.
 
@@ -333,22 +333,33 @@ Action selection follows ADR-0029: actions download marks Elastic Boosting candi
 
 Только `Ozon -> Акции -> API -> Эластичный бустинг` является рабочим Stage 2.2 flow. Future entry points не показываются как реализованные сценарии.
 
-Фиксированный порядок кнопок master page:
+Целевая Stage 0 страница имеет вкладки:
+
+1. `Рабочий процесс`
+2. `Результат`
+3. `Диагностика`
+
+По умолчанию открывается `Рабочий процесс`. Диагностика доступна только через существующие права `ozon.api.operation.view`, audit/techlog permissions and object access; новые permission codes не создаются.
+
+Целевой Stage 0 порядок operator workflow:
 
 1. `Скачать доступные акции`
 2. `Выбрать акцию`
-3. `Скачать товары участвующие в акции`
-4. `Скачать товары кандидаты в акцию`
-5. `Скачать данные по полученным товарам`
-6. `Обработать`
-7. `Принять результат` / `Не принять результат`
-8. `Скачать Excel результата`
-9. `Скачать Excel для ручной загрузки`
-10. `Загрузить в Ozon`
+3. `Скачать товары и данные по ним`
+4. `Обработать`
+5. `Принять / не принять результат`
+6. `Скачать Excel для ручной загрузки`
+7. `Загрузить в Ozon`
+
+Объединение шага 3 является только операторским UI-объединением. Underlying operations, `Operation.step_code`, snapshots, audit/techlog, file versions, source links and checksums сохраняются: `ozon_api_elastic_active_products_download`, `ozon_api_elastic_candidate_products_download`, `ozon_api_elastic_product_data_download`.
+
+`Скачать Excel результата` не является шагом основного рабочего процесса Stage 0. Файл `ozon_api_elastic_result_report` показывается в `Результат`, `Диагностика` и карточке операции.
 
 `Загрузить в Ozon` is the live Ozon actions activate/deactivate write path per ADR-0033 and requires accepted result, drift-check and confirmation for each non-empty write group. Active/candidate_and_active + not_upload_ready rows are mandatory `deactivate_from_action`: UI shows the full deactivate group with row-level reasons and requests one group confirmation for all deactivate rows. Without this group confirmation upload is blocked as `review_pending_deactivate_confirmation` / `ozon_api_upload_blocked_deactivate_unconfirmed`; add/update does not silently proceed.
 
 `Скачать Excel для ручной загрузки` downloads the ADR-0032 Stage 1-compatible manual upload artifact after accepted Stage 2.2 calculation result; the file is secondary to API upload and must keep `Снять с акции` rows visible when deactivate rows exist.
+
+Future implementation acceptance uses `docs/testing/STAGE_0_OZON_ELASTIC_UI_ACCEPTANCE_CHECKLIST.md`; reading package is `docs/tasks/implementation/stage-0/OZON_ELASTIC_UI_READING_PACKAGE.md`.
 
 ## Операции
 
@@ -379,12 +390,12 @@ Action selection follows ADR-0029: actions download marks Elastic Boosting candi
 | Входные точки | Список operations, result screens, карточки store/product, audit/techlog links. |
 | Данные | visible_id, marketplace/module/mode, store, classifier/status (`type` for check/process or `step_code` for Stage 2.1 WB API and Stage 2.2 Ozon API), initiator, start/end, input file versions, output file, check basis if applicable, applied parameters, logic version, summary, errors/warnings, detail rows, warning confirmations if applicable, audit/techlog links. |
 | Действия | Скачать output/detail, открыть file/store/product/audit/techlog, повторить check/process новой operation. |
-| Контролы | Summary blocks, file/version links, parameter snapshot, detail table, links, download buttons. |
+| Контролы | Summary blocks, file/version links, parameter snapshot, detail table, links, download buttons, collapsed technical blocks for long raw values. |
 | Фильтры/поиск/сортировка/пагинация | Detail rows: row number/product/reason/status/problem field; sort by row/status/reason; pagination. |
 | Сообщения/статусы | Operation immutable, file expired, technical details hidden, process blocked/failed/interrupted. |
 | Переходы | Related check/process, store card, product card, audit record, techlog record. |
 | Сценарии | Explainability, support, repeat operations. |
-| Критерии готовности | Все обязательные поля ТЗ §17.3 отображены; Stage 2.1 WB API and Stage 2.2 Ozon API operation cards show `step_code` instead of forcing check/process type; Stage 2.2 card shows `marketplace=ozon`, `mode=api`, `module=actions`; завершённая operation не редактируется; links сохраняют конкретные versions. |
+| Критерии готовности | Все обязательные поля ТЗ §17.3 отображены; Stage 2.1 WB API and Stage 2.2 Ozon API operation cards show `step_code` instead of forcing check/process type; Stage 2.2 card shows `marketplace=ozon`, `mode=api`, `module=actions`; длинные raw JSON-like значения collapsed by default and rendered in scrollable/preformatted blocks; user summary separated from audit/debug data; завершённая operation не редактируется; links сохраняют конкретные versions. |
 
 ## Справочники
 

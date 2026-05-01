@@ -2,26 +2,78 @@
 {% block title %}Маркетплейсы{% endblock %}
 {% block content %}
 <h1>Маркетплейсы</h1>
+
 <div class="grid two">
   <section class="panel">
-    <h2>WB -> Скидки -> Excel</h2>
-    <p class="status">Доступных WB магазинов: {{ wb_stores|length }}</p>
-    {% if wb_stores %}<a class="button primary" href="{% url 'web:wb_excel' %}">Открыть WB Excel</a>{% endif %}
+    <h2>WB</h2>
+    <div class="market-tree">
+      <section>
+        <h3>Цены</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>Акции</h3>
+        <p>Excel: {% if wb_stores %}<a class="button primary" href="{% url 'web:wb_excel' %}">Открыть WB Excel</a>{% else %}<span class="status">Нет доступных магазинов</span>{% endif %}</p>
+        <p>API: {% if wb_api_stores %}<a class="button primary" href="{% url 'web:wb_api' %}">Открыть WB API</a>{% else %}<span class="badge warning">Планируется</span>{% endif %}</p>
+      </section>
+      <section>
+        <h3>Остатки</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>Продажи</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>В производство</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>Поставки</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+    </div>
   </section>
+
   <section class="panel">
-    <h2>WB -> Скидки -> API</h2>
-    <p class="status">Доступных WB API магазинов: {{ wb_api_stores|length }}</p>
-    {% if wb_api_stores %}<a class="button primary" href="{% url 'web:wb_api' %}">Открыть WB API</a>{% endif %}
-  </section>
-  <section class="panel">
-    <h2>Ozon -> Скидки -> Excel</h2>
-    <p class="status">Доступных Ozon магазинов: {{ ozon_stores|length }}</p>
-    {% if ozon_stores %}<a class="button primary" href="{% url 'web:ozon_excel' %}">Открыть Ozon Excel</a>{% endif %}
-  </section>
-  <section class="panel">
-    <h2>Ozon -> Акции -> API -> Эластичный бустинг</h2>
-    <p class="status">Доступных Ozon API магазинов: {{ ozon_api_stores|length }}</p>
-    {% if ozon_api_stores %}<a class="button primary" href="{% url 'web:ozon_elastic' %}">Открыть Ozon Elastic API</a>{% endif %}
+    <h2>Ozon</h2>
+    <div class="market-tree">
+      <section>
+        <h3>Цены</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>Акции</h3>
+        <p>Excel: {% if ozon_stores %}<a class="button primary" href="{% url 'web:ozon_excel' %}">Открыть Ozon Excel</a>{% else %}<span class="status">Нет доступных магазинов</span>{% endif %}</p>
+        <p>API / Эластичный бустинг: {% if ozon_api_stores %}<a class="button primary" href="{% url 'web:ozon_elastic' %}">Открыть Ozon Elastic API</a>{% else %}<span class="status">Нет доступных API кабинетов</span>{% endif %}</p>
+      </section>
+      <section>
+        <h3>Остатки</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>Продажи</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>В производство</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+      <section>
+        <h3>Поставки</h3>
+        <p><span class="badge warning">Планируется</span> Excel</p>
+        <p><span class="badge warning">Планируется</span> API</p>
+      </section>
+    </div>
   </section>
 </div>
 {% endblock %}
