@@ -224,3 +224,45 @@ Audit safe snapshots never contain Client-Id, Api-Key, authorization headers, ra
 | `ozon_api_secret_redaction_violation` | critical | secret-like value detected in safe contour | operation nullable |
 
 Sensitive diagnostics follow common rules and never store Client-Id, Api-Key, authorization header, bearer/API key or secret-like values.
+
+## Stage 3.0 Product Core audit actions
+
+Трассировка: `docs/product/PRODUCT_CORE_SPEC.md`; `docs/product/MARKETPLACE_LISTINGS_SPEC.md`; `docs/product/PRODUCT_CORE_UI_SPEC.md`; ADR-0036..ADR-0041.
+
+| Action code | Когда создаётся | Entity | Связи |
+| --- | --- | --- | --- |
+| `product_core.created` | создан внутренний товар | InternalProduct | product, user |
+| `product_core.updated` | изменён внутренний товар | InternalProduct | product, user |
+| `product_core.archived` | внутренний товар архивирован | InternalProduct | product, user |
+| `product_variant.created` | создан вариант | ProductVariant | product, variant, user |
+| `product_variant.updated` | изменён вариант | ProductVariant | product, variant, user |
+| `product_variant.archived` | вариант архивирован | ProductVariant | product, variant, user |
+| `marketplace_listing.synced` | listing updated by approved sync/import/migration | MarketplaceListing | listing, store, sync run/operation |
+| `marketplace_listing.status_changed` | changed listing status | MarketplaceListing | listing, store, user/source |
+| `marketplace_listing.mapped` | listing manually linked to variant | ProductMappingHistory | listing, variant, user, store |
+| `marketplace_listing.unmapped` | listing manually unlinked from variant | ProductMappingHistory | listing, old variant, user, store |
+| `marketplace_listing.mapping_review_marked` | listing marked needs review | MarketplaceListing/ProductMappingHistory | listing, user/source |
+| `marketplace_listing.mapping_conflict_marked` | listing marked conflict | MarketplaceListing/ProductMappingHistory | listing, user/source |
+| `marketplace_listing.exported` | listing export generated/downloaded when controlled | FileVersion/Operation | operation/file/user/store |
+| `marketplace_listing.import_from_excel_confirmed` | explicit Excel import confirmed | Operation | operation/file/user/store |
+
+Audit records for Product Core must not contain hidden store data outside actor scope or secret-like API values.
+
+## Stage 3.0 Product Core techlog event types
+
+| Event type | Severity baseline | Когда создаётся | Связи |
+| --- | --- | --- | --- |
+| `marketplace_sync.started` | info | sync operation accepted/started | operation/store/sync run |
+| `marketplace_sync.completed` | info | sync finished successfully | operation/store/sync run |
+| `marketplace_sync.completed_with_warnings` | warning | sync finished with row/source warnings | operation/store/sync run |
+| `marketplace_sync.failed` | error | sync failed | operation/store/sync run |
+| `marketplace_sync.partial_response` | warning | external/source response is partial | operation/store/sync run |
+| `marketplace_sync.rate_limited` | warning | API/source rate limit hit | operation/store |
+| `marketplace_sync.timeout` | warning | external/source timeout | operation/store |
+| `marketplace_sync.response_invalid` | error | response/schema invalid | operation/store |
+| `marketplace_sync.secret_redaction_violation` | critical | secret-like value detected in safe snapshot/log/file | operation nullable |
+| `product_core.migration.started` | info | migration/backfill started | migration context |
+| `product_core.migration.completed` | info | migration/backfill completed | migration context |
+| `product_core.migration.failed` | critical | migration/backfill failed | migration context |
+
+Even with `techlog.sensitive.view`, Product Core techlog must not store tokens, API keys, Client-Id, authorization headers, bearer values or secret-like values.

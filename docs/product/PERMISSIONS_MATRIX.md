@@ -206,3 +206,45 @@ Recommended seed Stage 2.2:
 - Локальный администратор: `ozon.api.connection.*`, `ozon.api.operation.view` for assigned stores; workflow rights only if separately granted.
 - Менеджер маркетплейсов: `ozon.api.actions.*`, `ozon.api.elastic.active_products.download`, `ozon.api.elastic.candidates.download`, `ozon.api.elastic.product_data.download`, `ozon.api.elastic.calculate`, `ozon.api.elastic.review`, `ozon.api.elastic.files.download`, `ozon.api.operation.view`; upload and deactivate confirmation rights are granted separately.
 - Наблюдатель: `ozon.api.operation.view` only if separately granted; file download separately.
+
+## Stage 3.0 Product Core права
+
+Трассировка: `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_SCOPE.md`; `docs/product/PRODUCT_CORE_SPEC.md`; `docs/product/MARKETPLACE_LISTINGS_SPEC.md`; `docs/product/PRODUCT_CORE_UI_SPEC.md`.
+
+Product Core permissions are additive and do not weaken existing Stage 1/2 rights.
+
+| Право | Code | Область |
+| --- | --- | --- |
+| просмотр внутренних товаров | `product_core.view` | global/store-filtered linked data |
+| создание внутренних товаров | `product_core.create` | global |
+| изменение внутренних товаров | `product_core.update` | global |
+| архивирование внутренних товаров | `product_core.archive` | global |
+| экспорт внутренних товаров | `product_core.export` | global/store-filtered linked data |
+| просмотр вариантов | `product_variant.view` | global/store-filtered linked data |
+| создание вариантов | `product_variant.create` | global |
+| изменение вариантов | `product_variant.update` | global |
+| архивирование вариантов | `product_variant.archive` | global |
+| просмотр marketplace listings | `marketplace_listing.view` | store |
+| запуск разрешённой sync операции listings | `marketplace_listing.sync` | store |
+| экспорт listings | `marketplace_listing.export` | store |
+| связать listing с variant | `marketplace_listing.map` | store + product core |
+| снять связь listing с variant | `marketplace_listing.unmap` | store + product core |
+| архивировать listing | `marketplace_listing.archive` | store |
+| просмотр snapshots | `marketplace_snapshot.view` | store |
+| просмотр технических деталей snapshots | `marketplace_snapshot.technical_view` | store + technical |
+
+Object access rules:
+
+- `MarketplaceListing` and snapshots inherit access from `StoreAccount`.
+- User without access to a store cannot see that store's listings, snapshots, related files or operations.
+- Internal products may be listed for users with `product_core.view`, but linked listing details/counts are filtered to visible stores unless user has full/global scope.
+- Mapping requires `marketplace_listing.map` or `marketplace_listing.unmap`, object access to listing store and relevant product/variant permission.
+- Exports apply the same filters as UI and must not disclose hidden store/listing details.
+
+Recommended seed Stage 3:
+
+- Владелец: all Product Core permissions.
+- Глобальный администратор: all Product Core permissions except owner-only protections remain unchanged.
+- Локальный администратор: listing/snapshot view/export/sync/map/unmap only in assigned stores; product create/update/archive only if separately granted.
+- Менеджер маркетплейсов: `product_core.view`, `product_variant.view`, `marketplace_listing.view`, `marketplace_listing.export`, `marketplace_snapshot.view` for accessible stores; `marketplace_listing.map/unmap` only if separately granted.
+- Наблюдатель: view-only product/listing/snapshot permissions only if granted; no export/map/unmap by default.

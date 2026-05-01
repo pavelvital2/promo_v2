@@ -47,6 +47,7 @@
 | `docs/architecture/DELETION_ARCHIVAL_POLICY.md` | Удаление, блокировка, деактивация, архивирование |
 | `docs/architecture/AUDIT_AND_TECHLOG_SPEC.md` | Audit actions, techlog events, поля и видимость |
 | `docs/architecture/API_CONNECTIONS_SPEC.md` | API-подключения, secrets, rate limits, snapshots Stage 2.1 |
+| `docs/architecture/PRODUCT_CORE_ARCHITECTURE.md` | Архитектура InternalProduct/ProductVariant, MarketplaceListing and sync/snapshot layer Stage 3.0 CORE-1 |
 
 ## Product
 
@@ -62,6 +63,9 @@
 | `docs/product/OZON_DISCOUNTS_EXCEL_SPEC.md` | Ozon Excel сценарий скидок |
 | `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md` | Ozon API акция `Эластичный бустинг` Stage 2.2 |
 | `docs/product/OZON_API_ELASTIC_UI_SPEC.md` | Stage 0 target UI spec and workflow Ozon API `Эластичный бустинг` Stage 2.2 |
+| `docs/product/PRODUCT_CORE_SPEC.md` | InternalProduct/ProductVariant спецификация Stage 3.0 CORE-1 |
+| `docs/product/MARKETPLACE_LISTINGS_SPEC.md` | MarketplaceListing, sync/snapshot and mapping spec Stage 3.0 CORE-1 |
+| `docs/product/PRODUCT_CORE_UI_SPEC.md` | UI внутреннего каталога, листингов and mapping workflow Stage 3.0 CORE-1 |
 | `docs/product/modules/README.md` | Модульная карта stage 1 |
 
 ## Stage 1
@@ -93,16 +97,33 @@
 | `docs/testing/STAGE_2_2_OZON_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 2.2 |
 | `docs/traceability/STAGE_2_2_OZON_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 2.2 |
 
+## Stage 3.0 Product Core
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_SCOPE.md` | Scope CORE-1 Product Core Foundation |
+| `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_DESIGN_PLAN.md` | Design plan, order, audit gate |
+| `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_ACCEPTANCE_TESTS.md` | Acceptance scenarios Stage 3.0 |
+| `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_MIGRATION_PLAN.md` | `MarketplaceProduct -> MarketplaceListing` migration plan |
+| `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_AGENT_READING_PACKAGES.md` | Task-scoped reading packages Stage 3.0 |
+| `docs/architecture/PRODUCT_CORE_ARCHITECTURE.md` | Product Core architecture |
+| `docs/tasks/implementation/stage-3-product-core/IMPLEMENTATION_TASKS.md` | TASK-PC-001..TASK-PC-010 index |
+| `docs/tasks/implementation/stage-3-product-core/TASK-PC-001..TASK-PC-010` | Task-scoped implementation tasks CORE-1 |
+| `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md` | Test protocol Stage 3.0 |
+| `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 3.0 |
+| `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 3.0 |
+| `docs/audit/HANDOFF_STAGE_3_PRODUCT_CORE_DOCUMENTATION_TO_AUDITOR.md` | Handoff package for documentation audit |
+
 ## Control Documents
 
 | Каталог | Документы |
 | --- | --- |
 | `docs/gaps/` | `docs/gaps/GAP_REGISTER.md` |
 | `docs/adr/` | `docs/adr/ADR_LOG.md` |
-| `docs/audit/` | `docs/audit/AUDIT_PROTOCOL.md`, `docs/audit/AUDIT_REPORT.md`, `docs/audit/AUDIT_REPORT_ROUND_2.md`, `docs/audit/AUDIT_FIX_REPORT_STAGE_2_2_OZON_DOCUMENTATION.md` |
-| `docs/testing/` | `docs/testing/TEST_PROTOCOL.md`, `docs/testing/ACCEPTANCE_CHECKLISTS.md` |
+| `docs/audit/` | `docs/audit/AUDIT_PROTOCOL.md`, `docs/audit/AUDIT_REPORT.md`, `docs/audit/AUDIT_REPORT_ROUND_2.md`, `docs/audit/AUDIT_FIX_REPORT_STAGE_2_2_OZON_DOCUMENTATION.md`, `docs/audit/HANDOFF_STAGE_3_PRODUCT_CORE_DOCUMENTATION_TO_AUDITOR.md` |
+| `docs/testing/` | `docs/testing/TEST_PROTOCOL.md`, `docs/testing/ACCEPTANCE_CHECKLISTS.md`, `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md`, `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` |
 | `docs/operations/` | `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` |
-| `docs/traceability/` | `docs/traceability/TRACEABILITY_MATRIX.md` |
+| `docs/traceability/` | `docs/traceability/TRACEABILITY_MATRIX.md`, `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` |
 | `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md` |
 
 ## Navigation Rules

@@ -224,6 +224,22 @@
 
 ТЗ: `tz_stage_2.1.txt` §13, §15-§16 только по указанию task. Любой новый UX/functionality gap веб-панели фиксируется в `docs/gaps/GAP_REGISTER.md` и передаётся оркестратору.
 
+## Разработчик Product Core Stage 3.0
+
+Обязательно:
+
+- `AGENTS.md`
+- `docs/README.md`
+- `docs/DOCUMENTATION_MAP.md`
+- `docs/orchestration/AGENTS.md`
+- конкретный task file `docs/tasks/implementation/stage-3-product-core/TASK-PC-001..TASK-PC-010`
+- `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_AGENT_READING_PACKAGES.md`
+- documents listed for the concrete task package in that file
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+ТЗ: only task source sections listed in the concrete TASK-PC file. Do not read the full final TZ by default. Implementation is prohibited until `docs/audit/AUDIT_REPORT_STAGE_3_PRODUCT_CORE_DOCUMENTATION.md` has `AUDIT PASS`. `GAP-0023` is resolved/customer_decision 2026-05-01: CORE-1 candidate suggestions are non-authoritative exact `seller_article`/`barcode`/external identifier matches only, and confirmed mapping still requires explicit user confirmation with audit/history.
+
 ## Тестировщик
 
 Обязательно:
@@ -262,6 +278,29 @@
 - проверяемый TASK-019..TASK-026
 
 ТЗ Stage 2.2: только разделы, указанные task/orchestrator. Open Stage 2.2 GAP не закрываются тестировщиком предположениями.
+
+Для Stage 3.0 Product Core тестировщик читает:
+
+- `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md`
+- `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md`
+- `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md`
+- `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_ACCEPTANCE_TESTS.md`
+- проверяемый `docs/tasks/implementation/stage-3-product-core/TASK-PC-009-tests-and-acceptance.md`
+
+ТЗ Stage 3.0: только task source §14, §22 and sections explicitly issued by orchestrator. Open Product Core GAP are not closed by tester assumptions.
+
+## Аудитор Product Core Stage 3.0
+
+Обязательно:
+
+- `docs/audit/AUDIT_PROTOCOL.md`
+- `docs/audit/HANDOFF_STAGE_3_PRODUCT_CORE_DOCUMENTATION_TO_AUDITOR.md`
+- `docs/tasks/design/product-core/TZ_PRODUCT_CORE_FOUNDATION_FOR_CODEX_DESIGNER.md`
+- all files listed in the handoff
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+ТЗ: relevant final TZ sections listed in the handoff for critical verification; full final TZ reread is not a default requirement for implementation agents.
 
 ## Техрайтер
 

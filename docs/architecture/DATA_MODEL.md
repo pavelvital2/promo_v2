@@ -400,6 +400,105 @@ Deactivate-related closed catalogs:
 
 The previous `not_uploaded_user_declined`/`ozon_api_deactivate_declined` model is not part of the accepted Stage 2.2 target model after ADR-0026. Review is calculation result state, not a separate Operation, after ADR-0027.
 
+## Stage 3.0 Product Core additions
+
+Трассировка: `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_SCOPE.md`; `docs/architecture/PRODUCT_CORE_ARCHITECTURE.md`; `docs/product/PRODUCT_CORE_SPEC.md`; `docs/product/MARKETPLACE_LISTINGS_SPEC.md`; ADR-0036..ADR-0041.
+
+Stage 3.0 / CORE-1 adds the internal product core and external marketplace listing layer. It does not remove or truncate current `MarketplaceProduct`; migration follows `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_MIGRATION_PLAN.md`.
+
+### Product core entities
+
+| Сущность | Назначение | Ключевые поля | Связи |
+| --- | --- | --- | --- |
+| InternalProduct | внутренний товар/материал/набор/артефакт компании | visible_id/internal_code, name, product_type, category_id nullable, status, attributes, comments, created_by, updated_by, timestamps | variants, category, audit/history |
+| ProductVariant | конкретный внутренний вариант | product_id, internal_sku, name, barcode_internal nullable, variant_attributes, status, timestamps | product, identifiers, marketplace listings |
+| ProductCategory | внутренняя категория | parent_id nullable, name, status, sort_order, timestamps | products |
+| ProductIdentifier | alternate identifiers for variant | variant_id, identifier_type, value, source, is_primary, created_at | variant |
+
+`InternalProduct` and `ProductVariant` are the identity core for future stock, production, suppliers, BOM, packaging and labels. Marketplace ids do not become internal identity.
+
+### Marketplace listing entities
+
+| Сущность | Назначение | Ключевые поля | Связи |
+| --- | --- | --- | --- |
+| MarketplaceListing | внешний листинг WB/Ozon in one store/account | marketplace, store_id, internal_variant_id nullable, external_primary_id, external_ids, seller_article, barcode, title, brand, category_name, category_external_id, listing_status, mapping_status, last_values, first_seen_at, last_seen_at, last_successful_sync_at, last_sync_run_id, last_source, timestamps | store, variant, sync runs, snapshots, histories, operations via nullable enrichment |
+| ListingHistory | append-only listing history | listing_id, changed_at, changed_by nullable, operation_id nullable, sync_run_id nullable, change_type, changed_fields, previous_values, new_values, source | listing, operation, sync run, user |
+| ProductMappingHistory | append-only mapping history | listing_id, old_variant_id nullable, new_variant_id nullable, changed_at, changed_by, action, mapping_status_after, source_context, reason/comment; for confirmed candidate mapping `source_context` records exact match basis without making it authoritative | listing, variants, user, audit |
+
+Recommended unique constraints:
+
+- `MarketplaceListing(marketplace, store_id, external_primary_id)` unique for non-blank primary ids;
+- additional partial/functional indexes for `seller_article`, `barcode`, `mapping_status`, `listing_status`, `last_successful_sync_at`;
+- `ProductIdentifier(variant_id, identifier_type, value, source)` unique unless a future import workflow documents duplicates.
+
+### Sync/snapshot entities
+
+| Сущность | Назначение | Ключевые поля | Связи |
+| --- | --- | --- | --- |
+| MarketplaceSyncRun | sync attempt | operation_id nullable, marketplace, store_id, sync_type, source, launch_method, status, started_at, finished_at, requested_by nullable, summary, error_summary, created_at | operation, store, snapshots |
+| PriceSnapshot | immutable price source record | listing_id, sync_run_id, operation_id nullable, snapshot_at, price, price_with_discount nullable, discount_percent nullable, currency, raw_safe, source_endpoint, created_at | listing, sync run, operation |
+| StockSnapshot | immutable stock source record | listing_id, sync_run_id, operation_id nullable, snapshot_at, total_stock nullable, stock_by_warehouse, in_way_to_client nullable, in_way_from_client nullable, raw_safe, source_endpoint, created_at | listing, sync run, operation |
+| SalesPeriodSnapshot | immutable sales/orders period source record | listing_id, sync_run_id, operation_id nullable, period_start, period_end, orders_qty nullable, sales_qty nullable, buyout_qty nullable, returns_qty nullable, sales_amount nullable, currency nullable, raw_safe, source_endpoint, created_at | listing, sync run, operation |
+| PromotionSnapshot | foundation for promotion/action participation | listing_id, sync_run_id, operation_id nullable, marketplace_promotion_id, action_name, participation_status, action_price nullable, constraints, reason_code nullable, raw_safe, source_endpoint, created_at | listing, sync run, operation |
+
+`MarketplaceListing.last_values` is a latest-state cache. History, source, period and raw-safe details live in sync runs and snapshot rows.
+
+### Stage 3 system dictionaries
+
+Product type:
+
+- `finished_good`;
+- `material`;
+- `packaging`;
+- `semi_finished`;
+- `kit`;
+- `service_or_design_artifact`;
+- `unknown`.
+
+Product/variant/category status:
+
+- `active`;
+- `inactive`;
+- `archived`.
+
+Listing status:
+
+- `active`;
+- `not_seen_last_sync`;
+- `inactive`;
+- `archived`;
+- `sync_error`.
+
+Mapping status:
+
+- `unmatched`;
+- `matched`;
+- `needs_review`;
+- `conflict`;
+- `archived`.
+
+Sync type:
+
+- `listings`;
+- `prices`;
+- `stocks`;
+- `sales`;
+- `orders`;
+- `promotions`;
+- `full_catalog_refresh`;
+- `mapping_import`.
+
+### Legacy compatibility
+
+`MarketplaceProduct` is legacy marketplace product data, not the internal company catalog. CORE-1 uses migration option B:
+
+```text
+MarketplaceProduct -> MarketplaceListing backfill
+MarketplaceProduct remains deprecated/compatibility data
+```
+
+`OperationDetailRow.product_ref` remains a raw immutable reference. A nullable FK to `MarketplaceListing` may be added only when deterministic enrichment does not alter historical operation results.
+
 ## Видимые идентификаторы
 
 Формат утверждён решением заказчика и зафиксирован в ADR-0008:

@@ -233,3 +233,39 @@ Result review is not a separate operation and has no `Operation.step_code`. It i
 If deactivate group confirmation is absent, upload does not start and add/update must not proceed silently. The accepted result remains pending as `review_pending_deactivate_confirmation` / `ozon_api_upload_blocked_deactivate_unconfirmed`; no `not_uploaded_user_declined` terminal scenario is part of the Stage 2.2 target model.
 
 `ozon_api_elastic_upload` must not call `/v1/product/import/prices`; add/update/deactivate request mapping follows the current official Ozon actions schema and preserves row-level reporting.
+
+## Stage 3.0 Product Core operations
+
+Трассировка: `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_SCOPE.md`; `docs/product/PRODUCT_CORE_SPEC.md`; `docs/product/MARKETPLACE_LISTINGS_SPEC.md`; ADR-0039..ADR-0041.
+
+Direct UI edits of internal products, variants and manual map/unmap are audit/history actions by default, not `Operation` records. They become operations only when executed as bulk/import/export/sync workflows with files, external source state or execution lifecycle.
+
+Stage 3 operation step codes:
+
+| Step code | Тип действия | Operation required |
+| --- | --- | --- |
+| `marketplace_listings_sync` | sync/listings refresh for store/marketplace | yes |
+| `marketplace_prices_sync` | price snapshot sync | yes |
+| `marketplace_stocks_sync` | stock snapshot sync | yes |
+| `marketplace_sales_sync` | sales/orders period snapshot sync | yes |
+| `marketplace_promotions_sync` | promotion/action snapshot sync from approved sources | yes |
+| `marketplace_full_catalog_refresh` | listing + related current state refresh | yes |
+| `marketplace_listing_mapping_import_excel` | explicit confirmed mapping import from Excel | yes |
+| `marketplace_listing_export_excel` | listing export file generation | yes when file output is persisted |
+| `product_core_export_excel` | internal product export file generation | yes when file output is persisted |
+
+Audit-only actions, not operation step codes by default:
+
+- product created/updated/archived through a normal form;
+- variant created/updated/archived through a normal form;
+- listing mapped/unmapped manually;
+- listing marked `needs_review` or `conflict`.
+
+Rules:
+
+- `Operation.type=check/process` remains only for check/process scenarios.
+- Product Core operations use `Operation.step_code`; `Operation.type` is `NULL` / blank / `not_applicable` according to migration convention.
+- Re-running sync/import/export creates a new operation.
+- Completed sync/import/export operations and output files are immutable.
+- Existing Excel scenarios do not require internal product or confirmed mapping.
+- Excel import into product core/listings is prohibited unless it is the explicit `marketplace_listing_mapping_import_excel` or a future audited import step with diff, confirmation and audit.

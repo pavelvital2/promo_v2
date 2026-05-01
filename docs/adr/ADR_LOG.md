@@ -369,3 +369,57 @@ ADR фиксирует архитектурное или проектное ре
 - Последствия: TASK-019 can implement the production connection check via `GET /v1/actions` and is no longer limited to scaffolding-only check behavior. The check must still preserve secret safety: no Client-Id, Api-Key, headers or raw sensitive response data in metadata, snapshots, audit, techlog, UI, files, reports or test output. Tests must cover the status mapping with mocks/sanitized fixtures.
 - Закрывает: `GAP-0022`
 - Трассировка: `docs/architecture/API_CONNECTIONS_SPEC.md`, `docs/stages/stage-2/STAGE_2_2_OZON_SCOPE.md`, `docs/tasks/implementation/stage-2/TASK-019-ozon-api-connection.md`, `docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md`, `docs/testing/STAGE_2_2_OZON_TEST_PROTOCOL.md`, `docs/testing/STAGE_2_2_OZON_ACCEPTANCE_CHECKLISTS.md`, `docs/traceability/STAGE_2_2_OZON_TRACEABILITY_MATRIX.md`
+
+## ADR-0036: InternalProduct/ProductVariant is the Product Core
+
+- Статус: accepted
+- Дата: 2026-05-01
+- Контекст: Stage 3.0 / CORE-1 must stop treating WB/Ozon marketplace rows as the company product identity and prepare future warehouse, production, suppliers, packaging and labels.
+- Решение: `InternalProduct` and `ProductVariant` are the company product core. Future stock, production, supplier, BOM, packaging and label modules must reference the internal product/variant layer, not marketplace ids.
+- Последствия: marketplace data can enrich or link to the internal core but cannot overwrite internal identity. Excel/API rows do not automatically create internal products.
+- Трассировка: `docs/architecture/PRODUCT_CORE_ARCHITECTURE.md`, `docs/product/PRODUCT_CORE_SPEC.md`, `docs/architecture/DATA_MODEL.md`
+
+## ADR-0037: MarketplaceListing is external layer and MarketplaceProduct migrates by compatibility backfill
+
+- Статус: accepted
+- Дата: 2026-05-01
+- Контекст: current `MarketplaceProduct` is used by Stage 1/2 flows and UI but represents marketplace products/listings, not internal company products.
+- Решение: CORE-1 introduces `MarketplaceListing` as external WB/Ozon listing layer. Migration uses option B: create new `MarketplaceListing`, backfill from existing `MarketplaceProduct`, keep `MarketplaceProduct` as deprecated compatibility data until a later audited removal/rename task.
+- Последствия: direct model/table rename is avoided in CORE-1 v1. Existing operations and product refs remain compatible. Deleting/truncating legacy product data is prohibited without separate migration/backup/rollback/regression plan.
+- Трассировка: `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_MIGRATION_PLAN.md`, `docs/product/MARKETPLACE_LISTINGS_SPEC.md`
+
+## ADR-0038: Marketplace listing mapping requires explicit human confirmation
+
+- Статус: accepted
+- Дата: 2026-05-01
+- Контекст: WB and Ozon can contain the same physical item with different identifiers and also erroneous duplicate data. Auto-merge would create business risk.
+- Решение: persisted `MarketplaceListing -> ProductVariant` mapping is created only by explicit manual user confirmation by a user with mapping permission, with audit and `ProductMappingHistory`. Customer decision 2026-05-01 closes `GAP-0023` with Option B: CORE-1 may show semi-automatic non-authoritative candidates only by exact `seller_article`, `barcode` or external identifier matches. CORE-1 must not auto-confirm or auto-merge by title, barcode, fuzzy/partial seller article or any automatic confirmed rule.
+- Последствия: candidate suggestions are non-authoritative UI/workflow aids. Selecting a suggestion still requires manual confirmation before `matched`. Multiple candidates or conflicting exact matches must remain `needs_review` or `conflict` until a permitted user resolves them. Automatic confirmed mapping is prohibited.
+- Трассировка: `docs/product/MARKETPLACE_LISTINGS_SPEC.md`, `docs/product/PRODUCT_CORE_UI_SPEC.md`, `docs/gaps/GAP_REGISTER.md`
+
+## ADR-0039: Product Core sync snapshots are separated from listing current cache
+
+- Статус: accepted
+- Дата: 2026-05-01
+- Контекст: CORE-1 needs current listing values for UI and immutable source records for audit, regression and future analytics.
+- Решение: `MarketplaceListing.last_values` is only latest-state cache. Historical/source truth is stored in `MarketplaceSyncRun` and snapshot tables/contracts: price, stock, sales period and promotion snapshots.
+- Последствия: failed sync does not erase last successful values. Any future analytical use of sales/buyout metrics requires separate source/formula specification.
+- Трассировка: `docs/product/MARKETPLACE_LISTINGS_SPEC.md`, `docs/architecture/DATA_MODEL.md`
+
+## ADR-0040: Product Core preserves immutable operations and raw product references
+
+- Статус: accepted
+- Дата: 2026-05-01
+- Контекст: Stage 1/2 operations and detail rows are already immutable and use `OperationDetailRow.product_ref` as raw product identifier.
+- Решение: CORE-1 does not rewrite completed operation summaries, files or row outcomes. `product_ref` remains raw. Nullable FK enrichment to `MarketplaceListing` is allowed only by deterministic audited migration rules that do not alter historical outcomes.
+- Последствия: Stage 1/2 regression is mandatory after migration. Product Core can improve navigation and linking without changing old operation truth.
+- Трассировка: `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_MIGRATION_PLAN.md`, `docs/product/OPERATIONS_SPEC.md`
+
+## ADR-0041: Excel is not automatic source of Product Core
+
+- Статус: accepted
+- Дата: 2026-05-01
+- Контекст: Excel remains a normal operational mode, but product core must not be inflated automatically from every workbook row.
+- Решение: existing Excel operations remain unchanged and do not automatically create internal products, variants or confirmed mappings. Any Excel import into Product Core/listings must be a separate explicit workflow with validation, diff, impact warning, confirmation, operation/audit/history and rollback notes.
+- Последствия: Stage 1 Excel remains штатный/резервный mode. Product Core imports are gated and cannot be hidden inside discounts check/process flows.
+- Трассировка: `docs/product/PRODUCT_CORE_UI_SPEC.md`, `docs/product/OPERATIONS_SPEC.md`, `docs/product/PRODUCT_CORE_SPEC.md`
