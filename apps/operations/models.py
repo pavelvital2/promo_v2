@@ -889,6 +889,14 @@ class ProcessResult(OperationLinkGuardMixin, models.Model):
 
 class OperationDetailRow(OperationLinkGuardMixin, models.Model):
     operation = models.ForeignKey(Operation, on_delete=models.PROTECT, related_name="detail_rows")
+    marketplace_listing = models.ForeignKey(
+        "product_core.MarketplaceListing",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="operation_detail_rows",
+        db_index=True,
+    )
     row_no = models.PositiveIntegerField()
     product_ref = models.CharField(max_length=255, blank=True)
     row_status = models.CharField(max_length=64)
@@ -912,6 +920,11 @@ class OperationDetailRow(OperationLinkGuardMixin, models.Model):
 
     def clean(self):
         super().clean()
+        if self.marketplace_listing_id:
+            if self.marketplace_listing.store_id != self.operation.store_id:
+                raise ValidationError("Detail row listing store/cabinet must match operation.")
+            if self.marketplace_listing.marketplace != self.operation.marketplace:
+                raise ValidationError("Detail row listing marketplace must match operation.")
         if self.reason_code and self.reason_code.startswith("wb_") and self.reason_code not in WB_ALL_REASON_CODES:
             raise ValidationError("Unsupported WB reason/result code.")
         if (

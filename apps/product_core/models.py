@@ -2,11 +2,33 @@
 
 from __future__ import annotations
 
+import re
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.discounts.wb_api.redaction import assert_no_secret_like_values
+
+
+CORE2_INTERNAL_SKU_PATTERN = re.compile(
+    r"^(nash|chev)(?:_(pz|back))?(?:_(kit[1-9][0-9]*))?"
+    r"(?:_(mvd|fsin|rg|fso|fsb|fssp))?_(text|pict)[0-9]{4}$"
+)
+
+
+def validate_core2_internal_sku(value: str) -> None:
+    value = (value or "").strip()
+    if not value:
+        return
+    if not CORE2_INTERNAL_SKU_PATTERN.fullmatch(value):
+        raise ValidationError(
+            _(
+                "Internal SKU must match CORE-2 structured format for patches/chevrons."
+            ),
+            code="invalid_core2_internal_sku",
+        )
 
 
 class ProductStatus(models.TextChoices):
@@ -146,12 +168,20 @@ class ProductCategory(models.Model):
 
 
 class ProductVariant(models.Model):
+    class ReviewState(models.TextChoices):
+        MANUAL_CONFIRMED = "manual_confirmed", "Manual confirmed"
+        IMPORTED_DRAFT = "imported_draft", "Imported draft"
+        NEEDS_REVIEW = "needs_review", "Needs review"
+
     product = models.ForeignKey(
         InternalProduct,
         on_delete=models.PROTECT,
         related_name="variants",
     )
-    internal_sku = models.CharField(max_length=128, blank=True)
+    internal_sku = models.CharField(
+        max_length=128,
+        blank=True,
+    )
     name = models.CharField(max_length=255)
     barcode_internal = models.CharField(max_length=128, blank=True)
     variant_attributes = models.JSONField(default=dict, blank=True)
@@ -160,6 +190,12 @@ class ProductVariant(models.Model):
         choices=ProductStatus.choices,
         default=ProductStatus.ACTIVE,
     )
+    review_state = models.CharField(
+        max_length=32,
+        choices=ReviewState.choices,
+        default=ReviewState.MANUAL_CONFIRMED,
+    )
+    import_source_context = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -167,6 +203,7 @@ class ProductVariant(models.Model):
         ordering = ["product__internal_code", "internal_sku", "name", "id"]
         indexes = [
             models.Index(fields=["product", "status"]),
+            models.Index(fields=["review_state"]),
             models.Index(fields=["barcode_internal"]),
         ]
         constraints = [
@@ -179,6 +216,27 @@ class ProductVariant(models.Model):
 
     def __str__(self) -> str:
         return self.internal_sku or f"{self.product_id}:{self.name}"
+
+    def clean(self):
+        super().clean()
+        self.internal_sku = self.internal_sku.strip()
+        if self.review_state == self.ReviewState.IMPORTED_DRAFT:
+            if not self.internal_sku:
+                raise ValidationError(
+                    {
+                        "internal_sku": ValidationError(
+                            _(
+                                "Internal SKU is required for imported draft variants."
+                            ),
+                            code="required_imported_draft_internal_sku",
+                        )
+                    }
+                )
+            validate_core2_internal_sku(self.internal_sku)
+        assert_no_secret_like_values(
+            self.import_source_context,
+            field_name="product variant import_source_context",
+        )
 
 
 class ProductIdentifier(models.Model):

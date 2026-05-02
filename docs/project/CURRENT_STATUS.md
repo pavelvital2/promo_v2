@@ -20,10 +20,11 @@
   - snapshot foundation;
   - manual mapping workflow;
   - CSV exports.
+- CORE-2 TASK-PC2-001 Data Model And Migration is implemented, tested and accepted by audit PASS on 2026-05-02.
 
 ## Документация подготовлена
 
-- Stage 3 / CORE-2 Product Core Integration design documentation prepared in `docs/stages/stage-3-product-core/core-2/`; documentation audit and recheck passed on 2026-05-02, and post-audit customer decisions for `GAP-CORE2-001`..`GAP-CORE2-005` are integrated in the design docs. CORE-2 product implementation is not started.
+- Stage 3 / CORE-2 Product Core Integration design documentation prepared in `docs/stages/stage-3-product-core/core-2/`; documentation audit and recheck passed on 2026-05-02, and post-audit customer decisions for `GAP-CORE2-001`..`GAP-CORE2-005` are integrated in the design docs. CORE-2 implementation is in progress: TASK-PC2-001 is implemented/audited, but the full CORE-2 scope is not complete.
 
 ## Принятые ограничения
 
@@ -49,15 +50,18 @@
 - `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`
 - `docs/audit/AUDIT_REPORT_CORE_2_DESIGN_DOCUMENTATION.md`
 - `docs/audit/AUDIT_REPORT_CORE_2_DESIGN_DOCUMENTATION_RECHECK.md`
+- `docs/testing/TEST_REPORT_TASK_PC2_001_DATA_MODEL_MIGRATION.md`
+- `docs/audit/AUDIT_REPORT_TASK_PC2_001_DATA_MODEL_MIGRATION.md`
+- `docs/reports/TASK_PC2_001_DATA_MODEL_MIGRATION_REPORT.md`
 - `docs/stages/stage-3-product-core/core-2/CORE_2_DESIGN_HANDOFF.md`
 - `docs/stages/stage-3-product-core/core-2/CORE_2_ACCEPTANCE_CHECKLIST.md`
 - `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md`
 
 ## Следующий этап
 
-CORE-2 design package is prepared from `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md`, passed documentation audit/recheck on 2026-05-02, and has been updated with post-audit customer decisions. The updated package is ready for follow-up audit/recheck.
+CORE-2 design package is prepared from `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md`, passed documentation audit/recheck on 2026-05-02, and has been updated with post-audit customer decisions. TASK-PC2-001 Data Model And Migration is implemented, tested and audit-accepted.
 
-CORE-2 implementation remains prohibited until the updated design documentation is accepted by follow-up audit/recheck and a separate task-scoped implementation assignment is issued. `GAP-CORE2-001`..`GAP-CORE2-005` are resolved decision records, but their implementation constraints and endpoint/artifact gates still apply.
+CORE-2 remains in progress and must continue only by orchestrator-assigned task-scoped implementation tasks. `GAP-CORE2-001`..`GAP-CORE2-005` are resolved decision records, but their implementation constraints and endpoint/artifact gates still apply.
 
 Рабочее направление после Stage 3: перевод дальнейших операций вокруг справочника товаров/Product Core. Склад, производство, поставщики, упаковка, этикетки и расширенная аналитика должны вводиться отдельными этапами, без расширения scope по умолчанию.
 

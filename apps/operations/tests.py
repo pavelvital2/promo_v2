@@ -14,6 +14,7 @@ from apps.identity_access.models import (
     UserPermissionOverride,
 )
 from apps.identity_access.seeds import seed_identity_access
+from apps.product_core.models import ListingSource, MarketplaceListing
 from apps.stores.models import StoreAccount
 
 from .models import (
@@ -597,3 +598,99 @@ class OperationsShellTests(TestCase):
                 message_level=MessageLevel.INFO,
                 message="",
             )
+
+    def test_detail_row_marketplace_listing_fk_is_nullable_and_preserves_product_ref(self):
+        operation = create_check_operation(
+            marketplace="wb",
+            store=self.store,
+            initiator_user=self.user,
+            input_files=[],
+            parameters=[],
+            logic_version="logic-v1",
+        )
+        row = OperationDetailRow.objects.create(
+            operation=operation,
+            row_no=1,
+            product_ref="RAW-ARTICLE-001",
+            row_status="ok",
+            reason_code="wb_valid_calculated",
+            message_level=MessageLevel.INFO,
+            message="",
+        )
+
+        self.assertIsNone(row.marketplace_listing_id)
+
+        listing = MarketplaceListing.objects.create(
+            marketplace="wb",
+            store=self.store,
+            external_primary_id="nm-fk-1",
+            seller_article="RAW-ARTICLE-001",
+            last_source=ListingSource.MIGRATION,
+        )
+        row.marketplace_listing = listing
+        row.save(update_fields=["marketplace_listing"])
+        row.refresh_from_db()
+
+        self.assertEqual(row.marketplace_listing, listing)
+        self.assertEqual(row.product_ref, "RAW-ARTICLE-001")
+
+    def test_detail_row_marketplace_listing_fk_requires_same_store_and_marketplace(self):
+        operation = create_check_operation(
+            marketplace="wb",
+            store=self.store,
+            initiator_user=self.user,
+            input_files=[],
+            parameters=[],
+            logic_version="logic-v1",
+        )
+        ozon_store = StoreAccount.objects.create(
+            name="Ozon Store For Listing FK",
+            marketplace=StoreAccount.Marketplace.OZON,
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace="ozon",
+            store=ozon_store,
+            external_primary_id="ozon-fk-1",
+            last_source=ListingSource.MIGRATION,
+        )
+
+        with self.assertRaises(ValidationError):
+            OperationDetailRow.objects.create(
+                operation=operation,
+                marketplace_listing=listing,
+                row_no=1,
+                product_ref="RAW-ARTICLE-001",
+                row_status="ok",
+                reason_code="wb_valid_calculated",
+                message_level=MessageLevel.INFO,
+                message="",
+            )
+
+    def test_detail_row_marketplace_listing_fk_protects_listing(self):
+        operation = create_check_operation(
+            marketplace="wb",
+            store=self.store,
+            initiator_user=self.user,
+            input_files=[],
+            parameters=[],
+            logic_version="logic-v1",
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace="wb",
+            store=self.store,
+            external_primary_id="nm-protect-1",
+            last_source=ListingSource.MIGRATION,
+        )
+        OperationDetailRow.objects.create(
+            operation=operation,
+            marketplace_listing=listing,
+            row_no=1,
+            product_ref="RAW-ARTICLE-001",
+            row_status="ok",
+            reason_code="wb_valid_calculated",
+            message_level=MessageLevel.INFO,
+            message="",
+        )
+
+        with self.assertRaises(ProtectedError):
+            listing.delete()

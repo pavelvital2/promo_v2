@@ -154,6 +154,9 @@
 | `docs/stages/stage-3-product-core/core-2/CORE_2_DESIGN_HANDOFF.md` | Designer handoff to documentation auditor |
 | `docs/audit/AUDIT_REPORT_CORE_2_DESIGN_DOCUMENTATION.md` | CORE-2 design documentation audit: AUDIT PASS |
 | `docs/audit/AUDIT_REPORT_CORE_2_DESIGN_DOCUMENTATION_RECHECK.md` | CORE-2 design documentation minor-fix recheck: RECHECK PASS |
+| `docs/testing/TEST_REPORT_TASK_PC2_001_DATA_MODEL_MIGRATION.md` | TASK-PC2-001 implementation/retest evidence: PASS |
+| `docs/audit/AUDIT_REPORT_TASK_PC2_001_DATA_MODEL_MIGRATION.md` | TASK-PC2-001 implementation audit and recheck: AUDIT PASS |
+| `docs/reports/TASK_PC2_001_DATA_MODEL_MIGRATION_REPORT.md` | TASK-PC2-001 closeout report after implementation/test/audit PASS |
 
 ## Documentation Tasks
 
@@ -171,7 +174,7 @@
 | `docs/testing/` | `docs/testing/TEST_PROTOCOL.md`, `docs/testing/ACCEPTANCE_CHECKLISTS.md`, `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md`, `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` |
 | `docs/operations/` | `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` |
 | `docs/traceability/` | `docs/traceability/TRACEABILITY_MATRIX.md`, `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` |
-| `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md`, `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md`, `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md` |
+| `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md`, `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md`, `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`, `docs/reports/TASK_PC2_001_DATA_MODEL_MIGRATION_REPORT.md` |
 
 ## Navigation Rules
 

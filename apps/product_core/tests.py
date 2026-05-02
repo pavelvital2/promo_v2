@@ -32,9 +32,11 @@ from .models import (
     ProductIdentifier,
     ProductIdentifierSource,
     ProductMappingHistory,
+    ProductStatus,
     ProductVariant,
     SalesPeriodSnapshot,
     StockSnapshot,
+    validate_core2_internal_sku,
 )
 from .services import (
     can_view_marketplace_listing,
@@ -104,6 +106,120 @@ class ProductCoreModelTests(TestCase):
                 source=ProductIdentifierSource.MANUAL,
                 is_primary=True,
             )
+
+    def test_core2_internal_sku_validator_accepts_fixed_structured_examples(self):
+        valid_skus = [
+            "nash_kit2_rg_pict0001",
+            "chev_pz_kit2_text0001",
+            "nash_mvd_pict0001",
+            "chev_back_mvd_text0001",
+        ]
+
+        for internal_sku in valid_skus:
+            with self.subTest(internal_sku=internal_sku):
+                validate_core2_internal_sku(internal_sku)
+                variant = ProductVariant(
+                    product=self.product,
+                    internal_sku=internal_sku,
+                    name="Structured variant",
+                )
+                variant.full_clean()
+
+    def test_core2_internal_sku_validator_rejects_non_unified_examples(self):
+        invalid_skus = [
+            "SKU-001",
+            "NASH_MVD_PICT0001",
+            "nash-pict0001",
+            "nash_mvd_photo0001",
+            "nash_rg_pict001",
+            "chev_kit0_text0001",
+            "wb123456",
+        ]
+
+        for internal_sku in invalid_skus:
+            with self.subTest(internal_sku=internal_sku):
+                with self.assertRaises(ValidationError):
+                    validate_core2_internal_sku(internal_sku)
+
+    def test_manual_confirmed_variant_allows_legacy_internal_sku(self):
+        variant = ProductVariant(
+            product=self.product,
+            internal_sku="MANUAL-LEGACY-001",
+            name="Manual legacy variant",
+            review_state=ProductVariant.ReviewState.MANUAL_CONFIRMED,
+        )
+
+        variant.full_clean()
+
+    def test_manual_confirmed_variant_allows_blank_internal_sku(self):
+        variant = ProductVariant(
+            product=self.product,
+            internal_sku="   ",
+            name="Manual blank SKU variant",
+            review_state=ProductVariant.ReviewState.MANUAL_CONFIRMED,
+        )
+
+        variant.full_clean()
+        self.assertEqual(variant.internal_sku, "")
+
+    def test_imported_draft_variant_requires_structured_internal_sku(self):
+        variant = ProductVariant(
+            product=self.product,
+            internal_sku="SKU-001",
+            name="Imported draft variant",
+            review_state=ProductVariant.ReviewState.IMPORTED_DRAFT,
+            import_source_context={
+                "basis": "api_valid_internal_sku",
+                "source": "wb_api_prices",
+                "seller_article": "SKU-001",
+            },
+        )
+
+        with self.assertRaises(ValidationError):
+            variant.full_clean()
+
+    def test_imported_draft_variant_rejects_blank_internal_sku(self):
+        for internal_sku in ["", "   "]:
+            with self.subTest(internal_sku=repr(internal_sku)):
+                variant = ProductVariant(
+                    product=self.product,
+                    internal_sku=internal_sku,
+                    name="Imported draft blank SKU variant",
+                    review_state=ProductVariant.ReviewState.IMPORTED_DRAFT,
+                    import_source_context={
+                        "basis": "api_valid_internal_sku",
+                        "source": "wb_api_prices",
+                        "seller_article": internal_sku,
+                    },
+                )
+
+                with self.assertRaises(ValidationError) as context:
+                    variant.full_clean()
+
+                self.assertIn("internal_sku", context.exception.error_dict)
+
+    def test_imported_draft_lifecycle_is_explicit_and_separate_from_status(self):
+        imported_product = InternalProduct.objects.create(
+            internal_code="nash_kit2_rg_pict0001",
+            name="Imported product shell",
+        )
+        variant = ProductVariant.objects.create(
+            product=imported_product,
+            internal_sku="nash_kit2_rg_pict0001",
+            name="Imported draft variant",
+            status=ProductStatus.ACTIVE,
+            review_state=ProductVariant.ReviewState.IMPORTED_DRAFT,
+            import_source_context={
+                "basis": "api_valid_internal_sku",
+                "source": "wb_api_prices",
+                "seller_article": "nash_kit2_rg_pict0001",
+            },
+        )
+
+        variant.full_clean()
+        self.assertEqual(variant.status, ProductStatus.ACTIVE)
+        self.assertEqual(variant.review_state, ProductVariant.ReviewState.IMPORTED_DRAFT)
+        self.assertEqual(variant.import_source_context["basis"], "api_valid_internal_sku")
 
     def test_listing_requires_store_marketplace_and_variant_for_matched_status(self):
         listing = MarketplaceListing(
