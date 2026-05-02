@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -961,6 +962,14 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertEqual(listing.last_values["price"], "80.00")
         self.assertEqual(listing.last_sync_run, successful_run)
         self.assertEqual(listing.last_successful_sync_at, last_successful_at)
+        failed_audit = AuditRecord.objects.get(
+            action_code=AuditActionCode.MARKETPLACE_SYNC_FAILED,
+            entity_id=str(failed_run.pk),
+        )
+        failed_run.refresh_from_db()
+        self.assertEqual(failed_audit.store, self.store)
+        self.assertEqual(failed_audit.after_snapshot["status"], failed_run.status)
+        self.assertEqual(failed_audit.after_snapshot["error_summary"], {"error": "temporary"})
 
     def test_raw_safe_secret_values_are_rejected_by_service_and_model_save(self):
         listing = self._listing()
@@ -977,7 +986,22 @@ class ProductCoreSyncFoundationTests(TestCase):
                 price=Decimal("100.00"),
                 currency="RUB",
                 raw_safe={"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz1234567890"},
+                source_endpoint="wb_prices_list_goods_filter",
             )
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.MARKETPLACE_SNAPSHOT_WRITE_FAILED,
+                entity_id=str(listing.pk),
+                store=self.store,
+            ).exists()
+        )
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                event_type=TechLogEventType.MARKETPLACE_SNAPSHOT_WRITE_ERROR,
+                entity_id=str(listing.pk),
+                store=self.store,
+            ).exists()
+        )
         with self.assertRaises(ValueError):
             PriceSnapshot.objects.create(
                 listing=listing,
@@ -1128,7 +1152,7 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertEqual(sync_run.summary["api_article_mapping_count"], 1)
         self.assertTrue(
             AuditRecord.objects.filter(
-                action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+                action_code=AuditActionCode.PRODUCT_VARIANT_AUTO_CREATED_DRAFT,
                 entity_id=str(variant.pk),
                 source_context="api",
             ).exists()
@@ -1151,6 +1175,38 @@ class ProductCoreSyncFoundationTests(TestCase):
         variant = ProductVariant.objects.get(internal_sku=internal_sku)
         self.assertEqual(variant.product, parent)
         self.assertEqual(InternalProduct.objects.filter(internal_code=internal_sku).count(), 1)
+
+    def test_api_variant_auto_create_error_writes_safe_techlog(self):
+        internal_sku = "nash_fso_text0001"
+
+        with patch(
+            "apps.product_core.services.ProductVariant.full_clean",
+            side_effect=ValidationError("auto create rejected"),
+        ):
+            with self.assertRaises(ValidationError):
+                sync_ozon_elastic_action_rows_to_product_core(
+                    store=self.ozon_store,
+                    action_id="auto-create-error",
+                    source_group="active",
+                    rows=[
+                        {
+                            "product_id": "auto-create-error-1",
+                            "offer_id": internal_sku,
+                            "name": "Rejected marketplace title",
+                            "action_price": "120.00",
+                        }
+                    ],
+                    requested_by=self.manager,
+                )
+
+        record = TechLogRecord.objects.get(
+            event_type=TechLogEventType.PRODUCT_VARIANT_AUTO_CREATE_ERROR,
+            store=self.ozon_store,
+        )
+        self.assertEqual(record.severity, TechLogSeverity.ERROR)
+        self.assertEqual(record.safe_message, "Product variant auto-create from approved API article failed.")
+        self.assertNotIn(internal_sku, record.safe_message)
+        self.assertNotIn("Rejected marketplace title", record.sensitive_details_ref)
 
     def test_api_repeated_same_sku_reuses_variant_and_title_mismatch_marks_review(self):
         internal_sku = "nash_kit2_rg_pict0002"
@@ -1270,6 +1326,13 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
         self.assertEqual(ProductVariant.objects.filter(internal_sku=internal_sku).count(), 1)
         self.assertEqual(ProductVariant.objects.get(internal_sku=internal_sku), archived_variant)
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                event_type=TechLogEventType.MARKETPLACE_MAPPING_CONFLICT,
+                entity_id=str(listing.pk),
+                store=self.store,
+            ).exists()
+        )
 
     def test_api_inactive_variant_conflict_does_not_auto_link_or_auto_create(self):
         internal_sku = "chev_pz_kit2_text0003"

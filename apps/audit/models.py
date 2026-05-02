@@ -192,6 +192,10 @@ class AuditActionCode(models.TextChoices):
     PRODUCT_CORE_ARCHIVED = "product_core.archived", "Product Core product archived"
     PRODUCT_CORE_EXPORT_GENERATED = "product_core.export_generated", "Product Core export generated"
     PRODUCT_VARIANT_CREATED = "product_variant.created", "Product variant created"
+    PRODUCT_VARIANT_AUTO_CREATED_DRAFT = (
+        "product_variant.auto_created_draft",
+        "Product variant auto-created draft",
+    )
     PRODUCT_VARIANT_UPDATED = "product_variant.updated", "Product variant updated"
     PRODUCT_VARIANT_ARCHIVED = "product_variant.archived", "Product variant archived"
     MARKETPLACE_LISTING_SYNCED = "marketplace_listing.synced", "Marketplace listing synced"
@@ -213,6 +217,15 @@ class AuditActionCode(models.TextChoices):
     MARKETPLACE_LISTING_IMPORT_FROM_EXCEL_CONFIRMED = (
         "marketplace_listing.import_from_excel_confirmed",
         "Marketplace listing import from Excel confirmed",
+    )
+    OPERATION_DETAIL_ROW_LISTING_FK_ENRICHED = (
+        "operation_detail_row.listing_fk_enriched",
+        "Operation detail row listing FK enriched",
+    )
+    MARKETPLACE_SYNC_FAILED = "marketplace_sync.failed", "Marketplace sync failed"
+    MARKETPLACE_SNAPSHOT_WRITE_FAILED = (
+        "marketplace_snapshot.write_failed",
+        "Marketplace snapshot write failed",
     )
 
 

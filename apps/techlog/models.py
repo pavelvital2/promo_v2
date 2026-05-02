@@ -139,6 +139,7 @@ class TechLogEventType(models.TextChoices):
         "Marketplace sync completed with warnings",
     )
     MARKETPLACE_SYNC_FAILED = "marketplace_sync.failed", "Marketplace sync failed"
+    MARKETPLACE_SYNC_API_ERROR = "marketplace_sync.api_error", "Marketplace sync API error"
     MARKETPLACE_SYNC_PARTIAL_RESPONSE = (
         "marketplace_sync.partial_response",
         "Marketplace sync partial response",
@@ -152,6 +153,22 @@ class TechLogEventType(models.TextChoices):
     MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR = (
         "marketplace_sync.data_integrity_error",
         "Marketplace sync data integrity error",
+    )
+    MARKETPLACE_SNAPSHOT_WRITE_ERROR = (
+        "marketplace_snapshot.write_error",
+        "Marketplace snapshot write error",
+    )
+    MARKETPLACE_MAPPING_CONFLICT = (
+        "marketplace_mapping.conflict",
+        "Marketplace mapping conflict",
+    )
+    OPERATION_DETAIL_ROW_ENRICHMENT_ERROR = (
+        "operation_detail_row.enrichment_error",
+        "Operation detail row enrichment error",
+    )
+    PRODUCT_VARIANT_AUTO_CREATE_ERROR = (
+        "product_variant.auto_create_error",
+        "Product variant auto-create error",
     )
     MARKETPLACE_SYNC_SECRET_REDACTION_VIOLATION = (
         "marketplace_sync.secret_redaction_violation",
@@ -210,11 +227,16 @@ TECHLOG_EVENT_SEVERITY_BASELINE = {
     TechLogEventType.MARKETPLACE_SYNC_COMPLETED: TechLogSeverity.INFO,
     TechLogEventType.MARKETPLACE_SYNC_COMPLETED_WITH_WARNINGS: TechLogSeverity.WARNING,
     TechLogEventType.MARKETPLACE_SYNC_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.MARKETPLACE_SYNC_API_ERROR: TechLogSeverity.ERROR,
     TechLogEventType.MARKETPLACE_SYNC_PARTIAL_RESPONSE: TechLogSeverity.WARNING,
     TechLogEventType.MARKETPLACE_SYNC_RATE_LIMITED: TechLogSeverity.WARNING,
     TechLogEventType.MARKETPLACE_SYNC_TIMEOUT: TechLogSeverity.WARNING,
     TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID: TechLogSeverity.ERROR,
     TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR: TechLogSeverity.ERROR,
+    TechLogEventType.MARKETPLACE_SNAPSHOT_WRITE_ERROR: TechLogSeverity.ERROR,
+    TechLogEventType.MARKETPLACE_MAPPING_CONFLICT: TechLogSeverity.WARNING,
+    TechLogEventType.OPERATION_DETAIL_ROW_ENRICHMENT_ERROR: TechLogSeverity.WARNING,
+    TechLogEventType.PRODUCT_VARIANT_AUTO_CREATE_ERROR: TechLogSeverity.ERROR,
     TechLogEventType.MARKETPLACE_SYNC_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
     TechLogEventType.PRODUCT_CORE_MIGRATION_STARTED: TechLogSeverity.INFO,
     TechLogEventType.PRODUCT_CORE_MIGRATION_COMPLETED: TechLogSeverity.INFO,

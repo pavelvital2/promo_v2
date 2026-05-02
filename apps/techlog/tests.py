@@ -128,6 +128,26 @@ class TechLogTask006Tests(TestCase):
         self.assertEqual(record.event_type, TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR)
         self.assertEqual(record.severity, TechLogSeverity.ERROR)
 
+    def test_core2_pc2_008_techlog_events_use_required_baselines(self):
+        expected = {
+            TechLogEventType.MARKETPLACE_SYNC_API_ERROR: TechLogSeverity.ERROR,
+            TechLogEventType.MARKETPLACE_SNAPSHOT_WRITE_ERROR: TechLogSeverity.ERROR,
+            TechLogEventType.MARKETPLACE_MAPPING_CONFLICT: TechLogSeverity.WARNING,
+            TechLogEventType.OPERATION_DETAIL_ROW_ENRICHMENT_ERROR: TechLogSeverity.WARNING,
+            TechLogEventType.PRODUCT_VARIANT_AUTO_CREATE_ERROR: TechLogSeverity.ERROR,
+        }
+        for event_type, baseline in expected.items():
+            with self.subTest(event_type=event_type):
+                self.assertEqual(TECHLOG_EVENT_SEVERITY_BASELINE[event_type], baseline)
+                record = create_techlog_record(
+                    severity=TechLogSeverity.INFO,
+                    event_type=event_type,
+                    source_component="tests",
+                    operation=self.operation,
+                    safe_message="Core 2 techlog event recorded.",
+                )
+                self.assertEqual(record.severity, baseline)
+
     def test_techlog_rejects_ozon_client_id_safe_contour(self):
         with self.assertRaises(ValueError):
             create_techlog_record(

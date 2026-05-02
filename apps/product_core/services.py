@@ -425,6 +425,25 @@ def fail_marketplace_sync_run(
     sync_run.finished_at = timezone.now()
     sync_run.full_clean()
     sync_run.save(update_fields=["status", "error_summary", "finished_at"])
+    create_audit_record(
+        action_code=AuditActionCode.MARKETPLACE_SYNC_FAILED,
+        entity_type="MarketplaceSyncRun",
+        entity_id=str(sync_run.pk),
+        user=sync_run.requested_by,
+        store=sync_run.store,
+        operation=sync_run.operation,
+        safe_message="Marketplace sync failed.",
+        after_snapshot={
+            "sync_run_id": sync_run.pk,
+            "operation_id": sync_run.operation_id,
+            "source": sync_run.source,
+            "status": sync_run.status,
+            "sync_type": sync_run.sync_type,
+            "marketplace": sync_run.marketplace,
+            "error_summary": error_summary,
+        },
+        source_context=AuditSourceContext.SERVICE,
+    )
     create_techlog_record(
         severity="error",
         event_type="marketplace_sync.failed",
@@ -438,6 +457,48 @@ def fail_marketplace_sync_run(
 
 def _snapshot_operation(sync_run: MarketplaceSyncRun, operation):
     return operation if operation is not None else sync_run.operation
+
+
+def _record_snapshot_write_failure(
+    *,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    snapshot_kind: str,
+    source_endpoint: str,
+    failure: Exception,
+    operation=None,
+) -> None:
+    snapshot_operation = _snapshot_operation(sync_run, operation)
+    safe_context = {
+        "snapshot_kind": snapshot_kind,
+        "listing_id": listing.pk,
+        "sync_run_id": sync_run.pk,
+        "operation_id": getattr(snapshot_operation, "pk", None),
+        "source_endpoint": source_endpoint,
+        "failure_class": failure.__class__.__name__,
+    }
+    create_audit_record(
+        action_code=AuditActionCode.MARKETPLACE_SNAPSHOT_WRITE_FAILED,
+        entity_type="MarketplaceListing",
+        entity_id=str(listing.pk),
+        user=sync_run.requested_by,
+        store=listing.store,
+        operation=snapshot_operation,
+        safe_message="Marketplace snapshot write failed.",
+        after_snapshot=safe_context,
+        source_context=AuditSourceContext.SERVICE,
+    )
+    create_techlog_record(
+        severity="error",
+        event_type=TechLogEventType.MARKETPLACE_SNAPSHOT_WRITE_ERROR,
+        source_component="apps.product_core.snapshots",
+        operation=snapshot_operation,
+        store=listing.store,
+        entity_type="MarketplaceListing",
+        entity_id=str(listing.pk),
+        safe_message="Marketplace snapshot write failed.",
+        sensitive_details_ref="redacted:marketplace-snapshot-write-failure",
+    )
 
 
 def _assert_snapshot_can_attach(sync_run: MarketplaceSyncRun, listing: MarketplaceListing) -> None:
@@ -460,23 +521,34 @@ def create_price_snapshot(
     source_endpoint: str = "",
     operation=None,
 ) -> PriceSnapshot:
-    _assert_snapshot_can_attach(sync_run, listing)
-    raw_safe = raw_safe or {}
-    assert_no_secret_like_values(raw_safe, field_name="price snapshot raw_safe")
-    return PriceSnapshot.objects.create(
-        listing=listing,
-        sync_run=sync_run,
-        operation=_snapshot_operation(sync_run, operation),
-        snapshot_at=snapshot_at or timezone.now(),
-        price=Decimal(str(price)),
-        price_with_discount=(
-            Decimal(str(price_with_discount)) if price_with_discount is not None else None
-        ),
-        discount_percent=Decimal(str(discount_percent)) if discount_percent is not None else None,
-        currency=currency,
-        raw_safe=raw_safe,
-        source_endpoint=source_endpoint,
-    )
+    try:
+        _assert_snapshot_can_attach(sync_run, listing)
+        raw_safe = raw_safe or {}
+        assert_no_secret_like_values(raw_safe, field_name="price snapshot raw_safe")
+        return PriceSnapshot.objects.create(
+            listing=listing,
+            sync_run=sync_run,
+            operation=_snapshot_operation(sync_run, operation),
+            snapshot_at=snapshot_at or timezone.now(),
+            price=Decimal(str(price)),
+            price_with_discount=(
+                Decimal(str(price_with_discount)) if price_with_discount is not None else None
+            ),
+            discount_percent=Decimal(str(discount_percent)) if discount_percent is not None else None,
+            currency=currency,
+            raw_safe=raw_safe,
+            source_endpoint=source_endpoint,
+        )
+    except Exception as exc:
+        _record_snapshot_write_failure(
+            sync_run=sync_run,
+            listing=listing,
+            snapshot_kind="price",
+            source_endpoint=source_endpoint,
+            failure=exc,
+            operation=operation,
+        )
+        raise
 
 
 def create_stock_snapshot(
@@ -492,23 +564,34 @@ def create_stock_snapshot(
     source_endpoint: str = "",
     operation=None,
 ) -> StockSnapshot:
-    _assert_snapshot_can_attach(sync_run, listing)
-    raw_safe = raw_safe or {}
-    stock_by_warehouse = stock_by_warehouse or {}
-    assert_no_secret_like_values(raw_safe, field_name="stock snapshot raw_safe")
-    assert_no_secret_like_values(stock_by_warehouse, field_name="stock snapshot warehouses")
-    return StockSnapshot.objects.create(
-        listing=listing,
-        sync_run=sync_run,
-        operation=_snapshot_operation(sync_run, operation),
-        snapshot_at=snapshot_at or timezone.now(),
-        total_stock=total_stock,
-        stock_by_warehouse=stock_by_warehouse,
-        in_way_to_client=in_way_to_client,
-        in_way_from_client=in_way_from_client,
-        raw_safe=raw_safe,
-        source_endpoint=source_endpoint,
-    )
+    try:
+        _assert_snapshot_can_attach(sync_run, listing)
+        raw_safe = raw_safe or {}
+        stock_by_warehouse = stock_by_warehouse or {}
+        assert_no_secret_like_values(raw_safe, field_name="stock snapshot raw_safe")
+        assert_no_secret_like_values(stock_by_warehouse, field_name="stock snapshot warehouses")
+        return StockSnapshot.objects.create(
+            listing=listing,
+            sync_run=sync_run,
+            operation=_snapshot_operation(sync_run, operation),
+            snapshot_at=snapshot_at or timezone.now(),
+            total_stock=total_stock,
+            stock_by_warehouse=stock_by_warehouse,
+            in_way_to_client=in_way_to_client,
+            in_way_from_client=in_way_from_client,
+            raw_safe=raw_safe,
+            source_endpoint=source_endpoint,
+        )
+    except Exception as exc:
+        _record_snapshot_write_failure(
+            sync_run=sync_run,
+            listing=listing,
+            snapshot_kind="stock",
+            source_endpoint=source_endpoint,
+            failure=exc,
+            operation=operation,
+        )
+        raise
 
 
 def create_sales_period_snapshot(
@@ -527,24 +610,35 @@ def create_sales_period_snapshot(
     source_endpoint: str = "",
     operation=None,
 ) -> SalesPeriodSnapshot:
-    _assert_snapshot_can_attach(sync_run, listing)
-    raw_safe = raw_safe or {}
-    assert_no_secret_like_values(raw_safe, field_name="sales period snapshot raw_safe")
-    return SalesPeriodSnapshot.objects.create(
-        listing=listing,
-        sync_run=sync_run,
-        operation=_snapshot_operation(sync_run, operation),
-        period_start=period_start,
-        period_end=period_end,
-        orders_qty=orders_qty,
-        sales_qty=sales_qty,
-        buyout_qty=buyout_qty,
-        returns_qty=returns_qty,
-        sales_amount=Decimal(str(sales_amount)) if sales_amount is not None else None,
-        currency=currency,
-        raw_safe=raw_safe,
-        source_endpoint=source_endpoint,
-    )
+    try:
+        _assert_snapshot_can_attach(sync_run, listing)
+        raw_safe = raw_safe or {}
+        assert_no_secret_like_values(raw_safe, field_name="sales period snapshot raw_safe")
+        return SalesPeriodSnapshot.objects.create(
+            listing=listing,
+            sync_run=sync_run,
+            operation=_snapshot_operation(sync_run, operation),
+            period_start=period_start,
+            period_end=period_end,
+            orders_qty=orders_qty,
+            sales_qty=sales_qty,
+            buyout_qty=buyout_qty,
+            returns_qty=returns_qty,
+            sales_amount=Decimal(str(sales_amount)) if sales_amount is not None else None,
+            currency=currency,
+            raw_safe=raw_safe,
+            source_endpoint=source_endpoint,
+        )
+    except Exception as exc:
+        _record_snapshot_write_failure(
+            sync_run=sync_run,
+            listing=listing,
+            snapshot_kind="sales_period",
+            source_endpoint=source_endpoint,
+            failure=exc,
+            operation=operation,
+        )
+        raise
 
 
 def create_promotion_snapshot(
@@ -561,24 +655,35 @@ def create_promotion_snapshot(
     source_endpoint: str = "",
     operation=None,
 ) -> PromotionSnapshot:
-    _assert_snapshot_can_attach(sync_run, listing)
-    raw_safe = raw_safe or {}
-    constraints = constraints or {}
-    assert_no_secret_like_values(raw_safe, field_name="promotion snapshot raw_safe")
-    assert_no_secret_like_values(constraints, field_name="promotion snapshot constraints")
-    return PromotionSnapshot.objects.create(
-        listing=listing,
-        sync_run=sync_run,
-        operation=_snapshot_operation(sync_run, operation),
-        marketplace_promotion_id=str(marketplace_promotion_id),
-        action_name=action_name,
-        participation_status=participation_status,
-        action_price=Decimal(str(action_price)) if action_price is not None else None,
-        constraints=constraints,
-        reason_code=reason_code,
-        raw_safe=raw_safe,
-        source_endpoint=source_endpoint,
-    )
+    try:
+        _assert_snapshot_can_attach(sync_run, listing)
+        raw_safe = raw_safe or {}
+        constraints = constraints or {}
+        assert_no_secret_like_values(raw_safe, field_name="promotion snapshot raw_safe")
+        assert_no_secret_like_values(constraints, field_name="promotion snapshot constraints")
+        return PromotionSnapshot.objects.create(
+            listing=listing,
+            sync_run=sync_run,
+            operation=_snapshot_operation(sync_run, operation),
+            marketplace_promotion_id=str(marketplace_promotion_id),
+            action_name=action_name,
+            participation_status=participation_status,
+            action_price=Decimal(str(action_price)) if action_price is not None else None,
+            constraints=constraints,
+            reason_code=reason_code,
+            raw_safe=raw_safe,
+            source_endpoint=source_endpoint,
+        )
+    except Exception as exc:
+        _record_snapshot_write_failure(
+            sync_run=sync_run,
+            listing=listing,
+            snapshot_kind="promotion",
+            source_endpoint=source_endpoint,
+            failure=exc,
+            operation=operation,
+        )
+        raise
 
 
 def _row_dict(row) -> dict:
@@ -749,6 +854,17 @@ def _mark_api_listing_conflict(
         product=previous_variant.product if previous_variant else None,
         extra=extra,
     )
+    create_techlog_record(
+        severity="warning",
+        event_type=TechLogEventType.MARKETPLACE_MAPPING_CONFLICT,
+        source_component="apps.product_core.mapping",
+        operation=sync_run.operation,
+        store=listing.store,
+        entity_type="MarketplaceListing",
+        entity_id=str(listing.pk),
+        safe_message="Automatic marketplace listing mapping conflict detected.",
+        sensitive_details_ref="redacted:marketplace-mapping-conflict",
+    )
     return _create_api_mapping_history(
         sync_run=sync_run,
         listing=listing,
@@ -879,7 +995,7 @@ def _create_api_imported_draft_variant(
     variant.full_clean()
     variant.save()
     create_audit_record(
-        action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+        action_code=AuditActionCode.PRODUCT_VARIANT_AUTO_CREATED_DRAFT,
         entity_type="ProductVariant",
         entity_id=str(variant.pk),
         user=sync_run.requested_by,
@@ -897,6 +1013,33 @@ def _create_api_imported_draft_variant(
         source_context=AuditSourceContext.API,
     )
     return variant
+
+
+def _record_product_variant_auto_create_error(
+    *,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    internal_sku: str,
+    failure: Exception,
+) -> None:
+    create_techlog_record(
+        severity="error",
+        event_type=TechLogEventType.PRODUCT_VARIANT_AUTO_CREATE_ERROR,
+        source_component="apps.product_core.api_linkage",
+        operation=sync_run.operation,
+        store=sync_run.store,
+        entity_type="MarketplaceListing",
+        entity_id=str(listing.pk),
+        safe_message="Product variant auto-create from approved API article failed.",
+        sensitive_details_ref="redacted:product-variant-auto-create-failure",
+    )
+
+
+def _record_deferred_auto_create_error_if_present(exc: Exception) -> None:
+    context = getattr(exc, "product_variant_auto_create_context", None)
+    if not context:
+        return
+    _record_product_variant_auto_create_error(**context)
 
 
 def _api_title_mismatch_requires_review(variant: ProductVariant, title: str) -> bool:
@@ -990,27 +1133,36 @@ def api_link_listing_by_valid_article(
             extra=conflict_context,
         )
     if resolution == "missing":
-        parent_resolution, parent, parent_created, parent_context = _safe_parent_for_api_auto_create(
-            internal_sku=internal_sku,
-            title=listing.title.strip(),
-            sync_run=sync_run,
-        )
-        if parent_resolution == "conflict" or parent is None:
-            return _mark_api_listing_conflict(
+        try:
+            parent_resolution, parent, parent_created, parent_context = _safe_parent_for_api_auto_create(
+                internal_sku=internal_sku,
+                title=listing.title.strip(),
+                sync_run=sync_run,
+            )
+            if parent_resolution == "conflict" or parent is None:
+                return _mark_api_listing_conflict(
+                    sync_run=sync_run,
+                    listing=listing,
+                    internal_sku=internal_sku,
+                    outcome="parent_resolution_conflict",
+                    extra=parent_context,
+                )
+            variant = _create_api_imported_draft_variant(
+                product=parent,
+                internal_sku=internal_sku,
+                title=listing.title.strip(),
                 sync_run=sync_run,
                 listing=listing,
-                internal_sku=internal_sku,
-                outcome="parent_resolution_conflict",
-                extra=parent_context,
+                parent_created=parent_created,
             )
-        variant = _create_api_imported_draft_variant(
-            product=parent,
-            internal_sku=internal_sku,
-            title=listing.title.strip(),
-            sync_run=sync_run,
-            listing=listing,
-            parent_created=parent_created,
-        )
+        except Exception as exc:
+            exc.product_variant_auto_create_context = {
+                "sync_run": sync_run,
+                "listing": listing,
+                "internal_sku": internal_sku,
+                "failure": exc,
+            }
+            raise
         created_variant = True
 
     if variant is None:
@@ -1358,9 +1510,10 @@ def sync_wb_price_rows_to_product_core(
             error_summary={
                 "source": "wb_prices",
                 "approved_source": WB_PRICES_ENDPOINT_CODE,
-                "failure": getattr(exc, "safe_message", str(exc)),
+                "failure_class": exc.__class__.__name__,
             },
         )
+        _record_deferred_auto_create_error_if_present(exc)
         raise
 
 
@@ -1513,9 +1666,10 @@ def sync_wb_regular_promotion_rows_to_product_core(
             error_summary={
                 "source": "wb_promotions",
                 "approved_source": WB_PROMOTIONS_ENDPOINT_CODE,
-                "failure": getattr(exc, "safe_message", str(exc)),
+                "failure_class": exc.__class__.__name__,
             },
         )
+        _record_deferred_auto_create_error_if_present(exc)
         raise
 
 
@@ -1726,9 +1880,10 @@ def sync_ozon_elastic_action_rows_to_product_core(
                 "approved_source": endpoint_code,
                 "action_id": str(action_id),
                 "source_group": source_group,
-                "failure": getattr(exc, "safe_message", str(exc)),
+                "failure_class": exc.__class__.__name__,
             },
         )
+        _record_deferred_auto_create_error_if_present(exc)
         raise
 
 
@@ -1841,9 +1996,10 @@ def sync_ozon_elastic_stock_rows_to_product_core(
                 "source": "ozon_elastic_product_data",
                 "approved_source": OZON_PRODUCT_INFO_STOCKS_ENDPOINT_CODE,
                 "action_id": str(action_id),
-                "failure": getattr(exc, "safe_message", str(exc)),
+                "failure_class": exc.__class__.__name__,
             },
         )
+        _record_deferred_auto_create_error_if_present(exc)
         raise
 
 

@@ -7,6 +7,7 @@ from django.db.models.deletion import ProtectedError
 from django.test import TestCase
 from django.utils import timezone
 
+from apps.audit.models import AuditActionCode, AuditRecord
 from apps.files.models import FileObject, FileVersion
 from apps.identity_access.models import (
     AccessEffect,
@@ -18,6 +19,7 @@ from apps.identity_access.models import (
 from apps.identity_access.seeds import seed_identity_access
 from apps.product_core.models import ListingSource, MarketplaceListing
 from apps.stores.models import StoreAccount
+from apps.techlog.models import TechLogEventType, TechLogRecord, TechLogSeverity
 
 from .models import (
     CheckStatus,
@@ -39,6 +41,7 @@ from .listing_enrichment import (
     CONFLICT_NO_LISTING_MATCH,
     CONFLICT_ROW_NOT_PRODUCT_IDENTIFIER,
     backfill_operation_detail_listing_fk,
+    enrich_detail_row_marketplace_listing,
     operation_detail_product_ref_checksum,
     resolve_listing_for_detail_row,
 )
@@ -904,6 +907,34 @@ class OperationsShellTests(TestCase):
         operation.summary = {"changed": True}
         with self.assertRaises(ValidationError):
             operation.save(update_fields=["summary"])
+
+    def test_listing_fk_enrichment_writes_safe_audit_and_conflict_techlog(self):
+        listing = self._listing(external_primary_id="audit-listing", seller_article="AUDIT-ARTICLE")
+        row = self._detail_row(product_ref="AUDIT-ARTICLE")
+
+        result = enrich_detail_row_marketplace_listing(row, dry_run=False)
+        row.refresh_from_db()
+
+        self.assertEqual(result.listing, listing)
+        self.assertEqual(row.marketplace_listing_id, listing.pk)
+        audit = AuditRecord.objects.get(
+            action_code=AuditActionCode.OPERATION_DETAIL_ROW_LISTING_FK_ENRICHED,
+            entity_id=str(row.pk),
+        )
+        self.assertEqual(audit.operation, row.operation)
+        self.assertEqual(audit.store, self.store)
+        self.assertEqual(audit.after_snapshot["listing_id"], listing.pk)
+        self.assertEqual(audit.after_snapshot["matched_key_class"], "seller_article")
+        self.assertNotIn("AUDIT-ARTICLE", str(audit.after_snapshot))
+
+        missing_row = self._detail_row(product_ref="NO-LISTING-MATCH", row_no=2)
+        enrich_detail_row_marketplace_listing(missing_row, dry_run=False)
+        techlog = TechLogRecord.objects.get(
+            event_type=TechLogEventType.OPERATION_DETAIL_ROW_ENRICHMENT_ERROR,
+            entity_id=str(missing_row.pk),
+        )
+        self.assertEqual(techlog.severity, TechLogSeverity.WARNING)
+        self.assertNotIn("NO-LISTING-MATCH", techlog.safe_message)
 
     def test_existing_different_fk_is_not_overwritten(self):
         existing = self._listing(external_primary_id="existing", seller_article="EXISTING")

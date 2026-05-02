@@ -3605,7 +3605,7 @@ def _variant_snapshot(variant: ProductVariant) -> dict:
         "status": variant.status,
         "review_state": variant.review_state,
         "variant_attributes": variant.variant_attributes,
-        "import_source_context": _safe_technical_value(variant.import_source_context),
+        "import_source_context": dict(_variant_source_context_items(variant)),
     }
 
 

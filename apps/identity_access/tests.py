@@ -243,17 +243,42 @@ class IdentityAccessTests(TestCase):
         self.assertTrue(product_core_permissions <= set(PERMISSION_DEFINITIONS))
         self.assertTrue(product_core_permissions <= ROLE_PERMISSION_CODES[ROLE_OWNER])
         self.assertTrue(product_core_permissions <= ROLE_PERMISSION_CODES[ROLE_GLOBAL_ADMIN])
+        self.assertNotIn("marketplace_mapping.import_table", PERMISSION_DEFINITIONS)
+        self.assertNotIn("marketplace_mapping.apply_table", PERMISSION_DEFINITIONS)
+        for code in product_core_permissions:
+            with self.subTest(role="owner", code=code):
+                self.assertTrue(has_permission(self.owner, code, self.wb_store))
+            with self.subTest(role="global_admin", code=code):
+                self.assertTrue(has_permission(self.global_admin, code, self.wb_store))
         self.assertIn("marketplace_listing.map", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
         self.assertIn("marketplace_listing.unmap", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        for code in {
+            "marketplace_listing.view",
+            "marketplace_listing.sync",
+            "marketplace_listing.export",
+            "marketplace_listing.map",
+            "marketplace_listing.unmap",
+            "marketplace_snapshot.view",
+        }:
+            with self.subTest(role="local_admin", code=code):
+                self.assertTrue(has_permission(self.local_admin, code, self.wb_store))
         self.assertNotIn("marketplace_listing.archive", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
         self.assertNotIn("product_core.create", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertNotIn("product_core.update", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertNotIn("product_core.archive", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
         self.assertNotIn("marketplace_listing.map", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
         self.assertNotIn("marketplace_listing.unmap", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
+        self.assertNotIn("product_variant.update", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
         self.assertNotIn("marketplace_listing.export", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
+        self.assertNotIn("marketplace_listing.map", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
+        self.assertNotIn("marketplace_listing.unmap", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
+        self.assertNotIn("product_variant.update", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
         self.assertNotIn("marketplace_snapshot.technical_view", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
         self.assertFalse(has_permission(self.local_admin, "marketplace_listing.archive", self.wb_store))
         self.assertTrue(has_permission(self.manager, "product_core.view"))
         self.assertTrue(has_permission(self.manager, "marketplace_listing.view", self.wb_store))
+        self.assertTrue(has_permission(self.manager, "marketplace_listing.export", self.wb_store))
+        self.assertTrue(has_permission(self.manager, "marketplace_snapshot.view", self.wb_store))
         self.assertFalse(has_permission(self.manager, "marketplace_listing.map", self.wb_store))
         self.assertFalse(has_permission(self.observer, "marketplace_listing.export", self.wb_store))
 

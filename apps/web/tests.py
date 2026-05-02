@@ -1221,6 +1221,10 @@ class HomeSmokeTests(TestCase):
         ).latest("occurred_at")
         self.assertEqual(audit.after_snapshot["review_state"], ProductVariant.ReviewState.MANUAL_CONFIRMED)
         self.assertEqual(audit.after_snapshot["import_source_context"]["source"], "wb_api_prices")
+        self.assertNotIn("store_id", audit.after_snapshot["import_source_context"])
+        self.assertNotIn("listing_id", audit.after_snapshot["import_source_context"])
+        self.assertNotIn("operation_id", audit.after_snapshot["import_source_context"])
+        self.assertNotIn("sync_run_id", audit.after_snapshot["import_source_context"])
 
         variant.review_state = ProductVariant.ReviewState.IMPORTED_DRAFT
         variant.save(update_fields=["review_state", "updated_at"])

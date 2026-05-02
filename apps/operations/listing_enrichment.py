@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 
+from apps.audit.models import AuditActionCode, AuditSourceContext
+from apps.audit.services import create_audit_record
 from apps.product_core.models import MarketplaceListing
+from apps.techlog.models import TechLogEventType
+from apps.techlog.services import create_techlog_record
 
 from .models import (
     Marketplace,
@@ -217,9 +221,50 @@ def resolve_listing_for_detail_row(row: OperationDetailRow) -> ResolveResult:
     )
 
 
-def enrich_detail_row_marketplace_listing(row: OperationDetailRow, *, dry_run: bool = False) -> ResolveResult:
+def _safe_row_key_hash(row: OperationDetailRow) -> str:
+    basis = f"{row.operation_id}:{row.id}:{(row.product_ref or '').strip()}"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+
+def _record_enrichment_error(
+    *,
+    row: OperationDetailRow,
+    result: ResolveResult,
+    family: str,
+    severity: str = "warning",
+) -> None:
+    create_techlog_record(
+        severity=severity,
+        event_type=TechLogEventType.OPERATION_DETAIL_ROW_ENRICHMENT_ERROR,
+        source_component="apps.operations.listing_enrichment",
+        operation=row.operation,
+        store=row.operation.store,
+        entity_type="OperationDetailRow",
+        entity_id=str(row.pk),
+        safe_message="Operation detail row listing FK enrichment skipped or failed.",
+        sensitive_details_ref="redacted:operation-detail-row-enrichment",
+    )
+
+
+def enrich_detail_row_marketplace_listing(
+    row: OperationDetailRow,
+    *,
+    dry_run: bool = False,
+    emit_techlog: bool = True,
+) -> ResolveResult:
     result = resolve_listing_for_detail_row(row)
     if not result.matched:
+        if emit_techlog and result.conflict_class:
+            _record_enrichment_error(
+                row=row,
+                result=result,
+                family=operation_family(row),
+                severity=(
+                    "error"
+                    if result.conflict_class == CONFLICT_STORE_MARKETPLACE_MISMATCH
+                    else "warning"
+                ),
+            )
         return result
     if result.existing_same_fk or row.marketplace_listing_id == result.listing.pk:
         return result
@@ -238,6 +283,26 @@ def enrich_detail_row_marketplace_listing(row: OperationDetailRow, *, dry_run: b
             )
         if updated != 1:
             raise ValidationError("Operation detail listing FK enrichment did not update exactly one row.")
+        create_audit_record(
+            action_code=AuditActionCode.OPERATION_DETAIL_ROW_LISTING_FK_ENRICHED,
+            entity_type="OperationDetailRow",
+            entity_id=str(locked.pk),
+            user=getattr(locked.operation, "initiator_user", None),
+            store=locked.operation.store,
+            operation=locked.operation,
+            safe_message="Operation detail row listing FK enriched.",
+            after_snapshot={
+                "row_id": locked.pk,
+                "operation_id": locked.operation_id,
+                "operation_visible_id": locked.operation.visible_id,
+                "listing_id": result.listing.pk,
+                "matched_key_class": result.matched_key,
+                "operation_family": operation_family(locked),
+                "write_source": "listing_fk_enrichment",
+                "product_ref_key_hash": _safe_row_key_hash(locked),
+            },
+            source_context=AuditSourceContext.SERVICE,
+        )
     return result
 
 
@@ -294,7 +359,7 @@ def backfill_operation_detail_listing_fk(
         family = operation_family(row)
         report.scanned_count += 1
         report.family_counts[family] += 1
-        result = enrich_detail_row_marketplace_listing(row, dry_run=dry_run)
+        result = enrich_detail_row_marketplace_listing(row, dry_run=dry_run, emit_techlog=False)
         if result.matched:
             if result.existing_same_fk or row.marketplace_listing_id == result.listing.pk:
                 report.idempotent_count += 1
@@ -316,4 +381,12 @@ def backfill_operation_detail_listing_fk(
         if after_product_refs.get(row_id) != product_ref
     )
     report.same_scope_violation_count = count_same_scope_fk_violations()
+    if not dry_run and report.conflict_counts:
+        create_techlog_record(
+            severity="error" if report.same_scope_violation_count else "warning",
+            event_type=TechLogEventType.OPERATION_DETAIL_ROW_ENRICHMENT_ERROR,
+            source_component="apps.operations.listing_enrichment",
+            safe_message="Operation detail row listing FK enrichment completed with skipped rows.",
+            sensitive_details_ref="redacted:operation-detail-row-enrichment-backfill",
+        )
     return report

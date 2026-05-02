@@ -83,6 +83,21 @@ class AuditTask006Tests(TestCase):
             "product_core.export_generated",
         )
 
+    def test_core2_pc2_008_audit_actions_are_available(self):
+        self.assertEqual(
+            AuditActionCode.PRODUCT_VARIANT_AUTO_CREATED_DRAFT,
+            "product_variant.auto_created_draft",
+        )
+        self.assertEqual(
+            AuditActionCode.OPERATION_DETAIL_ROW_LISTING_FK_ENRICHED,
+            "operation_detail_row.listing_fk_enriched",
+        )
+        self.assertEqual(AuditActionCode.MARKETPLACE_SYNC_FAILED, "marketplace_sync.failed")
+        self.assertEqual(
+            AuditActionCode.MARKETPLACE_SNAPSHOT_WRITE_FAILED,
+            "marketplace_snapshot.write_failed",
+        )
+
     def test_audit_record_links_operation_and_is_immutable(self):
         record = create_audit_record(
             action_code=AuditActionCode.OPERATION_CHECK_STARTED,
