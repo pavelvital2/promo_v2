@@ -15,6 +15,12 @@
     <h2>Внутренние товары</h2>
     <p class="status">Internal Product Core: товары компании, варианты и видимые связи WB/Ozon.</p>
     <a class="button" href="{% url 'web:internal_product_list' %}">Открыть внутренние товары</a>
+    {% if can_variant_review %}
+      <a class="button" href="{% url 'web:imported_draft_variant_list' %}">Imported/draft варианты</a>
+    {% endif %}
+    {% if can_export_products %}
+      <a class="button" href="{% url 'web:internal_product_export' %}">Экспорт товаров CSV</a>
+    {% endif %}
   </section>
   {% endif %}
   {% if can_listings %}
@@ -23,6 +29,19 @@
     <p class="status">Внешние WB/Ozon листинги, статусы, snapshots и связи с внутренними вариантами.</p>
     <a class="button" href="{% url 'web:marketplace_listing_list' %}">Открыть листинги</a>
     <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
+    <a class="button" href="{% url 'web:unmatched_listing_list' %}?mapping_status=needs_review">Needs review</a>
+    <a class="button" href="{% url 'web:unmatched_listing_list' %}?mapping_status=conflict">Конфликты</a>
+    {% if can_export_listings %}
+      <a class="button" href="{% url 'web:marketplace_listing_export' %}">Экспорт листингов CSV</a>
+      <a class="button" href="{% url 'web:unmatched_listing_export' %}">Экспорт очередей CSV</a>
+      {% if can_export_latest_values %}
+        <a class="button" href="{% url 'web:listing_latest_values_export' %}">Последние значения CSV</a>
+      {% endif %}
+      <a class="button" href="{% url 'web:listing_mapping_report_export' %}">Отчёт сопоставлений CSV</a>
+      {% if can_export_operation_links %}
+        <a class="button" href="{% url 'web:operation_link_report_export' %}">Связи операций CSV</a>
+      {% endif %}
+    {% endif %}
   </section>
   {% endif %}
 </div>

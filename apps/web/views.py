@@ -10,9 +10,10 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 
 from apps.audit.models import AuditActionCode, AuditRecord, AuditSourceContext
@@ -87,7 +88,6 @@ from apps.product_core.models import (
     ProductStatus,
     ProductVariant,
     PromotionSnapshot,
-    SalesPeriodSnapshot,
     StockSnapshot,
 )
 from apps.product_core import exports as product_core_exports
@@ -132,6 +132,7 @@ SAFE_EXPORT_FILTER_KEYS = {
     "mapping_status",
     "marketplace",
     "q",
+    "source",
     "stock",
     "store",
     "updated_from",
@@ -351,6 +352,27 @@ def _visible_operations_queryset(user):
         .filter(id__in=allowed_ids)
         .order_by("-created_at", "-id")
     )
+
+
+def _attach_operation_detail_row_links(user, rows) -> None:
+    row_list = list(rows)
+    listing_ids = [row.marketplace_listing_id for row in row_list if row.marketplace_listing_id]
+    visible_listing_ids = set()
+    if listing_ids:
+        visible_listing_ids = set(
+            marketplace_listings_visible_to(user)
+            .filter(pk__in=listing_ids)
+            .values_list("id", flat=True)
+        )
+    can_view_internal = _can_view_linked_internal_identifiers(user)
+    for row in row_list:
+        listing = row.marketplace_listing if row.marketplace_listing_id in visible_listing_ids else None
+        row.visible_marketplace_listing = listing
+        row.visible_internal_variant = (
+            listing.internal_variant
+            if listing is not None and can_view_internal and listing.internal_variant_id
+            else None
+        )
 
 
 def _require_operation_view(user, operation: Operation) -> None:
@@ -582,6 +604,12 @@ def _safe_technical_value(value):
         if any(marker in lowered for marker in ("bearer ", "api-key", "apikey", "authorization:", "secret")):
             return "[redacted]"
     return value
+
+
+def _safe_scalar(value):
+    if isinstance(value, (dict, list, tuple)):
+        return None
+    return _safe_technical_value(value)
 
 
 def _format_technical_value(value) -> str:
@@ -2183,7 +2211,12 @@ def operation_card(request: HttpRequest, visible_id: str) -> HttpResponse:
         visible_id=visible_id,
     )
     _require_operation_view(request.user, operation)
-    details = operation.detail_rows.all().order_by("row_no", "id")
+    details = operation.detail_rows.select_related(
+        "marketplace_listing",
+        "marketplace_listing__store",
+        "marketplace_listing__internal_variant",
+        "marketplace_listing__internal_variant__product",
+    ).order_by("row_no", "id")
     reason = request.GET.get("reason", "").strip()
     row_status = request.GET.get("row_status", "").strip()
     q = request.GET.get("q", "").strip()
@@ -2247,6 +2280,9 @@ def operation_card(request: HttpRequest, visible_id: str) -> HttpResponse:
             operation.store,
         )
     )
+    detail_page = _paginate(request, details, 50) if can_view_details else None
+    if detail_page is not None:
+        _attach_operation_detail_row_links(request.user, detail_page.object_list)
     return _render(
         request,
         "web/operation_card.html",
@@ -2257,7 +2293,7 @@ def operation_card(request: HttpRequest, visible_id: str) -> HttpResponse:
             "is_api_operation": is_api_operation,
             "summary_items": _summary_items(operation.summary),
             "technical_summary_items": _technical_summary_items(operation.summary),
-            "detail_page": _paginate(request, details, 50) if can_view_details else None,
+            "detail_page": detail_page,
             "input_files": operation.input_files.select_related("file_version", "file_version__file"),
             "output_links": output_links,
             "parameter_snapshots": operation.parameter_snapshots.all(),
@@ -2378,7 +2414,17 @@ def reference_index(request: HttpRequest) -> HttpResponse:
     return _render(
         request,
         "web/reference_index.html",
-        {"can_stores": can_stores, "can_products": can_products, "can_listings": can_listings},
+        {
+            "can_stores": can_stores,
+            "can_products": can_products,
+            "can_listings": can_listings,
+            "can_variant_review": can_products and has_permission(request.user, "product_variant.view"),
+            "can_export_products": can_products and has_permission(request.user, "product_core.export"),
+            "can_export_listings": can_listings
+            and _stores_with_permission(request.user, "marketplace_listing.export").exists(),
+            "can_export_latest_values": can_listings and _can_export_latest_values(request.user),
+            "can_export_operation_links": can_listings and _can_export_operation_links(request.user),
+        },
         section="references",
     )
 
@@ -2523,6 +2569,195 @@ def internal_product_export(request: HttpRequest) -> HttpResponse:
     return response
 
 
+def _require_variant_review_view(user) -> None:
+    _require_product_core_view(user)
+    if not has_permission(user, "product_variant.view"):
+        raise PermissionDenied("No permission to view product variants.")
+
+
+SAFE_VARIANT_SOURCE_KEYS = {
+    "source",
+    "marketplace",
+    "internal_sku",
+    "article_basis",
+    "basis",
+    "outcome",
+    "parent_created",
+    "review_state",
+}
+
+
+def _context_positive_int(context: dict, key: str) -> int | None:
+    value = context.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _variant_source_context_items(variant: ProductVariant) -> list[tuple[str, object]]:
+    context = variant.import_source_context or {}
+    if not isinstance(context, dict):
+        return []
+    items = []
+    for key in SAFE_VARIANT_SOURCE_KEYS:
+        if key in context:
+            value = _safe_scalar(context[key])
+            if value not in (None, ""):
+                items.append((key, value))
+    return sorted(items)
+
+
+def _variant_visible_source_context(user, variant: ProductVariant) -> dict[str, object]:
+    context = variant.import_source_context or {}
+    if not isinstance(context, dict):
+        return {}
+
+    visible_context: dict[str, object] = {}
+    store_id = _context_positive_int(context, "store_id")
+    listing_id = _context_positive_int(context, "listing_id")
+    operation_id = _context_positive_int(context, "operation_id")
+    sync_run_id = _context_positive_int(context, "sync_run_id")
+
+    if store_id:
+        store = StoreAccount.objects.filter(pk=store_id).first()
+        if store and has_permission(user, "marketplace_listing.view", store):
+            visible_context["store"] = store
+
+    if listing_id:
+        listing = (
+            marketplace_listings_visible_to(user)
+            .select_related("store")
+            .filter(pk=listing_id)
+            .first()
+        )
+        if listing:
+            visible_context["listing"] = listing
+
+    if operation_id:
+        operation = Operation.objects.select_related("store").filter(pk=operation_id).first()
+        if operation and _can_view_operation(user, operation):
+            visible_context["operation"] = operation
+
+    if sync_run_id:
+        sync_run = (
+            MarketplaceSyncRun.objects.select_related("store", "operation")
+            .filter(pk=sync_run_id)
+            .first()
+        )
+        if sync_run and has_permission(user, "marketplace_listing.view", sync_run.store):
+            visible_context["sync_run"] = sync_run
+
+    return visible_context
+
+
+def _attach_variant_review_context(user, variants) -> None:
+    variant_ids = [variant.pk for variant in variants]
+    listings_by_variant: dict[int, list[MarketplaceListing]] = {variant_id: [] for variant_id in variant_ids}
+    if variant_ids:
+        visible_operation_ids = set(_visible_operations_queryset(user).values_list("id", flat=True))
+        visible_listings = (
+            marketplace_listings_visible_to(user)
+            .filter(internal_variant_id__in=variant_ids)
+            .select_related("store", "last_sync_run", "last_sync_run__operation")
+            .order_by("marketplace", "store__name", "external_primary_id", "id")
+        )
+        for listing in visible_listings:
+            listing.visible_sync_operation = (
+                listing.last_sync_run.operation
+                if listing.last_sync_run_id
+                and listing.last_sync_run.operation_id
+                and listing.last_sync_run.operation_id in visible_operation_ids
+                else None
+            )
+            if len(listings_by_variant.setdefault(listing.internal_variant_id, [])) < 3:
+                listings_by_variant[listing.internal_variant_id].append(listing)
+    for variant in variants:
+        variant.visible_source_listings = listings_by_variant.get(variant.pk, [])
+        variant.safe_import_source_items = _variant_source_context_items(variant)
+        variant.visible_import_source_context = _variant_visible_source_context(user, variant)
+
+
+@login_required
+def imported_draft_variant_list(request: HttpRequest) -> HttpResponse:
+    _require_variant_review_view(request.user)
+    variants = (
+        ProductVariant.objects.select_related("product")
+        .filter(
+            review_state__in=[
+                ProductVariant.ReviewState.IMPORTED_DRAFT,
+                ProductVariant.ReviewState.NEEDS_REVIEW,
+            ]
+        )
+        .exclude(status=ProductStatus.ARCHIVED)
+        .order_by("review_state", "updated_at", "product__internal_code", "internal_sku", "id")
+    )
+    page = _paginate(request, variants)
+    _attach_variant_review_context(request.user, page.object_list)
+    return _render(
+        request,
+        "web/imported_draft_variant_list.html",
+        {
+            "page": page,
+            "can_update_variant": has_permission(request.user, "product_variant.update"),
+            "can_archive_variant": has_permission(request.user, "product_variant.archive"),
+        },
+        section="references",
+    )
+
+
+@login_required
+def imported_draft_variant_action(request: HttpRequest, variant_pk: int) -> HttpResponse:
+    _require_variant_review_view(request.user)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    variant = get_object_or_404(ProductVariant.objects.select_related("product"), pk=variant_pk)
+    action = request.POST.get("action", "")
+    before = _variant_snapshot(variant)
+    if action == "confirm":
+        if not has_permission(request.user, "product_variant.update"):
+            raise PermissionDenied("No permission to confirm product variants.")
+        variant.review_state = ProductVariant.ReviewState.MANUAL_CONFIRMED
+        variant.save(update_fields=["review_state", "updated_at"])
+        _audit_variant_change(
+            action_code=AuditActionCode.PRODUCT_VARIANT_UPDATED,
+            user=request.user,
+            variant=variant,
+            before=before,
+        )
+        messages.success(request, "Вариант подтверждён вручную.")
+    elif action == "leave_review":
+        if not has_permission(request.user, "product_variant.update"):
+            raise PermissionDenied("No permission to mark product variants for review.")
+        variant.review_state = ProductVariant.ReviewState.NEEDS_REVIEW
+        variant.save(update_fields=["review_state", "updated_at"])
+        _audit_variant_change(
+            action_code=AuditActionCode.PRODUCT_VARIANT_UPDATED,
+            user=request.user,
+            variant=variant,
+            before=before,
+        )
+        messages.success(request, "Вариант оставлен на проверке.")
+    elif action == "archive":
+        if not has_permission(request.user, "product_variant.archive"):
+            raise PermissionDenied("No permission to archive product variants.")
+        variant.status = ProductStatus.ARCHIVED
+        variant.save(update_fields=["status", "updated_at"])
+        _audit_variant_change(
+            action_code=AuditActionCode.PRODUCT_VARIANT_ARCHIVED,
+            user=request.user,
+            variant=variant,
+            before=before,
+        )
+        messages.success(request, "Вариант архивирован.")
+    else:
+        raise PermissionDenied("Unsupported variant review action.")
+    return redirect("web:imported_draft_variant_list")
+
+
 def _require_marketplace_listing_view(user) -> None:
     has_section = has_section_access(user, "marketplace_listings.view") or has_section_access(
         user,
@@ -2572,6 +2807,8 @@ def _filter_marketplace_listings(queryset, form: MarketplaceListingFilterForm):
         queryset = queryset.filter(listing_status=data["listing_status"])
     if data.get("mapping_status"):
         queryset = queryset.filter(mapping_status=data["mapping_status"])
+    if data.get("source"):
+        queryset = queryset.filter(last_source=data["source"])
     if data.get("category"):
         queryset = queryset.filter(category_name=data["category"])
     if data.get("brand"):
@@ -2626,7 +2863,64 @@ def _can_use_unmapping(user, listing: MarketplaceListing) -> bool:
     )
 
 
-def _attach_listing_snapshot_access(user, listings) -> None:
+def _can_view_linked_internal_identifiers(user) -> bool:
+    return has_permission(user, "product_core.view") and has_permission(user, "product_variant.view")
+
+
+SAFE_SYNC_SUMMARY_KEYS = {
+    "approved_endpoint_family",
+    "endpoint_family",
+    "source_endpoint_family",
+    "source_endpoint",
+    "connection_status",
+    "schema_status",
+    "rows_count",
+    "records_count",
+    "processed_count",
+    "created_count",
+    "updated_count",
+    "warning_count",
+    "warnings_count",
+    "error_count",
+    "errors_count",
+}
+
+
+def _safe_sync_summary_items(sync_run: MarketplaceSyncRun | None) -> list[tuple[str, object]]:
+    if not sync_run or not isinstance(sync_run.summary, dict):
+        return []
+    items = []
+    for key in SAFE_SYNC_SUMMARY_KEYS:
+        if key in sync_run.summary:
+            value = _safe_scalar(sync_run.summary[key])
+            if value not in (None, ""):
+                items.append((key, value))
+    return sorted(items)
+
+
+def _safe_sync_warning_items(sync_run: MarketplaceSyncRun | None) -> list[tuple[str, object]]:
+    if not sync_run:
+        return []
+    source = sync_run.error_summary if isinstance(sync_run.error_summary, dict) and sync_run.error_summary else {}
+    if not source and isinstance(sync_run.summary, dict):
+        source = sync_run.summary
+    items = []
+    for key, value in source.items():
+        normalized = str(key).lower()
+        if not any(marker in normalized for marker in ("warning", "error", "reason", "message", "status")):
+            continue
+        safe_value = _safe_scalar(value)
+        if safe_value not in (None, ""):
+            items.append((key, safe_value))
+        if len(items) >= 4:
+            break
+    return items
+
+
+def _attach_listing_ui_access(user, listings) -> None:
+    can_view_internal = _can_view_linked_internal_identifiers(user)
+    visible_operation_ids = set(_visible_operations_queryset(user).values_list("id", flat=True))
+    now = timezone.now()
     for listing in listings:
         listing.can_view_snapshot_summary = has_permission(
             user,
@@ -2637,6 +2931,25 @@ def _attach_listing_snapshot_access(user, listings) -> None:
             user,
             listing,
         )
+        listing.can_view_linked_internal = can_view_internal
+        listing.safe_sync_summary_items = _safe_sync_summary_items(listing.last_sync_run)
+        listing.safe_sync_warning_items = _safe_sync_warning_items(listing.last_sync_run)
+        listing.cache_age_seconds = (
+            int((now - listing.last_successful_sync_at).total_seconds())
+            if listing.last_successful_sync_at
+            else None
+        )
+        listing.visible_sync_operation = (
+            listing.last_sync_run.operation
+            if listing.last_sync_run_id
+            and listing.last_sync_run.operation_id
+            and listing.last_sync_run.operation_id in visible_operation_ids
+            else None
+        )
+
+
+def _attach_listing_snapshot_access(user, listings) -> None:
+    _attach_listing_ui_access(user, listings)
 
 
 def _can_export_operation_links(user) -> bool:
@@ -2653,6 +2966,11 @@ def _can_export_operation_links(user) -> bool:
     return False
 
 
+def _can_export_latest_values(user) -> bool:
+    stores = _stores_with_permission(user, "marketplace_listing.export")
+    return any(has_permission(user, "marketplace_snapshot.view", store) for store in stores)
+
+
 @login_required
 def marketplace_listing_list(request: HttpRequest) -> HttpResponse:
     _require_marketplace_listing_view(request.user)
@@ -2660,6 +2978,8 @@ def marketplace_listing_list(request: HttpRequest) -> HttpResponse:
         "store",
         "internal_variant",
         "internal_variant__product",
+        "last_sync_run",
+        "last_sync_run__operation",
     )
     choices = _listing_filter_choices(base_queryset)
     form = MarketplaceListingFilterForm(
@@ -2685,11 +3005,14 @@ def marketplace_listing_list(request: HttpRequest) -> HttpResponse:
             "querystring": _listing_page_querystring(request),
             "title": "Marketplace listings",
             "is_unmatched": False,
+            "can_view_product_core": has_permission(request.user, "product_core.view"),
+            "can_variant_review": _can_view_linked_internal_identifiers(request.user),
             "can_export_any": _stores_with_permission(
                 request.user,
                 "marketplace_listing.export",
             ).exists(),
             "can_export_operation_links": _can_export_operation_links(request.user),
+            "can_export_latest_values": _can_export_latest_values(request.user),
             "can_map_any": _stores_with_permission(request.user, "marketplace_listing.map").exists(),
             "can_unmap_any": _stores_with_permission(request.user, "marketplace_listing.unmap").exists(),
             "can_sync_any": _stores_with_permission(request.user, "marketplace_listing.sync").exists(),
@@ -2703,7 +3026,13 @@ def unmatched_listing_list(request: HttpRequest) -> HttpResponse:
     _require_marketplace_listing_view(request.user)
     base_queryset = (
         marketplace_listings_visible_to(request.user)
-        .select_related("store", "internal_variant", "internal_variant__product")
+        .select_related(
+            "store",
+            "internal_variant",
+            "internal_variant__product",
+            "last_sync_run",
+            "last_sync_run__operation",
+        )
         .filter(
             internal_variant__isnull=True,
             mapping_status__in=[
@@ -2737,11 +3066,14 @@ def unmatched_listing_list(request: HttpRequest) -> HttpResponse:
             "querystring": _listing_page_querystring(request),
             "title": "Несопоставленные листинги",
             "is_unmatched": True,
+            "can_view_product_core": has_permission(request.user, "product_core.view"),
+            "can_variant_review": _can_view_linked_internal_identifiers(request.user),
             "can_export_any": _stores_with_permission(
                 request.user,
                 "marketplace_listing.export",
             ).exists(),
             "can_export_operation_links": _can_export_operation_links(request.user),
+            "can_export_latest_values": _can_export_latest_values(request.user),
             "can_map_any": _stores_with_permission(request.user, "marketplace_listing.map").exists(),
             "can_unmap_any": _stores_with_permission(request.user, "marketplace_listing.unmap").exists(),
             "can_sync_any": False,
@@ -2755,6 +3087,8 @@ def _filtered_listing_export_queryset(request: HttpRequest, *, unmatched: bool =
         "store",
         "internal_variant",
         "internal_variant__product",
+        "last_sync_run",
+        "last_sync_run__operation",
     )
     if unmatched:
         base_queryset = base_queryset.filter(
@@ -2910,7 +3244,7 @@ def _listing_related_operations(user, listing: MarketplaceListing):
         .values_list("operation_id", flat=True)
     )
     operation_ids.update(sync_run_ids)
-    for model in (PriceSnapshot, StockSnapshot, SalesPeriodSnapshot, PromotionSnapshot):
+    for model in (PriceSnapshot, StockSnapshot, PromotionSnapshot):
         operation_ids.update(
             model.objects.filter(listing=listing)
             .exclude(operation_id__isnull=True)
@@ -2952,12 +3286,6 @@ def marketplace_listing_card(request: HttpRequest, pk: int) -> HttpResponse:
     )
     price_snapshots = listing.price_snapshots.select_related("sync_run", "operation", "listing", "listing__store")
     stock_snapshots = listing.stock_snapshots.select_related("sync_run", "operation", "listing", "listing__store")
-    sales_snapshots = listing.sales_period_snapshots.select_related(
-        "sync_run",
-        "operation",
-        "listing",
-        "listing__store",
-    )
     promotion_snapshots = listing.promotion_snapshots.select_related(
         "sync_run",
         "operation",
@@ -2976,11 +3304,9 @@ def marketplace_listing_card(request: HttpRequest, pk: int) -> HttpResponse:
             "listing": listing,
             "latest_price": _latest_snapshot(price_snapshots, request.user),
             "latest_stock": _latest_snapshot(stock_snapshots, request.user),
-            "latest_sales": _latest_snapshot(sales_snapshots, request.user),
             "latest_promotion": _latest_snapshot(promotion_snapshots, request.user),
             "price_rows": _snapshot_rows(price_snapshots, request.user),
             "stock_rows": _snapshot_rows(stock_snapshots, request.user),
-            "sales_rows": _snapshot_rows(sales_snapshots, request.user),
             "promotion_rows": _snapshot_rows(promotion_snapshots, request.user),
             "listing_history": listing.history.select_related("sync_run", "operation", "changed_by")[:20],
             "mapping_history": listing.mapping_history.select_related(
@@ -2994,6 +3320,16 @@ def marketplace_listing_card(request: HttpRequest, pk: int) -> HttpResponse:
             "can_map": can_map,
             "can_unmap": can_unmap,
             "can_view_snapshots": can_view_snapshots,
+            "can_view_linked_internal": _can_view_linked_internal_identifiers(request.user),
+            "safe_sync_summary_items": _safe_sync_summary_items(listing.last_sync_run),
+            "safe_sync_warning_items": _safe_sync_warning_items(listing.last_sync_run),
+            "visible_sync_operation": (
+                listing.last_sync_run.operation
+                if listing.last_sync_run_id
+                and listing.last_sync_run.operation_id
+                and _can_view_operation(request.user, listing.last_sync_run.operation)
+                else None
+            ),
             "technical_view": has_permission(
                 request.user,
                 "marketplace_snapshot.technical_view",
@@ -3267,7 +3603,9 @@ def _variant_snapshot(variant: ProductVariant) -> dict:
         "name": variant.name,
         "barcode_internal": variant.barcode_internal,
         "status": variant.status,
+        "review_state": variant.review_state,
         "variant_attributes": variant.variant_attributes,
+        "import_source_context": _safe_technical_value(variant.import_source_context),
     }
 
 

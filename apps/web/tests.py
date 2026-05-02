@@ -200,6 +200,7 @@ class HomeSmokeTests(TestCase):
             "web:reference_index",
             "web:product_list",
             "web:internal_product_list",
+            "web:imported_draft_variant_list",
             "web:settings_index",
             "web:admin_index",
             "web:user_list",
@@ -1027,6 +1028,399 @@ class HomeSmokeTests(TestCase):
         self.assertEqual(response.status_code, 404)
         response = self.client.get(reverse("web:marketplace_listing_card", args=[visible_listing.pk]))
         self.assertEqual(response.status_code, 200)
+
+    def test_listing_ui_hides_linked_internal_identifiers_without_both_view_permissions(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="listing-ui-no-internal",
+            password="password",
+            display_name="Listing UI No Internal",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="UI Gate Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        for code in ("product_core.view", "product_variant.view"):
+            UserPermissionOverride.objects.create(
+                user=manager,
+                permission=Permission.objects.get(code=code),
+                effect=AccessEffect.DENY,
+            )
+        product = InternalProduct.objects.create(internal_code="IP-UI-HIDDEN", name="UI hidden product")
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="SKU-UI-HIDDEN",
+            name="UI hidden variant",
+            import_source_context={"source": "wb_api_prices"},
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="UI-LINKED-NM",
+            seller_article="UI-LINKED-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(manager)
+
+        for route in (
+            reverse("web:marketplace_listing_list"),
+            reverse("web:marketplace_listing_card", args=[listing.pk]),
+        ):
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "UI-LINKED-ART")
+                self.assertContains(response, "Скрыто")
+                self.assertNotContains(response, "IP-UI-HIDDEN")
+                self.assertNotContains(response, "UI hidden product")
+                self.assertNotContains(response, "SKU-UI-HIDDEN")
+                self.assertNotContains(response, "UI hidden variant")
+                self.assertNotContains(response, "source=wb_api_prices")
+
+    def test_listing_ui_shows_safe_sync_status_and_no_secret_or_sales_ui(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Sync UI Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        run = Run.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=user,
+        )
+        operation = Operation.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_WITH_WARNINGS,
+            run=run,
+            store=store,
+            initiator_user=user,
+            logic_version="test",
+        )
+        sync_run = MarketplaceSyncRun.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            sync_type=MarketplaceSyncRun.SyncType.PRICES,
+            source=ListingSource.WB_API_PRICES,
+            status=MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS,
+            started_at=timezone.now(),
+            finished_at=timezone.now(),
+            operation=operation,
+            summary={"endpoint_family": "wb_prices", "warning_count": 1},
+            error_summary={"warning_message": "schema changed"},
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="SYNC-UI-NM",
+            seller_article="SYNC-UI-ART",
+            last_values={"price": "10.00", "total_stock": 3},
+            last_successful_sync_at=sync_run.finished_at,
+            last_sync_run=sync_run,
+            last_source=ListingSource.WB_API_PRICES,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:marketplace_listing_card", args=[listing.pk]))
+
+        self.assertContains(response, "SYNC-UI-ART")
+        self.assertContains(response, "Completed with warnings")
+        self.assertContains(response, "endpoint_family=wb_prices")
+        self.assertContains(response, "schema changed")
+        self.assertContains(response, operation.visible_id)
+        self.assertNotContains(response, "Sales / orders")
+        self.assertNotContains(response, "Buyout")
+        self.assertNotContains(response, "Returns")
+        self.assertNotContains(response, "Api-Key")
+        self.assertNotContains(response, "Client-Id")
+        self.assertNotContains(response, "Bearer")
+
+    def test_imported_draft_variant_queue_and_review_actions(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="variant-review-manager",
+            password="password",
+            display_name="Variant Review Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        owner = self._owner()
+        store = StoreAccount.objects.create(
+            name="Variant Review Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        product = InternalProduct.objects.create(internal_code="nash_pict0001", name="Imported shell")
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="nash_pict0001",
+            name="Imported active variant",
+            status=ProductStatus.ACTIVE,
+            review_state=ProductVariant.ReviewState.IMPORTED_DRAFT,
+            import_source_context={"source": "wb_api_prices", "sync_run_id": 17},
+        )
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="DRAFT-NM",
+            seller_article="nash_pict0001",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.WB_API_PRICES,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:imported_draft_variant_list"))
+        self.assertContains(response, "Imported active variant")
+        self.assertContains(response, "Active")
+        self.assertContains(response, "Imported draft")
+        self.assertContains(response, "source=wb_api_prices")
+        self.assertNotContains(response, "sync_run_id=17")
+        self.assertContains(response, "DRAFT-NM")
+        self.assertNotContains(response, "Manual confirmed")
+
+        response = self.client.post(
+            reverse("web:imported_draft_variant_action", args=[variant.pk]),
+            {"action": "confirm"},
+        )
+        self.assertEqual(response.status_code, 403)
+        variant.refresh_from_db()
+        self.assertEqual(variant.review_state, ProductVariant.ReviewState.IMPORTED_DRAFT)
+
+        self.client.force_login(owner)
+        response = self.client.post(
+            reverse("web:imported_draft_variant_action", args=[variant.pk]),
+            {"action": "confirm"},
+        )
+        self.assertEqual(response["Location"], reverse("web:imported_draft_variant_list"))
+        variant.refresh_from_db()
+        self.assertEqual(variant.review_state, ProductVariant.ReviewState.MANUAL_CONFIRMED)
+        audit = AuditRecord.objects.filter(
+            action_code=AuditActionCode.PRODUCT_VARIANT_UPDATED,
+            entity_type="ProductVariant",
+            entity_id=str(variant.pk),
+        ).latest("occurred_at")
+        self.assertEqual(audit.after_snapshot["review_state"], ProductVariant.ReviewState.MANUAL_CONFIRMED)
+        self.assertEqual(audit.after_snapshot["import_source_context"]["source"], "wb_api_prices")
+
+        variant.review_state = ProductVariant.ReviewState.IMPORTED_DRAFT
+        variant.save(update_fields=["review_state", "updated_at"])
+        self.client.post(
+            reverse("web:imported_draft_variant_action", args=[variant.pk]),
+            {"action": "leave_review"},
+        )
+        variant.refresh_from_db()
+        self.assertEqual(variant.review_state, ProductVariant.ReviewState.NEEDS_REVIEW)
+
+        self.client.post(
+            reverse("web:imported_draft_variant_action", args=[variant.pk]),
+            {"action": "archive"},
+        )
+        variant.refresh_from_db()
+        self.assertEqual(variant.status, ProductStatus.ARCHIVED)
+
+    def test_imported_draft_queue_hides_inaccessible_source_context_object_ids(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="variant-review-hidden-source",
+            password="password",
+            display_name="Variant Review Hidden Source",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        hidden_store = StoreAccount.objects.create(
+            name="Hidden Source Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        hidden_run = Run.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=hidden_store,
+            initiated_by=manager,
+        )
+        hidden_operation = Operation.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.COMPLETED_SUCCESS,
+            run=hidden_run,
+            store=hidden_store,
+            initiator_user=manager,
+            logic_version="test",
+        )
+        hidden_sync_run = MarketplaceSyncRun.objects.create(
+            marketplace=Marketplace.WB,
+            store=hidden_store,
+            sync_type=MarketplaceSyncRun.SyncType.PRICES,
+            source=ListingSource.WB_API_PRICES,
+            status=MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS,
+            started_at=timezone.now(),
+            finished_at=timezone.now(),
+            operation=hidden_operation,
+        )
+        product = InternalProduct.objects.create(internal_code="nash_hidden0001", name="Hidden source shell")
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="nash_hidden0001",
+            name="Hidden source imported variant",
+            status=ProductStatus.ACTIVE,
+            review_state=ProductVariant.ReviewState.IMPORTED_DRAFT,
+            import_source_context={
+                "source": "wb_api_prices",
+                "store_id": hidden_store.pk,
+                "listing_id": None,
+                "operation_id": hidden_operation.pk,
+                "sync_run_id": hidden_sync_run.pk,
+                "basis": "api_exact_valid_internal_sku",
+            },
+        )
+        hidden_listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=hidden_store,
+            internal_variant=variant,
+            external_primary_id="HIDDEN-SOURCE-NM",
+            seller_article="nash_hidden0001",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_sync_run=hidden_sync_run,
+            last_source=ListingSource.WB_API_PRICES,
+        )
+        variant.import_source_context["listing_id"] = hidden_listing.pk
+        variant.save(update_fields=["import_source_context", "updated_at"])
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:imported_draft_variant_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hidden source imported variant")
+        self.assertContains(response, "source=wb_api_prices")
+        self.assertContains(response, "basis=api_exact_valid_internal_sku")
+        self.assertNotContains(response, f"store_id={hidden_store.pk}")
+        self.assertNotContains(response, f"listing_id={hidden_listing.pk}")
+        self.assertNotContains(response, f"operation_id={hidden_operation.pk}")
+        self.assertNotContains(response, f"sync_run_id={hidden_sync_run.pk}")
+        self.assertNotContains(response, hidden_store.name)
+        self.assertNotContains(response, hidden_listing.external_primary_id)
+        self.assertNotContains(response, hidden_operation.visible_id)
+
+    def test_operation_card_shows_raw_product_ref_and_access_safe_listing_links(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="operation-card-link-ui",
+            password="password",
+            display_name="Operation Card Link UI",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="Operation Card Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        for code in ("product_core.view", "product_variant.view"):
+            UserPermissionOverride.objects.create(
+                user=manager,
+                permission=Permission.objects.get(code=code),
+                effect=AccessEffect.DENY,
+            )
+        product = InternalProduct.objects.create(internal_code="IP-ROW-LINK", name="Row link product")
+        variant = ProductVariant.objects.create(product=product, internal_sku="SKU-ROW-LINK", name="Row link variant")
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="ROW-LINK-NM",
+            seller_article="ROW-LINK-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        run = Run.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=manager,
+        )
+        operation = Operation.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.CREATED,
+            run=run,
+            store=store,
+            initiator_user=manager,
+            logic_version="test",
+        )
+        row = OperationDetailRow.objects.create(
+            operation=operation,
+            marketplace_listing=listing,
+            row_no=1,
+            product_ref="RAW-PRODUCT-REF",
+            row_status="ok",
+            reason_code="wb_api_price_row_valid",
+            message_level=MessageLevel.INFO,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:operation_card", args=[operation.visible_id]))
+
+        self.assertContains(response, "RAW-PRODUCT-REF")
+        self.assertContains(response, "ROW-LINK-NM")
+        self.assertNotContains(response, "SKU-ROW-LINK")
+        self.assertNotContains(response, "IP-ROW-LINK")
+        row.refresh_from_db()
+        self.assertEqual(row.product_ref, "RAW-PRODUCT-REF")
+        self.assertEqual(row.marketplace_listing_id, listing.pk)
+
+    def test_pc2_007_deferred_mapping_table_controls_are_absent(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="No Table Workflow Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="NO-TABLE-NM",
+            seller_article="bad external article",
+            mapping_status=MarketplaceListing.MappingStatus.UNMATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:marketplace_listing_mapping", args=[listing.pk]))
+
+        self.assertNotContains(response, "mapping-table")
+        self.assertNotContains(response, "visual_external")
+        self.assertNotContains(response, "Upload mapping")
+        self.assertNotContains(response, "Apply table")
 
     def test_product_core_exports_apply_access_and_do_not_leak_hidden_listing_details(self) -> None:
         manager = get_user_model().objects.create_user(

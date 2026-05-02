@@ -43,6 +43,9 @@
   {% if can_export_products %}
     <a class="button" href="{% url 'web:internal_product_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Экспорт CSV</a>
   {% endif %}
+  {% if can_view_variants %}
+    <a class="button" href="{% url 'web:imported_draft_variant_list' %}">Imported/draft варианты</a>
+  {% endif %}
 </form>
 
 <section class="panel">

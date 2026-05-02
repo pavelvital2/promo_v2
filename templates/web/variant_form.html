@@ -6,6 +6,12 @@
 <form method="post" class="panel">
   {% csrf_token %}
   {{ form.non_field_errors }}
+  {% if variant %}
+    <div class="compact-kv">
+      <dt>Lifecycle status</dt><dd>{{ variant.get_status_display }}</dd>
+      <dt>Review state</dt><dd><span class="badge">{{ variant.get_review_state_display }}</span></dd>
+    </div>
+  {% endif %}
   <div class="grid two">
     {% for field in form %}
       <label>

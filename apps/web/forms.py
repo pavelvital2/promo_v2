@@ -8,6 +8,7 @@ from apps.product_core.models import (
     InternalProduct,
     Marketplace,
     MarketplaceListing,
+    ListingSource,
     ProductCategory,
     ProductStatus,
     ProductVariant,
@@ -121,6 +122,11 @@ class MarketplaceListingFilterForm(forms.Form):
         label="Статус сопоставления",
         required=False,
         choices=[("", "Все"), *MarketplaceListing.MappingStatus.choices],
+    )
+    source = forms.ChoiceField(
+        label="Источник",
+        required=False,
+        choices=[("", "Все"), *ListingSource.choices],
     )
     category = forms.CharField(label="Категория", required=False)
     brand = forms.CharField(label="Бренд", required=False)

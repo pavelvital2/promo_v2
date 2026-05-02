@@ -4,24 +4,42 @@
 <h1>{{ title }}</h1>
 
 <div class="toolbar">
-  <a class="button" href="{% url 'web:internal_product_list' %}">Внутренние товары</a>
+  {% if can_view_product_core %}
+    <a class="button" href="{% url 'web:internal_product_list' %}">Внутренние товары</a>
+  {% endif %}
+  {% if can_variant_review %}
+    <a class="button" href="{% url 'web:imported_draft_variant_list' %}">Imported/draft варианты</a>
+  {% endif %}
   <a class="button" href="{% url 'web:marketplace_listing_list' %}">Все листинги</a>
   <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
+  <a class="button" href="{% url 'web:unmatched_listing_list' %}?mapping_status=needs_review">Needs review</a>
+  <a class="button" href="{% url 'web:unmatched_listing_list' %}?mapping_status=conflict">Конфликты</a>
   {% if can_export_any %}
     {% if is_unmatched %}
       <a class="button" href="{% url 'web:unmatched_listing_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Экспорт несопоставленных CSV</a>
     {% else %}
       <a class="button" href="{% url 'web:marketplace_listing_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Экспорт листингов CSV</a>
     {% endif %}
-    <a class="button" href="{% url 'web:listing_latest_values_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Последние значения CSV</a>
+    {% if can_export_latest_values %}
+      <a class="button" href="{% url 'web:listing_latest_values_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Последние значения CSV</a>
+    {% endif %}
     <a class="button" href="{% url 'web:listing_mapping_report_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Отчёт сопоставлений CSV</a>
     {% if can_export_operation_links %}
       <a class="button" href="{% url 'web:operation_link_report_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Связи операций CSV</a>
     {% endif %}
   {% endif %}
   {% if can_sync_any %}<span class="badge">Sync: отдельный workflow</span>{% endif %}
-  {% if can_map_any %}<span class="badge">Сопоставление: TASK-PC-006</span>{% endif %}
+  {% if can_map_any %}<span class="badge">Сопоставление: exact/manual</span>{% endif %}
 </div>
+
+{% if is_unmatched %}
+  <div class="tabs">
+    <a href="{% url 'web:unmatched_listing_list' %}" class="{% if not request.GET.mapping_status %}active{% endif %}">Все очереди</a>
+    <a href="{% url 'web:unmatched_listing_list' %}?mapping_status=unmatched" class="{% if request.GET.mapping_status == 'unmatched' %}active{% endif %}">Unmatched</a>
+    <a href="{% url 'web:unmatched_listing_list' %}?mapping_status=needs_review" class="{% if request.GET.mapping_status == 'needs_review' %}active{% endif %}">Needs review</a>
+    <a href="{% url 'web:unmatched_listing_list' %}?mapping_status=conflict" class="{% if request.GET.mapping_status == 'conflict' %}active{% endif %}">Conflict</a>
+  </div>
+{% endif %}
 
 <form method="get" class="toolbar panel">
   <label>Поиск {{ form.q }}</label>
@@ -29,6 +47,7 @@
   <label>Магазин {{ form.store }}</label>
   <label>Статус листинга {{ form.listing_status }}</label>
   <label>Статус сопоставления {{ form.mapping_status }}</label>
+  <label>Источник {{ form.source }}</label>
   <label>Категория {{ form.category }}</label>
   <label>Бренд {{ form.brand }}</label>
   <label>Остаток {{ form.stock }}</label>
@@ -56,6 +75,9 @@
           <th>Цена</th>
           <th>Остаток</th>
           <th>Последний sync</th>
+          <th>Sync status</th>
+          <th>Cache age</th>
+          <th>Warnings</th>
           <th>Источник</th>
           <th></th>
         </tr>
@@ -74,8 +96,10 @@
             <td><span class="badge">{{ listing.get_listing_status_display }}</span></td>
             <td><span class="badge">{{ listing.get_mapping_status_display }}</span></td>
             <td>
-              {% if listing.internal_variant %}
+              {% if listing.internal_variant and listing.can_view_linked_internal %}
                 <a href="{% url 'web:internal_product_card' listing.internal_variant.product_id %}">{{ listing.internal_variant.internal_sku|default:listing.internal_variant.name }}</a>
+              {% elif listing.internal_variant %}
+                <span class="status">Скрыто</span>
               {% else %}
                 -
               {% endif %}
@@ -93,6 +117,23 @@
             </td>
             <td>{% if listing.can_view_snapshot_summary %}{{ listing.last_values.total_stock|default:"-" }}{% else %}-{% endif %}</td>
             <td>{{ listing.last_successful_sync_at|default:"-" }}</td>
+            <td>
+              {% if listing.last_sync_run %}
+                <span class="badge">{{ listing.last_sync_run.get_status_display }}</span>
+                {% if listing.visible_sync_operation %}
+                  <a href="{% url 'web:operation_card' listing.visible_sync_operation.visible_id %}">{{ listing.visible_sync_operation.visible_id }}</a>
+                {% endif %}
+                {% for key,value in listing.safe_sync_summary_items %}
+                  <span class="status">{{ key }}={{ value }}</span>
+                {% endfor %}
+              {% else %}-{% endif %}
+            </td>
+            <td>{% if listing.cache_age_seconds != None %}{{ listing.last_successful_sync_at|timesince }}{% else %}-{% endif %}</td>
+            <td>
+              {% for key,value in listing.safe_sync_warning_items %}
+                <span class="badge warning">{{ key }}: {{ value }}</span>
+              {% empty %}-{% endfor %}
+            </td>
             <td>{{ listing.get_last_source_display }}</td>
             <td>
               {% if listing.can_open_mapping_workflow %}
@@ -103,7 +144,7 @@
             </td>
           </tr>
         {% empty %}
-          <tr><td colspan="16" class="empty">Нет листингов в доступном контуре.</td></tr>
+          <tr><td colspan="19" class="empty">Нет листингов в доступном контуре.</td></tr>
         {% endfor %}
       </tbody>
     </table>

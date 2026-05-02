@@ -52,7 +52,7 @@
               <td><a href="{% url 'web:marketplace_listing_card' listing.pk %}">{{ listing.external_primary_id }}</a></td>
               <td>{{ listing.seller_article|default:"-" }}</td>
               <td>{{ listing.get_mapping_status_display }} / {{ listing.get_listing_status_display }}</td>
-              <td>{{ listing.internal_variant.internal_sku|default:listing.internal_variant.name }}</td>
+              <td>{% if can_view_variants %}{{ listing.internal_variant.internal_sku|default:listing.internal_variant.name }}{% else %}<span class="status">Скрыто</span>{% endif %}</td>
             </tr>
           {% empty %}
             <tr><td colspan="6" class="empty">Нет видимых связанных листингов.</td></tr>
@@ -73,13 +73,14 @@
   {% if can_view_variants %}
     <div class="table-scroll">
       <table>
-        <thead><tr><th>SKU</th><th>Название</th><th>Barcode</th><th>Attributes</th><th>Identifiers</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>SKU</th><th>Название</th><th>Barcode</th><th>Review state</th><th>Attributes</th><th>Identifiers</th><th>Статус</th><th></th></tr></thead>
         <tbody>
           {% for variant in variants %}
             <tr>
               <td>{{ variant.internal_sku|default:"-" }}</td>
               <td>{{ variant.name }}</td>
               <td>{{ variant.barcode_internal|default:"-" }}</td>
+              <td><span class="badge">{{ variant.get_review_state_display }}</span></td>
               <td>{{ variant.variant_attributes|default:"-" }}</td>
               <td>
                 {% for identifier in variant.identifiers.all %}
@@ -98,7 +99,7 @@
               </td>
             </tr>
           {% empty %}
-            <tr><td colspan="7" class="empty">Варианты ещё не созданы.</td></tr>
+            <tr><td colspan="8" class="empty">Варианты ещё не созданы.</td></tr>
           {% endfor %}
         </tbody>
       </table>

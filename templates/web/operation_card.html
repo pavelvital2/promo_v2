@@ -97,9 +97,28 @@
     </form>
     {% if detail_page.object_list %}
       <div class="table-scroll">
-        <table><thead><tr><th>Строка</th><th>Product</th><th>Status</th><th>Reason</th><th>Level</th><th>Field</th><th>Value</th><th>Message</th></tr></thead><tbody>
+        <table><thead><tr><th>Строка</th><th>Product</th><th>Listing</th><th>Internal variant</th><th>Status</th><th>Reason</th><th>Level</th><th>Field</th><th>Value</th><th>Message</th></tr></thead><tbody>
           {% for row in detail_page.object_list %}
-            <tr><td>{{ row.row_no }}</td><td>{{ row.product_ref }}</td><td>{{ row.row_status }}</td><td>{{ row.reason_code }}</td><td>{{ row.message_level }}</td><td>{{ row.problem_field }}</td><td><pre class="pre technical-pre">{{ row.final_value }}</pre></td><td>{{ row.message }}</td></tr>
+            <tr>
+              <td>{{ row.row_no }}</td>
+              <td>{{ row.product_ref }}</td>
+              <td>
+                {% if row.visible_marketplace_listing %}
+                  <a href="{% url 'web:marketplace_listing_card' row.visible_marketplace_listing.pk %}">{{ row.visible_marketplace_listing.external_primary_id }}</a>
+                {% else %}-{% endif %}
+              </td>
+              <td>
+                {% if row.visible_internal_variant %}
+                  <a href="{% url 'web:internal_product_card' row.visible_internal_variant.product_id %}">{{ row.visible_internal_variant.internal_sku|default:row.visible_internal_variant.name }}</a>
+                {% else %}-{% endif %}
+              </td>
+              <td>{{ row.row_status }}</td>
+              <td>{{ row.reason_code }}</td>
+              <td>{{ row.message_level }}</td>
+              <td>{{ row.problem_field }}</td>
+              <td><pre class="pre technical-pre">{{ row.final_value }}</pre></td>
+              <td>{{ row.message }}</td>
+            </tr>
           {% endfor %}
         </tbody></table>
       </div>

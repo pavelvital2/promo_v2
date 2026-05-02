@@ -36,6 +36,16 @@ urlpatterns = [
         views.internal_product_export,
         name="internal_product_export",
     ),
+    path(
+        "references/product-core/variants/imported-drafts/",
+        views.imported_draft_variant_list,
+        name="imported_draft_variant_list",
+    ),
+    path(
+        "references/product-core/variants/<int:variant_pk>/review/",
+        views.imported_draft_variant_action,
+        name="imported_draft_variant_action",
+    ),
     path("references/product-core/products/create/", views.internal_product_create, name="internal_product_create"),
     path("references/product-core/products/<int:pk>/", views.internal_product_card, name="internal_product_card"),
     path(

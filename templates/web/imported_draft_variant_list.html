@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Imported/draft варианты{% endblock %}
+{% block content %}
+<h1>Imported/draft варианты</h1>
+
+<div class="toolbar">
+  <a class="button" href="{% url 'web:reference_index' %}">Справочники</a>
+  <a class="button" href="{% url 'web:internal_product_list' %}">Внутренние товары</a>
+  <a class="button" href="{% url 'web:marketplace_listing_list' %}">Листинги</a>
+</div>
+
+<section class="panel">
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Вариант</th>
+          <th>Товар</th>
+          <th>Lifecycle status</th>
+          <th>Review state</th>
+          <th>Источник</th>
+          <th>Связанные листинги</th>
+          <th>Обновлено</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for variant in page.object_list %}
+          <tr>
+            <td>{{ variant.internal_sku|default:"-" }}</td>
+            <td>{{ variant.name }}</td>
+            <td><a href="{% url 'web:internal_product_card' variant.product_id %}">{{ variant.product.internal_code }} {{ variant.product.name }}</a></td>
+            <td><span class="badge">{{ variant.get_status_display }}</span></td>
+            <td><span class="badge warning">{{ variant.get_review_state_display }}</span></td>
+            <td>
+              {% for key,value in variant.safe_import_source_items %}
+                <span class="badge">{{ key }}={{ value }}</span>
+              {% empty %}
+                -
+              {% endfor %}
+              {% if variant.visible_import_source_context.store %}
+                <span class="badge">{{ variant.visible_import_source_context.store.visible_id }} {{ variant.visible_import_source_context.store.name }}</span>
+              {% endif %}
+              {% if variant.visible_import_source_context.listing %}
+                <a class="badge" href="{% url 'web:marketplace_listing_card' variant.visible_import_source_context.listing.pk %}">
+                  {{ variant.visible_import_source_context.listing.get_marketplace_display }} {{ variant.visible_import_source_context.listing.external_primary_id }}
+                </a>
+              {% endif %}
+              {% if variant.visible_import_source_context.operation %}
+                <a class="badge" href="{% url 'web:operation_card' variant.visible_import_source_context.operation.visible_id %}">
+                  {{ variant.visible_import_source_context.operation.visible_id }}
+                </a>
+              {% endif %}
+              {% if variant.visible_import_source_context.sync_run %}
+                <span class="badge">
+                  {{ variant.visible_import_source_context.sync_run.get_source_display }}
+                  {{ variant.visible_import_source_context.sync_run.get_status_display }}
+                </span>
+              {% endif %}
+            </td>
+            <td>
+              {% for listing in variant.visible_source_listings %}
+                <p>
+                  <a href="{% url 'web:marketplace_listing_card' listing.pk %}">{{ listing.get_marketplace_display }} {{ listing.external_primary_id }}</a>
+                  <span class="status">{{ listing.store.visible_id }} {{ listing.get_last_source_display }}</span>
+                  {% if listing.visible_sync_operation %}
+                    <span class="status">
+                      <a href="{% url 'web:operation_card' listing.visible_sync_operation.visible_id %}">{{ listing.visible_sync_operation.visible_id }}</a>
+                    </span>
+                  {% endif %}
+                </p>
+              {% empty %}
+                <span class="status">Нет видимых листингов</span>
+              {% endfor %}
+            </td>
+            <td>{{ variant.updated_at }}</td>
+            <td>
+              {% if can_update_variant %}
+                <form method="post" action="{% url 'web:imported_draft_variant_action' variant.pk %}" style="display:inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="confirm">
+                  <button class="primary">Confirm</button>
+                </form>
+                <form method="post" action="{% url 'web:imported_draft_variant_action' variant.pk %}" style="display:inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="leave_review">
+                  <button>Leave review</button>
+                </form>
+                <a href="{% url 'web:internal_variant_update' variant.product_id variant.pk %}">Изменить</a>
+              {% endif %}
+              {% if can_archive_variant %}
+                <form method="post" action="{% url 'web:imported_draft_variant_action' variant.pk %}" style="display:inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="archive">
+                  <button>Архивировать</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="9" class="empty">Нет imported/draft или needs review вариантов.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

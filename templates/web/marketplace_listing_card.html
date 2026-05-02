@@ -6,7 +6,7 @@
 <div class="toolbar">
   <a class="button" href="{% url 'web:marketplace_listing_list' %}">К листингам</a>
   <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
-  {% if listing.internal_variant %}
+  {% if listing.internal_variant and can_view_linked_internal %}
     <a class="button" href="{% url 'web:internal_product_card' listing.internal_variant.product_id %}">Внутренний товар</a>
   {% endif %}
   {% if can_map or can_unmap %}
@@ -32,18 +32,22 @@
       <strong>Последнее обнаружение</strong><span>{{ listing.last_seen_at|default:"-" }}</span>
       <strong>Последний успешный sync</strong><span>{{ listing.last_successful_sync_at|default:"-" }}</span>
       <strong>Источник</strong><span>{{ listing.get_last_source_display }}</span>
+      <strong>Cache age</strong><span>{% if listing.last_successful_sync_at %}{{ listing.last_successful_sync_at|timesince }}{% else %}-{% endif %}</span>
     </div>
   </section>
 
   <section class="panel">
     <h2>Связанный вариант</h2>
-    {% if listing.internal_variant %}
+    {% if listing.internal_variant and can_view_linked_internal %}
       <div class="kv">
         <strong>Товар</strong><span><a href="{% url 'web:internal_product_card' listing.internal_variant.product_id %}">{{ listing.internal_variant.product.internal_code }} {{ listing.internal_variant.product.name }}</a></span>
         <strong>SKU</strong><span>{{ listing.internal_variant.internal_sku|default:"-" }}</span>
         <strong>Название варианта</strong><span>{{ listing.internal_variant.name }}</span>
         <strong>Barcode</strong><span>{{ listing.internal_variant.barcode_internal|default:"-" }}</span>
+        <strong>Review state</strong><span><span class="badge">{{ listing.internal_variant.get_review_state_display }}</span></span>
       </div>
+    {% elif listing.internal_variant %}
+      <p class="empty">Скрыто: связанный внутренний вариант недоступен правами.</p>
     {% else %}
       <p class="empty">Листинг не сопоставлен с внутренним вариантом.</p>
     {% endif %}
@@ -54,6 +58,23 @@
 </div>
 
 <section class="panel" style="margin-top:16px">
+  <h2>Sync status</h2>
+  {% if listing.last_sync_run %}
+    <div class="kv">
+      <strong>Статус</strong><span><span class="badge">{{ listing.last_sync_run.get_status_display }}</span></span>
+      <strong>Тип</strong><span>{{ listing.last_sync_run.get_sync_type_display }}</span>
+      <strong>Источник запуска</strong><span>{{ listing.last_sync_run.get_source_display }}</span>
+      <strong>Старт / финиш</strong><span>{{ listing.last_sync_run.started_at }} / {{ listing.last_sync_run.finished_at|default:"-" }}</span>
+      <strong>Операция</strong><span>{% if visible_sync_operation %}<a href="{% url 'web:operation_card' visible_sync_operation.visible_id %}">{{ visible_sync_operation.visible_id }}</a>{% else %}-{% endif %}</span>
+      <strong>Approved source</strong><span>{% for key,value in safe_sync_summary_items %}<span class="badge">{{ key }}={{ value }}</span> {% empty %}-{% endfor %}</span>
+      <strong>Warnings / errors</strong><span>{% for key,value in safe_sync_warning_items %}<span class="badge warning">{{ key }}: {{ value }}</span> {% empty %}-{% endfor %}</span>
+    </div>
+  {% else %}
+    <p class="empty">Sync run ещё не привязан к листингу.</p>
+  {% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px">
   <h2>External identifiers</h2>
   <div class="pre">{{ external_ids }}</div>
 </section>
@@ -61,7 +82,7 @@
 <section class="panel" style="margin-top:16px">
   <h2>Latest snapshots summary</h2>
   {% if can_view_snapshots %}
-  <div class="grid four">
+  <div class="grid three">
     <div>
       <h3>Цена</h3>
       {% if latest_price %}
@@ -75,13 +96,6 @@
         <p>{{ latest_stock.total_stock|default:"-" }}</p>
         <p class="status">{{ latest_stock.snapshot_at }}</p>
       {% else %}<p class="empty">Нет доступных stock snapshots.</p>{% endif %}
-    </div>
-    <div>
-      <h3>Продажи / заказы</h3>
-      {% if latest_sales %}
-        <p>orders {{ latest_sales.orders_qty|default:"-" }} / sales {{ latest_sales.sales_qty|default:"-" }}</p>
-        <p class="status">{{ latest_sales.period_start }} - {{ latest_sales.period_end }}</p>
-      {% else %}<p class="empty">Нет доступных sales snapshots.</p>{% endif %}
     </div>
     <div>
       <h3>Акции</h3>
@@ -137,26 +151,6 @@
 </section>
 
 <section class="panel" style="margin-top:16px">
-  <h2>Sales / orders period snapshots</h2>
-  <table>
-    <thead><tr><th>Период</th><th>Orders</th><th>Sales</th><th>Buyout</th><th>Returns</th><th>Amount</th><th>Raw-safe</th></tr></thead>
-    <tbody>
-      {% for row in sales_rows %}
-        <tr>
-          <td>{{ row.snapshot.period_start }} - {{ row.snapshot.period_end }}</td>
-          <td>{{ row.snapshot.orders_qty|default:"-" }}</td>
-          <td>{{ row.snapshot.sales_qty|default:"-" }}</td>
-          <td>{{ row.snapshot.buyout_qty|default:"-" }}</td>
-          <td>{{ row.snapshot.returns_qty|default:"-" }}</td>
-          <td>{{ row.snapshot.sales_amount|default:"-" }} {{ row.snapshot.currency }}</td>
-          <td>{% if row.can_view_technical %}<details><summary>Показать</summary><div class="pre">{{ row.raw_safe }}</div></details>{% else %}<span class="status">Скрыто</span>{% endif %}</td>
-        </tr>
-      {% empty %}<tr><td colspan="7" class="empty">Нет доступных sales snapshots.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-</section>
-
-<section class="panel" style="margin-top:16px">
   <h2>Promotion snapshots</h2>
   <table>
     <thead><tr><th>Promotion ID</th><th>Название</th><th>Статус участия</th><th>Цена акции</th><th>Reason</th><th>Raw-safe</th></tr></thead>
@@ -194,7 +188,7 @@
       <thead><tr><th>Время</th><th>Действие</th><th>Статус</th><th>Новый вариант</th></tr></thead>
       <tbody>
         {% for item in mapping_history %}
-          <tr><td>{{ item.changed_at }}</td><td>{{ item.get_action_display }}</td><td>{{ item.get_mapping_status_after_display }}</td><td>{{ item.new_variant.internal_sku|default:"-" }}</td></tr>
+          <tr><td>{{ item.changed_at }}</td><td>{{ item.get_action_display }}</td><td>{{ item.get_mapping_status_after_display }}</td><td>{% if can_view_linked_internal %}{{ item.new_variant.internal_sku|default:"-" }}{% else %}<span class="status">Скрыто</span>{% endif %}</td></tr>
         {% empty %}<tr><td colspan="4" class="empty">Истории сопоставления пока нет.</td></tr>{% endfor %}
       </tbody>
     </table>
