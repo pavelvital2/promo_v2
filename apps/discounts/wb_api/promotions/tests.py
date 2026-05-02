@@ -27,7 +27,7 @@ from apps.operations.models import (
     OutputKind,
 )
 from apps.operations.services import create_run
-from apps.product_core.models import ListingSource, MarketplaceListing
+from apps.product_core.models import ListingSource, MarketplaceListing, MarketplaceSyncRun, PromotionSnapshot
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import WB_API_CONNECTION_TYPE, WB_API_MODULE
 from apps.techlog.models import TechLogRecord
@@ -287,6 +287,14 @@ class WBApiPromotionsTask013Tests(TestCase):
         self.assertEqual(product_detail.marketplace_listing, listing)
         self.assertIsNone(summary_detail.marketplace_listing_id)
         self.assertIsNone(filtered_summary.marketplace_listing_id)
+        pc_sync = MarketplaceSyncRun.objects.get(
+            operation=operation,
+            sync_type=MarketplaceSyncRun.SyncType.PROMOTIONS,
+        )
+        self.assertEqual(pc_sync.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(PromotionSnapshot.objects.filter(sync_run=pc_sync, listing=listing).count(), 1)
+        listing.refresh_from_db()
+        self.assertEqual(listing.last_values["promotions"][0]["marketplace_promotion_id"], "101")
 
         persisted_products = WBPromotionProduct.objects.filter(
             source_snapshot=snapshot,
@@ -326,6 +334,7 @@ class WBApiPromotionsTask013Tests(TestCase):
         self.assertEqual(snapshot.promotion_products_count, 0)
         self.assertEqual(WBPromotion.objects.filter(snapshot_ref=snapshot).count(), 102)
         self.assertFalse(WBPromotionProduct.objects.filter(source_snapshot=snapshot).exists())
+        self.assertFalse(MarketplaceSyncRun.objects.filter(operation=operation).exists())
         self.assertFalse(WBPromotionExportFile.objects.filter(operation=operation).exists())
         self.assertFalse(
             OperationDetailRow.objects.filter(

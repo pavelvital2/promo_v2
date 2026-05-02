@@ -26,6 +26,7 @@ from apps.operations.models import (
 )
 from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
+from apps.product_core.services import sync_ozon_elastic_action_rows_to_product_core
 from apps.stores.models import StoreAccount
 from apps.stores.services import default_ozon_secret_resolver, require_ozon_store_for_ozon_api
 from apps.techlog.models import TechLogSeverity
@@ -270,6 +271,21 @@ def _record_failure(operation, actor, store, exc: Exception, *, source_group: st
     return result_code
 
 
+def _record_product_core_sync_failure(operation, actor, store, exc: Exception, *, source_group: str) -> None:
+    create_techlog_record(
+        severity=TechLogSeverity.ERROR,
+        event_type="marketplace_sync.failed",
+        source_component="apps.discounts.ozon_api.products.product_core",
+        operation=operation,
+        store=store,
+        user=actor,
+        entity_type="Operation",
+        entity_id=operation.pk,
+        safe_message=getattr(exc, "safe_message", "Product Core sync failed after Ozon products download."),
+        sensitive_details_ref=f"redacted:product-core-ozon-{source_group}-sync",
+    )
+
+
 @transaction.atomic
 def _persist_success(*, actor, store, operation, action_id: str, source_group: str, rows, pages, fetched_at):
     row_no = 1
@@ -410,7 +426,7 @@ def download_elastic_products(
             action_id=action_id,
             source_group=source_group,
         )
-        return _persist_success(
+        operation = _persist_success(
             actor=actor,
             store=store,
             operation=operation,
@@ -420,6 +436,18 @@ def download_elastic_products(
             pages=pages,
             fetched_at=timezone.now(),
         )
+        try:
+            sync_ozon_elastic_action_rows_to_product_core(
+                store=store,
+                rows=rows,
+                action_id=action_id,
+                source_group=source_group,
+                operation=operation,
+                requested_by=actor,
+            )
+        except Exception as sync_exc:
+            _record_product_core_sync_failure(operation, actor, store, sync_exc, source_group=source_group)
+        return operation
     except Exception as exc:
         result_code = _record_failure(operation, actor, store, exc, source_group=source_group)
         operation.status = ProcessStatus.INTERRUPTED_FAILED

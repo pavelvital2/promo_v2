@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -26,7 +27,7 @@ from apps.operations.models import (
     OperationType,
 )
 from apps.operations.services import create_run
-from apps.product_core.models import MarketplaceListing
+from apps.product_core.models import MarketplaceListing, MarketplaceSyncRun, PriceSnapshot
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import WB_API_CONNECTION_TYPE, WB_API_MODULE
 from apps.techlog.models import TechLogRecord
@@ -189,6 +190,10 @@ class WBApiPricesTask012Tests(TestCase):
         self.assertEqual(product.external_ids["source"], "wb_prices_api")
         self.assertEqual(product.last_values["price"], "1000")
         listing = MarketplaceListing.objects.get(store=self.store, marketplace="wb", external_primary_id="101")
+        pc_sync = MarketplaceSyncRun.objects.get(operation=operation, sync_type=MarketplaceSyncRun.SyncType.PRICES)
+        self.assertEqual(pc_sync.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(PriceSnapshot.objects.filter(sync_run=pc_sync, listing=listing).count(), 1)
+        self.assertEqual(listing.last_values["price"], "1000")
         detail = OperationDetailRow.objects.get(operation=operation, product_ref="101")
         self.assertEqual(detail.marketplace_listing, listing)
         self.assertEqual(detail.product_ref, "101")
@@ -297,10 +302,36 @@ class WBApiPricesTask012Tests(TestCase):
         operation = Operation.objects.get(step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD)
         self.assertEqual(operation.status, "interrupted_failed")
         self.assertEqual(operation.operation_type, OperationType.NOT_APPLICABLE)
+        self.assertFalse(MarketplaceSyncRun.objects.filter(operation=operation).exists())
         self.assertTrue(TechLogRecord.objects.filter(operation=operation).exists())
         techlog_text = str(TechLogRecord.objects.filter(operation=operation).values())
         self.assertNotIn("task012-local-token-value", techlog_text)
         self.assertFalse(contains_secret_like(techlog_text))
+
+    def test_product_core_sync_failure_does_not_mutate_completed_source_operation(self):
+        with patch(
+            "apps.discounts.wb_api.prices.services.sync_wb_price_rows_to_product_core",
+            side_effect=RuntimeError("isolated product core failure"),
+        ):
+            operation = download_wb_prices(
+                actor=self.user,
+                store=self.store,
+                client_factory=FakeClientFactory([[self._good(901)], []]),
+                secret_resolver=self._secret_resolver,
+            )
+
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "completed_success")
+        self.assertEqual(operation.summary["result_code"], "wb_api_price_download_success")
+        self.assertIn("output_file_version_id", operation.summary)
+        self.assertFalse(MarketplaceSyncRun.objects.filter(operation=operation).exists())
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                operation=operation,
+                event_type="marketplace_sync.failed",
+                source_component="apps.discounts.wb_api.prices.product_core",
+            ).exists()
+        )
 
     def test_operation_classifier_contract_rejects_check_process_for_api_step(self):
         run = create_run(

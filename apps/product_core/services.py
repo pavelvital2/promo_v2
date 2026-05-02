@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, is_dataclass, asdict
 from decimal import Decimal
+import hashlib
+import json
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
@@ -47,6 +49,7 @@ WB_PRICES_ENDPOINT_CODE = "wb_prices_list_goods_filter"
 WB_PROMOTIONS_ENDPOINT_CODE = "wb_promotions_nomenclatures"
 OZON_ACTION_PRODUCTS_ENDPOINT_CODE = "ozon_actions_products"
 OZON_ACTION_CANDIDATES_ENDPOINT_CODE = "ozon_actions_candidates"
+OZON_PRODUCT_INFO_STOCKS_ENDPOINT_CODE = "ozon_product_info_stocks"
 
 
 @dataclass(frozen=True)
@@ -152,16 +155,32 @@ def _latest_by_listing(queryset, timestamp_field: str) -> dict[int, object]:
     return latest
 
 
+def _decimal_cache_value(snapshot, field_name: str, raw_key: str) -> str:
+    value = getattr(snapshot, field_name)
+    raw_value = (snapshot.raw_safe or {}).get(raw_key)
+    if raw_value not in (None, "") and _decimal_or_none(raw_value) == value:
+        return str(raw_value)
+    return str(value)
+
+
 def _price_cache(snapshot: PriceSnapshot) -> dict:
     cache = {
-        "price": str(snapshot.price),
+        "price": _decimal_cache_value(snapshot, "price", "price"),
         "currency": snapshot.currency,
         "price_snapshot_at": snapshot.snapshot_at.isoformat(),
     }
     if snapshot.price_with_discount is not None:
-        cache["price_with_discount"] = str(snapshot.price_with_discount)
+        cache["price_with_discount"] = _decimal_cache_value(
+            snapshot,
+            "price_with_discount",
+            "price_with_discount",
+        )
     if snapshot.discount_percent is not None:
-        cache["discount_percent"] = str(snapshot.discount_percent)
+        cache["discount_percent"] = _decimal_cache_value(
+            snapshot,
+            "discount_percent",
+            "discount_percent",
+        )
     return cache
 
 
@@ -1058,6 +1077,16 @@ def _decimal_or_none(value):
         return None
 
 
+def _integer_or_none(value):
+    decimal_value = _decimal_or_none(value)
+    if decimal_value is None:
+        return None
+    integral = decimal_value.to_integral_value()
+    if decimal_value != integral:
+        return None
+    return int(integral)
+
+
 def _safe_summary_value(value):
     if isinstance(value, Decimal):
         return str(value)
@@ -1066,6 +1095,11 @@ def _safe_summary_value(value):
     if isinstance(value, list):
         return [_safe_summary_value(item) for item in value]
     return value
+
+
+def _safe_checksum(value: object) -> str:
+    raw = json.dumps(_safe_summary_value(value), sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _detect_duplicate_articles(normalized_rows: list[dict]) -> set[str]:
@@ -1523,6 +1557,58 @@ def _normalize_ozon_elastic_row(row, *, action_id: str, source_group: str) -> di
     }
 
 
+def _normalize_ozon_stock_row(row, *, action_id: str) -> dict:
+    data = _row_dict(row)
+    product_id = _string_value(_first_present(data, "product_id", "id", "external_primary_id"))
+    offer_id = _string_value(_first_present(data, "offer_id", "offer", "seller_article"))
+    name = _string_value(_first_present(data, "name", "title"))
+    source_group = _string_value(data.get("source_group"))
+    stock_info = data.get("stock_info") if isinstance(data.get("stock_info"), dict) else {}
+    stock_rows = stock_info.get("stocks") if isinstance(stock_info.get("stocks"), list) else []
+    safe_stock_rows = []
+    total_stock = 0
+    parseable_present_count = 0
+    for stock_row in stock_rows:
+        if not isinstance(stock_row, dict):
+            continue
+        safe_row = {
+            key: stock_row.get(key)
+            for key in ("type", "present", "reserved")
+            if stock_row.get(key) not in (None, "")
+        }
+        safe_stock_rows.append(_safe_summary_value(safe_row))
+        present = _integer_or_none(stock_row.get("present"))
+        if present is None:
+            continue
+        total_stock += present
+        parseable_present_count += 1
+    external_ids = {
+        "product_id": product_id,
+        "offer_id": offer_id,
+        "action_id": str(action_id),
+        "source_group": source_group,
+        "source": "ozon_elastic_product_data_api",
+    }
+    return {
+        "external_primary_id": product_id,
+        "seller_article": offer_id,
+        "title": name,
+        "source_group": source_group,
+        "external_ids": {key: value for key, value in external_ids.items() if value not in (None, "")},
+        "stock_rows": safe_stock_rows,
+        "total_stock": total_stock if parseable_present_count else None,
+        "parseable_present_count": parseable_present_count,
+        "raw_safe": {
+            "action_id": str(action_id),
+            "product_id": product_id,
+            "offer_id": offer_id,
+            "source_group": source_group,
+            "stock_rows_count": len(safe_stock_rows),
+            "stock_rows_checksum": _safe_checksum(safe_stock_rows),
+        },
+    }
+
+
 def sync_ozon_elastic_action_rows_to_product_core(
     *,
     store,
@@ -1640,6 +1726,121 @@ def sync_ozon_elastic_action_rows_to_product_core(
                 "approved_source": endpoint_code,
                 "action_id": str(action_id),
                 "source_group": source_group,
+                "failure": getattr(exc, "safe_message", str(exc)),
+            },
+        )
+        raise
+
+
+def sync_ozon_elastic_stock_rows_to_product_core(
+    *,
+    store,
+    rows,
+    action_id: str,
+    operation=None,
+    requested_by=None,
+    launch_method: str = "service",
+) -> MarketplaceSyncRun:
+    """Write Ozon stock snapshots only for the selected Elastic product set."""
+
+    sync_run = start_marketplace_sync_run(
+        marketplace=Marketplace.OZON,
+        store=store,
+        sync_type=MarketplaceSyncRun.SyncType.STOCKS,
+        source=ListingSource.OZON_API_ACTIONS,
+        operation=operation,
+        requested_by=requested_by,
+        launch_method=launch_method,
+        summary={
+            "source": "ozon_elastic_product_data",
+            "approved_source": OZON_PRODUCT_INFO_STOCKS_ENDPOINT_CODE,
+            "action_id": str(action_id),
+            "not_full_catalog": True,
+        },
+    )
+    try:
+        normalized_rows = [_normalize_ozon_stock_row(row, action_id=str(action_id)) for row in rows]
+        duplicate_articles = _detect_duplicate_articles(normalized_rows)
+        skipped_count = 0
+        listing_count = 0
+        mapping_count = 0
+        snapshot_count = 0
+        warning_count = 0
+        no_parseable_present_count = 0
+        for row in normalized_rows:
+            if not row["external_primary_id"]:
+                skipped_count += 1
+                warning_count += 1
+                continue
+            if row["seller_article"] in duplicate_articles:
+                skipped_count += 1
+                warning_count += 1
+                continue
+            if row["total_stock"] is None:
+                skipped_count += 1
+                no_parseable_present_count += 1
+                warning_count += 1
+                continue
+            listing, _created = _upsert_listing_from_source(
+                sync_run=sync_run,
+                external_primary_id=row["external_primary_id"],
+                external_ids=row["external_ids"],
+                seller_article=row["seller_article"],
+                title=row["title"],
+            )
+            listing_count += 1
+            if api_link_listing_by_valid_article(sync_run=sync_run, listing=listing):
+                mapping_count += 1
+            create_stock_snapshot(
+                sync_run=sync_run,
+                listing=listing,
+                total_stock=row["total_stock"],
+                stock_by_warehouse={"rows": row["stock_rows"]},
+                in_way_to_client=None,
+                in_way_from_client=None,
+                raw_safe={key: value for key, value in row["raw_safe"].items() if value not in (None, "")},
+                source_endpoint=OZON_PRODUCT_INFO_STOCKS_ENDPOINT_CODE,
+            )
+            snapshot_count += 1
+        if duplicate_articles:
+            duplicate_affected_count = sum(
+                1 for row in normalized_rows if row["seller_article"] in duplicate_articles
+            )
+            _record_source_data_integrity_warning(
+                sync_run=sync_run,
+                duplicate_articles=duplicate_articles,
+                affected_count=duplicate_affected_count,
+            )
+        else:
+            duplicate_affected_count = 0
+        return complete_marketplace_sync_run(
+            sync_run,
+            summary={
+                "source": "ozon_elastic_product_data",
+                "approved_source": OZON_PRODUCT_INFO_STOCKS_ENDPOINT_CODE,
+                "action_id": str(action_id),
+                "not_full_catalog": True,
+                "rows_count": len(normalized_rows),
+                "listings_upserted_count": listing_count,
+                "api_article_mapping_count": mapping_count,
+                "stock_snapshots_count": snapshot_count,
+                "skipped_rows_count": skipped_count,
+                "no_parseable_present_count": no_parseable_present_count,
+                "duplicate_external_article_count": len(duplicate_articles),
+                "source_data_integrity_warning": _source_data_integrity_warning_summary(
+                    duplicate_articles=duplicate_articles,
+                    affected_count=duplicate_affected_count,
+                ) if duplicate_articles else None,
+            },
+            warning_count=warning_count,
+        )
+    except Exception as exc:
+        fail_marketplace_sync_run(
+            sync_run,
+            error_summary={
+                "source": "ozon_elastic_product_data",
+                "approved_source": OZON_PRODUCT_INFO_STOCKS_ENDPOINT_CODE,
+                "action_id": str(action_id),
                 "failure": getattr(exc, "safe_message", str(exc)),
             },
         )

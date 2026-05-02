@@ -38,6 +38,7 @@ from apps.operations.models import (
 )
 from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
+from apps.product_core.services import sync_wb_regular_promotion_rows_to_product_core
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import (
     WB_API_CONNECTION_TYPE,
@@ -254,6 +255,21 @@ def _record_failure(operation, actor, store, exc: Exception):
             "result_code": "wb_api_promotion_download_failed",
         },
         source_context=AuditSourceContext.SERVICE,
+    )
+
+
+def _record_product_core_sync_failure(operation, actor, store, exc: Exception) -> None:
+    create_techlog_record(
+        severity=TechLogSeverity.ERROR,
+        event_type="marketplace_sync.failed",
+        source_component="apps.discounts.wb_api.promotions.product_core",
+        operation=operation,
+        store=store,
+        user=actor,
+        entity_type="Operation",
+        entity_id=operation.pk,
+        safe_message=getattr(exc, "safe_message", "Product Core sync failed after WB promotions download."),
+        sensitive_details_ref="redacted:product-core-wb-promotions-sync",
     )
 
 
@@ -638,7 +654,7 @@ def download_wb_current_promotions(
                     for index, raw in enumerate(raw_rows)
                 )
             products_by_promotion[promotion.wb_promotion_id] = product_rows
-        return _persist_success(
+        operation = _persist_success(
             actor=actor,
             store=store,
             operation=operation,
@@ -653,6 +669,24 @@ def download_wb_current_promotions(
             products_by_promotion=products_by_promotion,
             nomenclature_pages=nomenclature_pages,
         )
+        for promotion in current_promotions:
+            if promotion.is_auto:
+                continue
+            products = products_by_promotion.get(promotion.wb_promotion_id) or []
+            if not products:
+                continue
+            try:
+                sync_wb_regular_promotion_rows_to_product_core(
+                    store=store,
+                    rows=products,
+                    promotion_id=promotion.wb_promotion_id,
+                    action_name=promotion.name,
+                    operation=operation,
+                    requested_by=actor,
+                )
+            except Exception as sync_exc:
+                _record_product_core_sync_failure(operation, actor, store, sync_exc)
+        return operation
     except Exception as exc:
         _record_failure(operation, actor, store, exc)
         operation.status = ProcessStatus.INTERRUPTED_FAILED

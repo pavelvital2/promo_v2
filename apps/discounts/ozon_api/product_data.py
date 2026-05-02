@@ -27,6 +27,7 @@ from apps.operations.models import (
 )
 from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
+from apps.product_core.services import sync_ozon_elastic_stock_rows_to_product_core
 from apps.stores.models import StoreAccount
 from apps.stores.services import default_ozon_secret_resolver, require_ozon_store_for_ozon_api
 from apps.techlog.models import TechLogSeverity
@@ -313,6 +314,21 @@ def _record_failure(operation, actor, store, exc: Exception):
     return result_code
 
 
+def _record_product_core_sync_failure(operation, actor, store, exc: Exception) -> None:
+    create_techlog_record(
+        severity=TechLogSeverity.ERROR,
+        event_type="marketplace_sync.failed",
+        source_component="apps.discounts.ozon_api.product_data.product_core",
+        operation=operation,
+        store=store,
+        user=actor,
+        entity_type="Operation",
+        entity_id=operation.pk,
+        safe_message=getattr(exc, "safe_message", "Product Core sync failed after Ozon product data download."),
+        sensitive_details_ref="redacted:product-core-ozon-product-data-sync",
+    )
+
+
 @transaction.atomic
 def _persist_success(
     *,
@@ -484,7 +500,7 @@ def download_product_data(
             )
             for source_row in source_basis.get("rows", [])
         ]
-        return _persist_success(
+        operation = _persist_success(
             actor=actor,
             store=store,
             operation=operation,
@@ -498,6 +514,17 @@ def download_product_data(
             read_page_size=client.policy.read_page_size,
             min_interval_seconds=client.policy.min_interval_seconds,
         )
+        try:
+            sync_ozon_elastic_stock_rows_to_product_core(
+                store=store,
+                rows=rows,
+                action_id=action_id,
+                operation=operation,
+                requested_by=actor,
+            )
+        except Exception as sync_exc:
+            _record_product_core_sync_failure(operation, actor, store, sync_exc)
+        return operation
     except Exception as exc:
         result_code = _record_failure(operation, actor, store, exc)
         operation.status = ProcessStatus.INTERRUPTED_FAILED

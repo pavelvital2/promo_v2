@@ -59,7 +59,14 @@ from apps.identity_access.models import Role, StoreAccess, User
 from apps.identity_access.seeds import ROLE_LOCAL_ADMIN, ROLE_MARKETPLACE_MANAGER, ROLE_OWNER, seed_identity_access
 from apps.operations.models import Marketplace, OperationMode, OperationModule, OperationStepCode, OperationType
 from apps.operations.models import Operation
-from apps.product_core.models import ListingSource, MarketplaceListing
+from apps.product_core.models import (
+    ListingSource,
+    MarketplaceListing,
+    MarketplaceSyncRun,
+    PriceSnapshot,
+    PromotionSnapshot,
+    StockSnapshot,
+)
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import OZON_API_CONNECTION_TYPE, OZON_API_MODULE
 
@@ -640,6 +647,14 @@ class OzonActionsDownloadTests(TestCase):
         self.assertEqual(FakeProductsClient.calls[0]["action_id"], "elastic-active")
         self.assertEqual(FakeProductsClient.calls[1]["last_id"], "page-2")
         self.assertTrue(all(call["endpoint"] == "/v1/actions/products" for call in FakeProductsClient.calls))
+        pc_sync = MarketplaceSyncRun.objects.get(
+            operation=operation,
+            sync_type=MarketplaceSyncRun.SyncType.PROMOTIONS,
+        )
+        self.assertEqual(pc_sync.status, MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS)
+        self.assertEqual(PromotionSnapshot.objects.filter(sync_run=pc_sync).count(), 2)
+        self.assertEqual(MarketplaceListing.objects.filter(store=self.store, external_primary_id="102").count(), 1)
+        self.assertFalse(PriceSnapshot.objects.filter(sync_run=pc_sync).exists())
 
     def test_product_download_failure_uses_closed_api_error_code(self):
         self._select_action("elastic-invalid-response")
@@ -942,6 +957,24 @@ class OzonActionsDownloadTests(TestCase):
         self.assertEqual(rows["501"]["O_price_min_elastic"], "90")
         self.assertEqual(rows["501"]["P_price_max_elastic"], "150")
         self.assertEqual(rows["501"].get("business_reason_code", ""), "")
+        pc_sync = MarketplaceSyncRun.objects.get(
+            operation=operation,
+            sync_type=MarketplaceSyncRun.SyncType.STOCKS,
+        )
+        self.assertEqual(pc_sync.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        stock_snapshot = StockSnapshot.objects.get(
+            sync_run=pc_sync,
+            listing__external_primary_id="501",
+        )
+        zero_stock_snapshot = StockSnapshot.objects.get(
+            sync_run=pc_sync,
+            listing__external_primary_id="502",
+        )
+        self.assertEqual(stock_snapshot.total_stock, 5)
+        self.assertEqual(zero_stock_snapshot.total_stock, 0)
+        self.assertIsNone(stock_snapshot.in_way_to_client)
+        self.assertIsNone(stock_snapshot.in_way_from_client)
+        self.assertFalse(PriceSnapshot.objects.filter(sync_run=pc_sync).exists())
 
         self.assertEqual(rows["502"]["business_reason_code"], "missing_min_price")
         self.assertIn("J", rows["502"]["missing_fields"])

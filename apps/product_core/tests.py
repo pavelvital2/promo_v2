@@ -57,6 +57,7 @@ from .services import (
     refresh_mapping_candidate_status,
     start_marketplace_sync_run,
     sync_ozon_elastic_action_rows_to_product_core,
+    sync_ozon_elastic_stock_rows_to_product_core,
     sync_wb_price_rows_to_product_core,
     sync_wb_regular_promotion_rows_to_product_core,
     unmap_listing,
@@ -1638,6 +1639,83 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertEqual(sync_run.summary["skipped_rows_count"], 2)
         self.assertFalse(MarketplaceListing.objects.filter(store=self.ozon_store, external_primary_id="9011").exists())
         self.assertFalse(PromotionSnapshot.objects.filter(sync_run=sync_run).exists())
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+                severity=TechLogSeverity.ERROR,
+                store=self.ozon_store,
+            ).exists()
+        )
+
+    def test_ozon_stock_adapter_sums_present_preserves_zero_and_keeps_in_way_null(self):
+        sync_run = sync_ozon_elastic_stock_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="stock-act",
+            rows=[
+                {
+                    "product_id": "stock-1",
+                    "offer_id": "O-STOCK-1",
+                    "name": "Stock product",
+                    "source_group": "active",
+                    "stock_info": {
+                        "stocks": [
+                            {"type": "fbo", "present": "2", "reserved": "99"},
+                            {"type": "fbs", "present": "3", "reserved": "1"},
+                        ]
+                    },
+                },
+                {
+                    "product_id": "stock-0",
+                    "offer_id": "O-STOCK-0",
+                    "source_group": "candidate",
+                    "stock_info": {"stocks": [{"type": "fbo", "present": "0", "reserved": "10"}]},
+                },
+            ],
+        )
+
+        listing = MarketplaceListing.objects.get(store=self.ozon_store, external_primary_id="stock-1")
+        zero_listing = MarketplaceListing.objects.get(store=self.ozon_store, external_primary_id="stock-0")
+        snapshot = StockSnapshot.objects.get(sync_run=sync_run, listing=listing)
+        zero_snapshot = StockSnapshot.objects.get(sync_run=sync_run, listing=zero_listing)
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS)
+        self.assertEqual(snapshot.total_stock, 5)
+        self.assertEqual(zero_snapshot.total_stock, 0)
+        self.assertIsNone(snapshot.in_way_to_client)
+        self.assertIsNone(snapshot.in_way_from_client)
+        self.assertEqual(snapshot.source_endpoint, "ozon_product_info_stocks")
+        self.assertEqual(listing.last_values["total_stock"], 5)
+        self.assertEqual(zero_listing.last_values["total_stock"], 0)
+        self.assertEqual(snapshot.stock_by_warehouse["rows"][0]["reserved"], "99")
+
+    def test_ozon_stock_adapter_skips_no_parseable_present_and_duplicate_articles(self):
+        sync_run = sync_ozon_elastic_stock_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="stock-warn",
+            rows=[
+                {
+                    "product_id": "stock-missing",
+                    "offer_id": "O-MISSING",
+                    "stock_info": {"stocks": [{"type": "fbo", "reserved": "1"}]},
+                },
+                {
+                    "product_id": "stock-dup-1",
+                    "offer_id": "O-DUP",
+                    "stock_info": {"stocks": [{"present": "4"}]},
+                },
+                {
+                    "product_id": "stock-dup-2",
+                    "offer_id": "O-DUP",
+                    "stock_info": {"stocks": [{"present": "5"}]},
+                },
+            ],
+        )
+
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(sync_run.summary["stock_snapshots_count"], 0)
+        self.assertEqual(sync_run.summary["no_parseable_present_count"], 1)
+        self.assertEqual(sync_run.summary["duplicate_external_article_count"], 1)
+        self.assertFalse(StockSnapshot.objects.filter(sync_run=sync_run).exists())
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.ozon_store, external_primary_id="stock-missing").exists())
         self.assertTrue(
             TechLogRecord.objects.filter(
                 event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,

@@ -39,6 +39,7 @@ from apps.operations.services import (
     create_api_operation,
     start_operation,
 )
+from apps.product_core.services import sync_wb_price_rows_to_product_core
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import (
     WB_API_CONNECTION_TYPE,
@@ -228,6 +229,21 @@ def _record_failure(operation, actor, store, exc: Exception):
     )
 
 
+def _record_product_core_sync_failure(operation, actor, store, exc: Exception) -> None:
+    create_techlog_record(
+        severity=TechLogSeverity.ERROR,
+        event_type="marketplace_sync.failed",
+        source_component="apps.discounts.wb_api.prices.product_core",
+        operation=operation,
+        store=store,
+        user=actor,
+        entity_type="Operation",
+        entity_id=operation.pk,
+        safe_message=getattr(exc, "safe_message", "Product Core sync failed after WB prices download."),
+        sensitive_details_ref="redacted:product-core-wb-prices-sync",
+    )
+
+
 @transaction.atomic
 def _persist_success(*, actor, store, operation, rows, pages, fetched_at):
     workbook = build_price_export_workbook(rows)
@@ -390,7 +406,7 @@ def download_wb_prices(
         )
         goods, pages = _fetch_all_goods(client)
         rows = [normalize_price_good(good, row_no=index) for index, good in enumerate(goods, start=1)]
-        return _persist_success(
+        operation = _persist_success(
             actor=actor,
             store=store,
             operation=operation,
@@ -398,6 +414,16 @@ def download_wb_prices(
             pages=pages,
             fetched_at=timezone.now(),
         )
+        try:
+            sync_wb_price_rows_to_product_core(
+                store=store,
+                rows=rows,
+                operation=operation,
+                requested_by=actor,
+            )
+        except Exception as sync_exc:
+            _record_product_core_sync_failure(operation, actor, store, sync_exc)
+        return operation
     except Exception as exc:
         _record_failure(operation, actor, store, exc)
         operation.status = ProcessStatus.INTERRUPTED_FAILED
