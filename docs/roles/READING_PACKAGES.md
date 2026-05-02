@@ -245,6 +245,40 @@
 
 ТЗ: only task source sections listed in the concrete TASK-PC file. Do not read the full final TZ by default. Implementation is prohibited until `docs/audit/AUDIT_REPORT_STAGE_3_PRODUCT_CORE_DOCUMENTATION.md` has `AUDIT PASS`. `GAP-0023` is resolved/customer_decision 2026-05-01: CORE-1 candidate suggestions are non-authoritative exact `seller_article`/`barcode`/external identifier matches only, and confirmed mapping still requires explicit user confirmation with audit/history.
 
+## Разработчик Product Core CORE-2
+
+Обязательно:
+
+- `AGENTS.md`
+- `docs/README.md`
+- `docs/DOCUMENTATION_MAP.md`
+- `docs/orchestration/AGENTS.md`
+- concrete CORE-2 task section from `docs/stages/stage-3-product-core/core-2/CORE_2_AGENT_TASKS.md`
+- `docs/stages/stage-3-product-core/core-2/CORE_2_READING_PACKAGES.md`
+- documents listed for the concrete task package in that file
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+ТЗ: only task source sections listed in the CORE-2 task package. Do not read the full final TZ by default. Implementation is prohibited until CORE-2 documentation audit has `AUDIT PASS`. `GAP-CORE2-001`..`GAP-CORE2-005` block affected implementation slices until decisions are recorded; UX/functionality and spec-blocking gaps go through orchestrator to customer.
+
+## Аудитор Product Core CORE-2
+
+Обязательно:
+
+- `AGENTS.md`
+- `docs/README.md`
+- `docs/DOCUMENTATION_MAP.md`
+- `docs/orchestration/AGENTS.md`
+- `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md`
+- all files in `docs/stages/stage-3-product-core/core-2/`
+- updated shared docs listed in `docs/stages/stage-3-product-core/core-2/CORE_2_DESIGN_HANDOFF.md`
+- `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`
+- `docs/audit/AUDIT_REPORT_TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md`
+- `docs/gaps/GAP_REGISTER.md`
+- `docs/adr/ADR_LOG.md`
+
+ТЗ: auditor verifies CORE-2 against the input design TZ and relevant final TZ sections for critical requirements. Open CORE-2 GAP entries may be accepted as documented blockers only if they are not hidden assumptions and affected implementation slices remain blocked.
+
 ## Тестировщик
 
 Обязательно:

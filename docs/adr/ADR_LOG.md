@@ -423,3 +423,48 @@ ADR фиксирует архитектурное или проектное ре
 - Решение: existing Excel operations remain unchanged and do not automatically create internal products, variants or confirmed mappings. Existing legacy `MarketplaceProduct` compatibility sync may mirror operation product refs into unmatched `MarketplaceListing` compatibility records; this mirror is not an Excel import workflow. Any explicit Excel import into Product Core/listings must be a separate workflow with validation, diff, impact warning, confirmation, operation/audit/history and rollback notes.
 - Последствия: Stage 1 Excel remains штатный/резервный mode. Product Core imports are gated and cannot be hidden inside discounts check/process flows.
 - Трассировка: `docs/product/PRODUCT_CORE_UI_SPEC.md`, `docs/product/OPERATIONS_SPEC.md`, `docs/product/PRODUCT_CORE_SPEC.md`
+
+## ADR-0042: CORE-2 Product Core Integration Boundary
+
+- Статус: accepted
+- Дата: 2026-05-02
+- Контекст: CORE-1 implemented Product Core foundation, and CORE-2 must connect it to WB/Ozon operations without starting ERP modules or rewriting Stage 1/2.
+- Решение: CORE-2 integrates approved WB/Ozon sources and existing operation rows with `MarketplaceListing`, `ProductVariant`, snapshots, exports and nullable operation row links. CORE-2 does not implement warehouse, production, suppliers, purchases, industrial BOM, packaging, labels, demand planning, machine vision, external normalization tooling or WB/Ozon vendorCode/offer_id mutation.
+- Последствия: future ERP modules must continue to depend on `ProductVariant`, but cannot be presented as working CORE-2 functionality. Any new WB/Ozon endpoint must already exist in current docs/code or be blocked by GAP.
+- Трассировка: `docs/stages/stage-3-product-core/core-2/CORE_2_SCOPE.md`, `docs/stages/stage-3-product-core/core-2/CORE_2_ARCHITECTURE.md`
+
+## ADR-0043: Normalized Article As Business Key
+
+- Статус: accepted
+- Дата: 2026-05-02
+- Контекст: CORE-2 must link marketplace listings to internal variants using unified seller articles produced outside promo_v2, while marketplace ids remain source-specific technical keys.
+- Решение: `ProductVariant.internal_sku` is the company-side business key for normalized article matching. WB `seller_article`/`vendorCode` and Ozon `offer_id` may be compared to `internal_sku` only as exact trimmed values already normalized outside promo_v2. Marketplace product ids such as WB `nmID` and Ozon `product_id` remain technical listing/source identifiers.
+- Последствия: no fuzzy/title/image/partial matching is allowed. The app does not rewrite vendorCode/offer_id and does not treat a marketplace id as the internal SKU.
+- Трассировка: `docs/stages/stage-3-product-core/core-2/CORE_2_MAPPING_RULES_SPEC.md`
+
+## ADR-0044: OperationDetailRow MarketplaceListing FK Enrichment
+
+- Статус: accepted
+- Дата: 2026-05-02
+- Контекст: Stage 1/2 operations use immutable raw `OperationDetailRow.product_ref`, but CORE-2 needs navigation/report links to Product Core listings.
+- Решение: add optional nullable `OperationDetailRow.marketplace_listing_id` as enrichment only. `product_ref` remains raw immutable history. FK writes are allowed only when operation marketplace/store and listing marketplace/store match and the row can be deterministically resolved to exactly one listing.
+- Последствия: FK can be cleared without data loss; historical summaries/results/files/reason codes remain unchanged. Scope of operation families enriched in CORE-2 remains gated by `GAP-CORE2-003`.
+- Трассировка: `docs/stages/stage-3-product-core/core-2/CORE_2_OPERATION_LINKING_SPEC.md`, `docs/stages/stage-3-product-core/core-2/CORE_2_MODEL_AND_MIGRATION_PLAN.md`
+
+## ADR-0045: Auto-created ProductVariant Policy
+
+- Статус: proposed/pending_customer_decision
+- Дата: 2026-05-02
+- Контекст: CORE-2 TZ requires deciding whether new unified marketplace seller articles may create `ProductVariant` automatically. This is business/data behavior and cannot be implemented by designer assumption.
+- Решение: design recommendation is Option B: create `ProductVariant` as imported/draft only from approved marketplace API sync, only on exact normalized article, only without conflicts, with audit/history/reporting and user review/confirm/archive. Option C, automatic active variant plus confirmed mapping, is not recommended for CORE-2.
+- Последствия: implementation is blocked by `GAP-CORE2-001` until customer decision through orchestrator. The decision must also define how the required parent `InternalProduct` shell and imported/draft lifecycle are represented.
+- Трассировка: `docs/stages/stage-3-product-core/core-2/CORE_2_MAPPING_RULES_SPEC.md`, `docs/stages/stage-3-product-core/core-2/CORE_2_MODEL_AND_MIGRATION_PLAN.md`, `docs/gaps/GAP_REGISTER.md`
+
+## ADR-0046: CORE-2 Snapshot Semantics
+
+- Статус: accepted_with_scope_gate
+- Дата: 2026-05-02
+- Контекст: CORE-1 created snapshot foundation, while CORE-2 must fill snapshots only from already approved WB/Ozon flows and must not define sales/demand formulas by assumption.
+- Решение: snapshots are immutable source/run records. `MarketplaceListing.last_values` is latest cache updated only from successful syncs. CORE-2 recommended minimum fills WB `PriceSnapshot`, selected Ozon Elastic `StockSnapshot`, and listing-level `PromotionSnapshot` only from approved regular WB promotion rows and Ozon Elastic action participation. `SalesPeriodSnapshot` remains foundation-only unless a separate approved source exists.
+- Последствия: sales, buyout, return and production-need formulas are out of CORE-2. Snapshot filling beyond the safe minimum remains gated by `GAP-CORE2-004`; failed sync must not erase last successful cache.
+- Трассировка: `docs/stages/stage-3-product-core/core-2/CORE_2_SNAPSHOT_FILLING_SPEC.md`, `docs/stages/stage-3-product-core/core-2/CORE_2_API_SYNC_SPEC.md`

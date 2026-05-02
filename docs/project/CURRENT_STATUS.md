@@ -21,6 +21,10 @@
   - manual mapping workflow;
   - CSV exports.
 
+## Документация подготовлена
+
+- Stage 3 / CORE-2 Product Core Integration design documentation prepared in `docs/stages/stage-3-product-core/core-2/`; CORE-2 product implementation is not started and remains blocked until documentation audit.
+
 ## Принятые ограничения
 
 - WB auto promotions по текущему WB API не дают product rows через `promotions/nomenclatures`; система не должна выдумывать состав автоакций.
@@ -40,13 +44,15 @@
 - `docs/testing/TEST_REPORT_TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md`
 - `docs/audit/AUDIT_REPORT_TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md`
 - `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`
+- `docs/stages/stage-3-product-core/core-2/CORE_2_DESIGN_HANDOFF.md`
+- `docs/stages/stage-3-product-core/core-2/CORE_2_ACCEPTANCE_CHECKLIST.md`
 - `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md`
 
 ## Следующий этап
 
-CORE-2 design may start from `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md`.
+CORE-2 design package is prepared from `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` and is ready for documentation audit.
 
-CORE-2 implementation remains prohibited until separate design documentation is prepared and accepted by audit-gate.
+CORE-2 implementation remains prohibited until this design documentation is accepted by audit-gate as `AUDIT PASS` and the affected `GAP-CORE2-001`..`GAP-CORE2-005` decisions are resolved or explicitly excluded from task scope.
 
 Рабочее направление после Stage 3: перевод дальнейших операций вокруг справочника товаров/Product Core. Склад, производство, поставщики, упаковка, этикетки и расширенная аналитика должны вводиться отдельными этапами, без расширения scope по умолчанию.
 

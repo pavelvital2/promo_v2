@@ -129,7 +129,29 @@
 | `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` | TASK-PC-010 documentation/runbook closeout report |
 | `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md` | Final CORE-1 release validation report; CORE-2 design may start |
 | `docs/tasks/validation/stage-3-product-core/TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md` | Release validation task and acceptance gate after CORE-1 implementation |
-| `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` | Next authorized input document for CORE-2 design after CORE-1 release validation |
+| `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` | Authorized input document used for CORE-2 design after CORE-1 release validation |
+
+## Stage 3 / CORE-2 Product Core Integration
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_SCOPE.md` | Scope, protected invariants, dependencies and ADR/GAP links for CORE-2 Product Core integration |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_ARCHITECTURE.md` | Target architecture, model relationships, source-of-truth matrix and Stage 1/2/future ERP boundaries |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_DATA_FLOW.md` | WB/Ozon API to sync run/listing/mapping/snapshot/operation link/export UI flows |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_MODEL_AND_MIGRATION_PLAN.md` | Non-destructive model, nullable FK, backfill, rollback and validation plan |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_API_SYNC_SPEC.md` | Approved source matrix, endpoint constraints, retry/rate/redaction and sync status contract |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_OPERATION_LINKING_SPEC.md` | `OperationDetailRow.marketplace_listing_id` nullable enrichment rules and operation scope |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_MAPPING_RULES_SPEC.md` | Exact normalized article matching, conflicts, barcode/external id role and auto-create policy gate |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_SNAPSHOT_FILLING_SPEC.md` | Snapshot filling semantics and foundation-only snapshot types |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_EXCEL_EXPORT_SPEC.md` | Product Core exports, columns, filters, object access, redaction and Excel boundary |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_UI_UX_SPEC.md` | CORE-2 UI routes/pages/statuses/review/conflict/snapshot/export behavior and prohibited future UI |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_PERMISSIONS_AUDIT_TECHLOG_SPEC.md` | CORE-2 permissions, object access, audit actions, techlog events and redaction tests |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_TEST_PLAN.md` | Unit/integration/migration/UI/export/API mock/regression/security test plan |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_ACCEPTANCE_CHECKLIST.md` | PASS/FAIL documentation and implementation acceptance checklist |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_AGENT_TASKS.md` | TASK-PC2-001..010 future implementation decomposition |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_READING_PACKAGES.md` | Task-scoped reading packages for CORE-2 implementation and audit |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_ROLLOUT_RUNBOOK.md` | Backup, migration, smoke, validation, rollback and release report runbook |
+| `docs/stages/stage-3-product-core/core-2/CORE_2_DESIGN_HANDOFF.md` | Designer handoff to documentation auditor |
 
 ## Documentation Tasks
 
