@@ -1,23 +1,23 @@
 # CORE_2_SNAPSHOT_FILLING_SPEC.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§7.5, 9.5, §11.8.
 
 ## Назначение
 
-Define which Product Core snapshots CORE-2 may fill from existing approved flows and which remain foundation-only.
+Define which Product Core snapshots CORE-2 may fill from approved/read-only flows and which future metrics remain nullable hooks only.
 
 ## Snapshot Scope
 
-`GAP-CORE2-004` remains open for customer/orchestrator confirmation of final CORE-2 snapshot scope. This document defines the safe recommended minimum based on current approved docs.
+Customer decision 2026-05-02 approves CORE-2 snapshot filling for prices, stocks and promotions/actions when the data is already available from approved/read-only sources. Sales, buyouts, returns, demand, in-work, production and shipments remain future architecture hooks only: nullable foundation, no active CORE-2 UI/workflow and no formulas.
 
-| Snapshot | CORE-2 recommended behavior | Source |
+| Snapshot / hook | CORE-2 behavior | Source |
 | --- | --- | --- |
-| `PriceSnapshot` | Fill for WB price rows from approved Stage 2.1 price source. | `GET /api/v2/list/goods/filter` |
-| `StockSnapshot` | Fill for Ozon Elastic selected product set when `/v4/product/info/stocks` data is available. | Stage 2.2 product data join |
-| `SalesPeriodSnapshot` | Foundation-only in CORE-2 unless a separately approved source exists. | No approved sales/buyout/returns source in current package. |
-| `PromotionSnapshot` | Fill for WB regular promotion product rows and Ozon Elastic selected action participation. | Stage 2.1 promotions, Stage 2.2 Elastic actions/products/candidates |
+| `PriceSnapshot` | Fill when price data is present in approved source rows. | WB `GET /api/v2/list/goods/filter`; future official read-only price/catalog sources with endpoint evidence. |
+| `StockSnapshot` | Fill when stock data is present in approved source rows. | Stage 2.2 `/v4/product/info/stocks`; future official read-only stock/catalog sources with endpoint evidence. |
+| `PromotionSnapshot` | Fill for promotions/actions when listing-level source rows are present and approved. | WB regular promotion product rows; Ozon Elastic action participation; future official read-only action/promotion sources with endpoint evidence. |
+| Sales/buyouts/returns/demand/in-work/production/shipments | Future architecture hooks only; nullable foundation, no active CORE-2 workflow/UI, no derived formulas. | Separate future specification required. |
 
 WB auto promotions without nomenclatures must not create listing-level promotion snapshots.
 
@@ -65,14 +65,15 @@ Minimum mapping:
 
 For current Ozon Elastic scope, `total_stock` may use the approved Stage 2.2 sum of `present` across all returned stock rows. WB stock filling is not approved by current docs.
 
-## SalesPeriodSnapshot
+## Future Metrics / Operational Hooks
 
-Sales, buyouts and returns have marketplace-specific meanings. CORE-2 does not define demand or production formulas.
+Sales, buyouts, returns, demand, in-work, production and shipments have marketplace-specific or internal-process meanings. CORE-2 does not define demand, production, shipment or replenishment formulas.
 
 Rules:
 
 - fields `orders_qty`, `sales_qty`, `buyout_qty`, `returns_qty`, `sales_amount`, `currency` remain nullable;
 - no calculation of production need or stock replenishment;
+- no active UI/workflow for demand, in-work, production or shipments;
 - no cross-marketplace aggregation formula;
 - any future source requires separate specification and tests.
 
@@ -104,7 +105,7 @@ Cache updates happen after sync status is `completed_success` or `completed_with
 ## Error Handling
 
 - Missing listing match: snapshot not written; safe warning counted.
-- Source semantic not approved: snapshot not written; GAP/reference recorded.
+- Source semantic not approved/evidenced: snapshot not written; source decision/reference recorded.
 - Secret-like value detected: snapshot write blocked and techlog critical event recorded.
 - Partial source row: write nullable fields only when exact source value exists.
 
@@ -116,6 +117,7 @@ Future implementation must test:
 - successful sync updates cache;
 - failed sync preserves old cache;
 - nullable sales/buyout/return fields;
+- no active CORE-2 UI/workflow for demand/in-work/production/shipments hooks;
 - WB auto promotions no fabricated product snapshots;
 - Ozon stock `present` aggregation for selected action set;
 - secret redaction guard;

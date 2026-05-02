@@ -152,6 +152,8 @@
 | `docs/stages/stage-3-product-core/core-2/CORE_2_READING_PACKAGES.md` | Task-scoped reading packages for CORE-2 implementation and audit |
 | `docs/stages/stage-3-product-core/core-2/CORE_2_ROLLOUT_RUNBOOK.md` | Backup, migration, smoke, validation, rollback and release report runbook |
 | `docs/stages/stage-3-product-core/core-2/CORE_2_DESIGN_HANDOFF.md` | Designer handoff to documentation auditor |
+| `docs/audit/AUDIT_REPORT_CORE_2_DESIGN_DOCUMENTATION.md` | CORE-2 design documentation audit: AUDIT PASS |
+| `docs/audit/AUDIT_REPORT_CORE_2_DESIGN_DOCUMENTATION_RECHECK.md` | CORE-2 design documentation minor-fix recheck: RECHECK PASS |
 
 ## Documentation Tasks
 

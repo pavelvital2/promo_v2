@@ -1,6 +1,6 @@
 # CORE_2_ROLLOUT_RUNBOOK.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§11.16, §14-§15.
 
@@ -10,11 +10,11 @@ Define operational release steps for future CORE-2 implementation. This runbook 
 
 ## Preconditions
 
-- CORE-2 documentation audit result: `AUDIT PASS`.
+- Updated CORE-2 documentation follow-up audit/recheck accepted after post-audit customer decisions.
 - Implementation tasks accepted by auditor/tester.
-- No blocking GAP for implemented slices.
+- Resolved GAP implementation constraints and endpoint/artifact gates satisfied for implemented slices.
 - Target environment selected and recorded.
-- Destructive marketplace writes are not part of CORE-2 sync rollout unless separately approved.
+- Marketplace writes/card-field updates are not part of CORE-2 rollout. Future promo_v2 write capabilities require separate audited rollout.
 
 ## Backup
 
@@ -74,10 +74,12 @@ UI-facing implementation should include browser or route/static smoke evidence a
 Post-migration checks:
 
 - `MarketplaceProduct` count unchanged unless separate audited task says otherwise;
-- `OperationDetailRow.product_ref` non-null/unchanged for existing rows;
+- `OperationDetailRow.product_ref` unchanged for existing rows, proven by pre/post row count plus checksum/hash over `(id, product_ref)`;
 - nullable FK count recorded;
 - FK store/marketplace mismatch count is zero;
 - listing count by marketplace/store recorded;
+- imported/draft variant count and source breakdown recorded;
+- mapping table preview/apply counts recorded if the feature is included in the release;
 - sync run failed/active counts reviewed;
 - no secret-like values in snapshots/last_values/audit/techlog sample scan.
 
@@ -89,6 +91,7 @@ Rollback depends on implementation slice:
 - clear nullable `marketplace_listing_id` values created by failed backfill if needed;
 - do not delete legacy `MarketplaceProduct`;
 - do not rewrite old operations;
+- do not change WB/Ozon marketplace card fields as part of CORE-2 rollback/retry;
 - restore database/files from backup only after operator decision and impact assessment;
 - record rollback commands and evidence.
 
@@ -99,7 +102,7 @@ If migration is non-reversible, implementation must document why and provide com
 - Run targeted CORE-2 tests where feasible in target environment.
 - Run Stage 1/2 smoke or regression agreed for release.
 - Verify secret redaction guard logs have no violations except expected test probes.
-- Verify open GAP blocked features remain disabled/unavailable.
+- Verify future/out-of-CORE-2 features remain disabled/unavailable, including marketplace card-field writes and future ERP hooks.
 - Verify no future ERP working UI appeared.
 
 ## Release Report Requirements

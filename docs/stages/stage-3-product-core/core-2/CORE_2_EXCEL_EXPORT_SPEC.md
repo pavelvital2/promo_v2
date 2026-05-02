@@ -1,6 +1,6 @@
 # CORE_2_EXCEL_EXPORT_SPEC.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§7.6, 7.9, §11.9.
 
@@ -15,12 +15,13 @@ Existing Product Core exports may remain CSV/Excel-compatible CSV. XLSX output r
 | Export | Purpose | Minimum permission |
 | --- | --- | --- |
 | Internal products | Company product list with visible linked listing counts. | `product_core.export` |
-| Product variants | Variant review list, including imported/draft state if approved. | `product_core.export` / `product_variant.view` |
+| Product variants | Variant review list, including imported/draft state. | `product_core.export` / `product_variant.view` |
 | Marketplace listings | Listing table filtered by marketplace/store/status/mapping status. | `marketplace_listing.export` per store |
 | Listings with latest values | Listings plus latest price/stock/promotion cache. | `marketplace_listing.export` + `marketplace_snapshot.view` |
 | Mapping report | Matched/unmatched/needs_review/conflict listing-to-variant report. | `marketplace_listing.export` |
 | Operation link report | Rows enriched with listing FK for troubleshooting. | operation view + listing export/access |
-| Auto-created draft/imported variants report | Only if `GAP-CORE2-001` approves auto-create. | product export + review permission |
+| Auto-created draft/imported variants report | Review queue for customer-approved imported/draft variants. | product export + review permission |
+| External mapping table preview/export | Diff/conflict/no-op preview for uploaded mapping table before explicit apply. | mapping import/apply permission + object access |
 
 ## Filters
 
@@ -30,7 +31,8 @@ Exports must support task-relevant filters:
 - store/account;
 - listing status;
 - mapping status;
-- variant review/import state if approved;
+- variant review/import state;
+- mapping table import/apply status where relevant;
 - last seen / last successful sync date;
 - source;
 - category/brand when available;
@@ -106,7 +108,9 @@ Existing WB/Ozon Excel workflows continue unchanged.
 
 Exports are not imports. Downloading or editing a Product Core export does not create or update `InternalProduct`, `ProductVariant`, `MarketplaceListing`, mapping or operation results.
 
-Explicit Excel import into Product Core remains prohibited in CORE-2 unless a future audited import workflow is approved. `GAP-CORE2-005` covers external normalization mapping import.
+Existing WB/Ozon Excel discount workflows must not import into Product Core.
+
+CORE-2 does allow the dedicated external normalization mapping table workflow defined in `CORE_2_MAPPING_RULES_SPEC.md`: upload, preview/diff/conflicts, explicit confirmation, audit/history, object access and redaction. This workflow applies mapping links and, only when explicitly confirmed, may create imported/draft variants for valid target internal SKUs.
 
 ## Redaction
 

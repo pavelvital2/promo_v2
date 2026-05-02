@@ -1,6 +1,6 @@
 # CORE_2_ACCEPTANCE_CHECKLIST.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§14-16, §11.13.
 
@@ -11,12 +11,12 @@
 | All TZ §3.2 CORE-2 documents exist. |  |
 | Scope and non-scope protect Stage 1/2 and future ERP boundary. |  |
 | ADR-0042..ADR-0046 are recorded. |  |
-| GAP-CORE2-001..005 are recorded and not hidden as assumptions. |  |
-| API endpoints are limited to current approved docs/code or blocked by GAP. |  |
-| ProductVariant auto-create does not proceed without customer decision. |  |
+| GAP-CORE2-001..005 decisions and remaining implementation constraints are recorded and not hidden as assumptions. |  |
+| API endpoints are limited to approved current sources or endpoint-specific official read-only docs evidence; no marketplace writes in CORE-2. |  |
+| ProductVariant auto-create follows customer-approved imported/draft policy and fixed internal SKU validator. |  |
 | `product_ref` immutability is explicit. |  |
 | Nullable FK enrichment is reversible and non-destructive. |  |
-| Snapshot semantics and foundation-only types are explicit. |  |
+| Snapshot semantics and future-only sales/buyouts/returns/demand/in-work/production/shipments hooks are explicit. |  |
 | UI spec excludes warehouse/production/suppliers/BOM/packaging/labels/machine vision. |  |
 | Permissions/object access/redaction are specified. |  |
 | Test plan includes Stage 1/2 and Product Core regression. |  |
@@ -27,10 +27,11 @@
 
 | Area | PASS/FAIL |
 | --- | --- |
-| Documentation audit result is `AUDIT PASS`. |  |
-| No blocking GAP remains for implemented slice. |  |
+| Updated documentation follow-up audit/recheck accepted after post-audit customer decisions. |  |
+| Resolved GAP constraints and endpoint/artifact gates are satisfied for implemented slice. |  |
 | No product code was implemented outside allowed task files. |  |
-| No new unapproved WB/Ozon endpoint is called. |  |
+| No WB/Ozon endpoint is called without current docs/code approval or endpoint-specific official read-only evidence and tests. |  |
+| No WB/Ozon write endpoint/card-field update is implemented in CORE-2. |  |
 | WB/Ozon API secrets are redacted everywhere. |  |
 | `MarketplaceProduct` rows are preserved. |  |
 | Existing Stage 1/2 operation results remain unchanged. |  |
@@ -38,7 +39,8 @@
 | Nullable listing FK is correct, optional and reversible. |  |
 | Listing sync is idempotent and access-safe. |  |
 | Mapping conflicts never auto-confirm. |  |
-| Auto-created variants, if implemented, follow approved customer decision and audit. |  |
+| Auto-created variants follow approved imported/draft customer decision, fixed SKU validator and audit/history. |  |
+| External mapping table workflow requires preview/diff/conflicts and explicit apply confirmation. |  |
 | Snapshot writes are source-aware, run-aware and nullable where required. |  |
 | Exports apply object access and redaction. |  |
 | UI pages do not show future ERP modules as working functions. |  |
@@ -51,10 +53,11 @@
 
 ## Blocking Failure Examples
 
-- New endpoint added without `GAP-CORE2-002` resolution.
+- New read endpoint added without official-docs evidence, pagination/rate/retry/redaction contract and mocks.
+- Marketplace write/card-field update endpoint added to CORE-2.
 - Excel operation creates internal product/variant or confirmed mapping.
 - `product_ref` rewritten or old operation outcome changed.
 - Hidden store listing visible through operation row link/export/count.
 - Secret-like value appears in UI/export/audit/techlog/snapshot/report.
 - Future warehouse/production/BOM/labels UI appears operational.
-- Auto-created active confirmed mapping implemented under Option C without customer decision.
+- Invalid/non-unified external article auto-creates ProductVariant without mapping table/manual confirmation.

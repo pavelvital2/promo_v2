@@ -1,6 +1,6 @@
 # CORE-2 Design Handoff
 
-Статус: handoff от проектировщика к аудитору документации.
+Статус: handoff от проектировщика к аудитору документации; обновлено после AUDIT PASS по решениям заказчика 2026-05-02.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §16.
 
@@ -29,6 +29,8 @@ Created:
 Updated:
 
 - `docs/DOCUMENTATION_MAP.md`
+- `docs/README.md`
+- `docs/PROJECT_NAVIGATOR.md`
 - `docs/roles/READING_PACKAGES.md`
 - `docs/adr/ADR_LOG.md`
 - `docs/gaps/GAP_REGISTER.md`
@@ -36,7 +38,7 @@ Updated:
 
 ## Scope Summary
 
-CORE-2 connects Product Core to approved WB/Ozon operations through `MarketplaceListing`, exact normalized article linkage, nullable operation row FK enrichment, snapshots and exports. It keeps Stage 1/2 workflows operational and does not make Excel a Product Core import source.
+CORE-2 connects Product Core to approved WB/Ozon operations through `MarketplaceListing`, exact structured internal SKU linkage, imported/draft auto-create from valid API articles, external mapping table preview/apply, nullable operation row FK enrichment, snapshots and exports. It keeps Stage 1/2 workflows operational and does not make Excel discount workflows a Product Core import source.
 
 ## Non-Scope Protected
 
@@ -50,7 +52,7 @@ CORE-2 connects Product Core to approved WB/Ozon operations through `Marketplace
 - demand planning;
 - machine vision;
 - external normalization program implementation;
-- WB/Ozon vendorCode/offer_id mutation;
+- WB/Ozon marketplace card-field writes in CORE-2, including prices, action participation, card parameters, seller article/vendorCode/offer_id mutation;
 - fuzzy/title/image matching;
 - legacy `MarketplaceProduct` removal;
 - historical operation result rewrite.
@@ -65,11 +67,11 @@ CORE-2 connects Product Core to approved WB/Ozon operations through `Marketplace
 
 ## GAP
 
-- GAP-CORE2-001: ProductVariant auto-create mode, open, requires customer decision via orchestrator.
-- GAP-CORE2-002: Approved WB/Ozon listing sources, open, requires source/customer decision via orchestrator for unapproved endpoints.
-- GAP-CORE2-003: OperationDetailRow enrichment scope, open, requires customer/orchestrator decision before implementation scope.
-- GAP-CORE2-004: Snapshot filling scope, open, requires customer/orchestrator decision for fillable types beyond safe minimum.
-- GAP-CORE2-005: External normalization mapping import, open, requires customer decision via orchestrator.
+- GAP-CORE2-001: ProductVariant auto-create mode, resolved/customer_decision 2026-05-02; implement valid structured API article -> existing active variant link or imported/draft auto-create with `matched`, audit/history.
+- GAP-CORE2-002: Approved WB/Ozon listing sources, resolved/customer_decision_with_endpoint_artifact_gate 2026-05-02; official read-only listing/catalog APIs allowed only with endpoint-specific docs/pagination/rate/retry/redaction/mocks; no marketplace writes in CORE-2.
+- GAP-CORE2-003: OperationDetailRow enrichment scope, resolved/customer_decision 2026-05-02; applies to new and old rows where deterministic safe match exists, with `(id, product_ref)` row-count/checksum evidence.
+- GAP-CORE2-004: Snapshot filling scope, resolved/customer_decision 2026-05-02; fill prices/stocks/promotions/actions when approved/available; sales/buyouts/returns/demand/in-work/production/shipments are nullable future hooks only.
+- GAP-CORE2-005: External normalization mapping import, resolved/customer_decision 2026-05-02; support API auto-match, mapping table preview/apply with confirmation, and manual mapping fallback.
 
 ## Implementation Task Index
 
@@ -94,10 +96,10 @@ Acceptance checklist is defined in `CORE_2_ACCEPTANCE_CHECKLIST.md`. It covers d
 
 ## Known Risks
 
-- Ozon full catalog/listing endpoint is not approved in current docs; full Ozon listing sync remains blocked by `GAP-CORE2-002`.
-- ProductVariant auto-create requires customer decision, including how to represent imported/draft lifecycle and parent `InternalProduct` shell.
-- Snapshot filling is intentionally limited to approved source semantics; sales/buyout/return formulas remain out of scope.
-- Operation row enrichment scope affects UI/report behavior and must be approved before implementation.
+- Concrete added full catalog/listing endpoints still require official documentation evidence and mocks in the implementation task.
+- ProductVariant auto-create is approved only for valid fixed-format internal SKUs and must keep imported/draft review labeling distinct from manual confirmation.
+- Snapshot filling is intentionally limited to approved/available prices, stocks and promotions/actions; sales/buyout/return/demand/production/shipment formulas remain future scope.
+- Operation row enrichment must prove `product_ref` immutability by row-count plus checksum/hash evidence.
 
 ## Ready For Audit
 

@@ -1,6 +1,6 @@
 # CORE_2_READING_PACKAGES.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§13, §11.15.
 
@@ -19,6 +19,8 @@ Every CORE-2 package includes:
 - `docs/stages/stage-3-product-core/core-2/CORE_2_SCOPE.md`
 - concrete task section from `docs/stages/stage-3-product-core/core-2/CORE_2_AGENT_TASKS.md`
 
+`GAP-CORE2-001`..`GAP-CORE2-005` are retained in packages as resolved customer decisions with implementation constraints. Agents must follow the recorded decisions and must not treat the old open-gap wording from historical audit reports as current scope.
+
 ## TASK-PC2-001 Data Model And Migration
 
 Read:
@@ -31,7 +33,7 @@ Read:
 - `apps/operations/models.py`
 - `apps/product_core/models.py`
 
-GAP/ADR: ADR-0044, ADR-0045, GAP-CORE2-001, GAP-CORE2-003.
+GAP/ADR: ADR-0044, ADR-0045, GAP-CORE2-001 resolved decision, GAP-CORE2-003 resolved decision.
 
 ## TASK-PC2-002 Marketplace Listing Sync Integration
 
@@ -46,7 +48,7 @@ Read:
 - `docs/product/OZON_API_ELASTIC_BOOSTING_SPEC.md`
 - relevant Stage 2 API service files only.
 
-GAP/ADR: ADR-0042, ADR-0046, GAP-CORE2-002, GAP-CORE2-004.
+GAP/ADR: ADR-0042, ADR-0046, GAP-CORE2-002 resolved decision and endpoint evidence gate, GAP-CORE2-004 resolved decision.
 
 ## TASK-PC2-003 Normalized Article Linkage And Auto-Create
 
@@ -59,7 +61,7 @@ Read:
 - `docs/architecture/AUDIT_AND_TECHLOG_SPEC.md`
 - `apps/product_core/services.py`
 
-GAP/ADR: ADR-0043, ADR-0045, GAP-CORE2-001, GAP-CORE2-005.
+GAP/ADR: ADR-0043, ADR-0045, GAP-CORE2-001 resolved decision, GAP-CORE2-005 resolved decision.
 
 ## TASK-PC2-004 Operation Row FK Enrichment
 
@@ -71,7 +73,7 @@ Read:
 - `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_MIGRATION_PLAN.md`
 - relevant `apps/discounts/**` operation detail writer files found by `rg "OperationDetailRow|product_ref" apps/discounts apps/operations`.
 
-GAP/ADR: ADR-0044, GAP-CORE2-003.
+GAP/ADR: ADR-0044, GAP-CORE2-003 resolved decision.
 
 ## TASK-PC2-005 Snapshot Filling
 
@@ -84,7 +86,7 @@ Read:
 - `apps/product_core/models.py`
 - `apps/product_core/services.py`
 
-GAP/ADR: ADR-0046, GAP-CORE2-002, GAP-CORE2-004.
+GAP/ADR: ADR-0046, GAP-CORE2-002 resolved decision and endpoint evidence gate, GAP-CORE2-004 resolved decision.
 
 ## TASK-PC2-006 Product Core Exports And Excel Boundary
 
@@ -97,7 +99,7 @@ Read:
 - `apps/product_core/exports.py`
 - relevant web export views only.
 
-GAP/ADR: ADR-0042, ADR-0044, GAP-CORE2-005.
+GAP/ADR: ADR-0042, ADR-0044, GAP-CORE2-005 resolved decision.
 
 ## TASK-PC2-007 Product Core UI Integration
 

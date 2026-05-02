@@ -1,6 +1,6 @@
 # CORE_2_ARCHITECTURE.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§5-9, §11.2, §14.
 
@@ -38,8 +38,8 @@ OperationDetailRow.marketplace_listing_id
 
 | Entity | CORE-2 role | Boundary |
 | --- | --- | --- |
-| `InternalProduct` | Company-side product container | Not created by Excel; auto-create through API is blocked until `GAP-CORE2-001` decision. |
-| `ProductVariant` | Company-side sellable/internal variant; `internal_sku` is business key | Existing active/manual variants remain unchanged. Imported/draft lifecycle needs `GAP-CORE2-001` decision before implementation. |
+| `InternalProduct` | Company-side product container | Not created by Excel. Created by API/mapping only through the customer-approved imported/draft policy and audit/history. |
+| `ProductVariant` | Company-side sellable/internal variant; structured `internal_sku` is business key | Existing active/manual variants remain unchanged. Auto-created variants use explicit imported/draft review state. |
 | `MarketplaceListing` | External WB/Ozon listing in one store/account | External ids are technical source keys, not internal identity. |
 | `MarketplaceSyncRun` | Source/run context for listing/snapshot filling | One active sync per marketplace/store/sync type; failed sync does not erase latest cache. |
 | Snapshot tables | Immutable source records | Latest UI cache is derived from successful sync only. |
@@ -55,8 +55,11 @@ OperationDetailRow.marketplace_listing_id
 4. API adapter reads only approved endpoint/source.
 5. Adapter upserts MarketplaceListing by marketplace + store + external_primary_id.
 6. Adapter writes safe snapshots when source semantics are approved.
-7. Mapping service evaluates exact normalized article candidates.
-8. If customer-approved auto-create policy allows it, draft/imported variants may be created under strict rules.
+7. Mapping service evaluates the source through one approved mode:
+   - valid structured article from API -> exact auto-match/auto-create;
+   - external mapping table -> preview/diff/conflicts and explicit apply;
+   - manual mapping fallback.
+8. If the API article is valid `internal_sku` format and no variant exists, `InternalProduct` + `ProductVariant` are created as imported/draft and the listing is linked as `matched` with audit/history.
 9. Operation row enrichment writes nullable FK where deterministic and unique.
 10. UI/exports show only object-accessible listings, snapshots and operation links.
 ```
@@ -67,7 +70,7 @@ OperationDetailRow.marketplace_listing_id
 | --- | --- | --- | --- |
 | Internal product identity | `InternalProduct` / `ProductVariant` | Product Core UI/export | Marketplace fields do not overwrite internal identity. |
 | External listing identity | Marketplace API/source row, persisted in `MarketplaceListing` | Listing list/card | Unique by marketplace + store + external primary id. |
-| Company article | `ProductVariant.internal_sku` | `ProductIdentifier` as supplemental identifiers | `internal_sku` is business key, not marketplace technical key. |
+| Company article | `ProductVariant.internal_sku` | Fixed CORE-2 dictionary/validator; `ProductIdentifier` as supplemental identifiers | `internal_sku` is business key, not marketplace technical key. Editable dictionaries are future scope. |
 | Marketplace technical ids | `MarketplaceListing.external_primary_id` / `external_ids` | Operation details, snapshots | Used for deterministic lookup and source traceability. |
 | Historical operation row ref | `OperationDetailRow.product_ref` | Detail reports | Immutable raw value. |
 | Current latest values | Successful snapshot-derived `MarketplaceListing.last_values` | Listing UI/export | Not historical source of truth. |
@@ -81,6 +84,7 @@ OperationDetailRow.marketplace_listing_id
 - Stage 2.2 Ozon Elastic action selection, calculation, review, deactivate safety and upload behavior do not change.
 - CORE-2 may add object-access-aware links from operation rows to listings only when deterministic.
 - CORE-2 may create Product Core sync/snapshot operations, but does not reclassify old operations.
+- CORE-2 sync is read-side for marketplaces. Future promo_v2 marketplace card updates by API are allowed only as a separate audited capability, not as part of CORE-2.
 
 ## Future ERP Boundary
 
@@ -92,6 +96,6 @@ Future ERP modules must link to `ProductVariant`, not to WB/Ozon ids or Excel ro
 
 Implementation is prohibited until:
 
-- documentation audit result is `AUDIT PASS`;
-- affected GAP entries are resolved or the implementation task explicitly excludes the blocked slice;
+- updated post-audit documentation follow-up audit/recheck is accepted;
+- resolved GAP constraints and endpoint/artifact gates are satisfied for the implementation slice;
 - task-scoped implementation package names allowed files, prohibited changes, tests and audit criteria.

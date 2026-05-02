@@ -1,6 +1,6 @@
 # CORE_2_OPERATION_LINKING_SPEC.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§7.4, 7.9, §11.6.
 
@@ -53,9 +53,9 @@ Forbidden:
 
 ## Operation Scope
 
-`GAP-CORE2-003` remains open for final customer-approved operation type/step scope. Until resolved, future implementation tasks may only implement a slice explicitly approved by the orchestrator/auditor.
+Customer decision 2026-05-02 approves CORE-2 enrichment for new operations and old operation rows where deterministic safe match exists. Implementation may be chunked by task, but the scope is no longer blocked by a customer decision gap; every implemented family must be listed in the task handoff with row counts, skipped counts and conflict classes.
 
-Recommended safe scope for customer decision:
+Approved eligible scope:
 
 | Operation family | Recommended FK behavior |
 | --- | --- |
@@ -72,7 +72,7 @@ Recommended safe scope for customer decision:
 
 ## Old Rows
 
-Backfill for old rows is optional per approved task scope and must be:
+Backfill for old rows applies where deterministic safe match exists and must be:
 
 - idempotent;
 - chunked/bounded;
@@ -80,6 +80,7 @@ Backfill for old rows is optional per approved task scope and must be:
 - safe to re-run;
 - conflict-counting;
 - reversible by clearing FK;
+- covered by pre/post row-count plus checksum/hash over `(id, product_ref)` for rows that existed before enrichment;
 - covered by Stage 1/2 regression tests.
 
 Old rows that cannot be matched remain unchanged.
@@ -104,7 +105,8 @@ Conflict classes:
 - `store_marketplace_mismatch`;
 - `row_not_product_identifier`;
 - `secret_redaction_guard_failed`;
-- `source_scope_not_approved`.
+- `source_scope_not_approved`;
+- `api_data_integrity_duplicate`.
 
 Bulk/backfill conflicts are summarized in operation/sync summary and techlog without secrets. Row-level user messages must be human-readable and must not show raw stack traces.
 
@@ -126,5 +128,6 @@ Future implementation must cover:
 - product_ref immutability;
 - terminal operation immutability;
 - old row backfill idempotency;
+- old row pre/post `(id, product_ref)` row-count and checksum/hash evidence;
 - UI object access for links;
 - Stage 1/2 regression.

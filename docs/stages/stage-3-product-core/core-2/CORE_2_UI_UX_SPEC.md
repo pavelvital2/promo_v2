@@ -1,12 +1,14 @@
 # CORE_2_UI_UX_SPEC.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§7.7, 7.9, §11.10.
 
 ## Назначение
 
-Define UI behavior for CORE-2 functions only. This document does not authorize warehouse, production, suppliers, BOM, packaging, labels, machine vision or vendorCode/offer_id mass-edit UI.
+Define UI behavior for CORE-2 functions only. This document does not authorize warehouse, production, suppliers, BOM, packaging, labels, machine vision or CORE-2 marketplace card-field write UI.
+
+Marketplace card updates by API, including prices, action participation, card parameters, seller article/vendorCode/offer_id and other allowed fields, are future promo_v2 capability outside CORE-2.
 
 ## Navigation
 
@@ -19,7 +21,7 @@ CORE-2 extends existing Product Core screens:
   Сопоставление WB/Ozon
   Несопоставленные листинги
   Конфликты сопоставления
-  Импортированные/draft варианты (only if GAP-CORE2-001 resolved)
+  Импортированные/draft варианты
 
 Маркетплейсы
   WB
@@ -31,7 +33,9 @@ CORE-2 extends existing Product Core screens:
     Акции -> Эластичный бустинг
 ```
 
-Future entries for stock/production/suppliers/labels may remain hidden or disabled/planned only.
+Future entries for warehouse/production/suppliers/labels may remain hidden or disabled/planned only. Listing-level stock latest values may appear only as CORE-2 snapshot/cache data, not as a warehouse workflow.
+
+CORE-2 must not add a UI for editing the fixed internal SKU dictionary. Dictionary maintenance is docs/code-level in CORE-2; editable dictionaries are future scope.
 
 ## Listing Sync Status
 
@@ -48,8 +52,8 @@ Listing list/card shows:
 Actions:
 
 - run approved sync only if user has `marketplace_listing.sync` and store access;
-- disabled state if source is blocked by `GAP-CORE2-002`;
-- no button for unapproved endpoints.
+- disabled state if source lacks endpoint-specific official docs evidence/tests;
+- no button for endpoints outside approved read-only CORE-2 source policy.
 
 ## Linked / Unlinked Listings
 
@@ -67,9 +71,7 @@ Rows show linked internal product/variant only when visible. Hidden store data m
 
 ## Imported / Draft Variants
 
-This page is blocked by `GAP-CORE2-001`.
-
-If customer approves Option B, UI must show:
+UI must show:
 
 - article/internal SKU;
 - source marketplace/store;
@@ -81,6 +83,16 @@ If customer approves Option B, UI must show:
 
 No UI may label imported/draft variants as active confirmed products before review.
 
+## Invalid / Non-Unified External Articles
+
+When an API listing article is blank, invalid or not in valid internal SKU format, UI must show the listing without automatic `ProductVariant` creation. Allowed actions:
+
+- rerun/process via `visual_external` where that external normalization route is available;
+- upload mapping table, preview diff/conflicts and explicitly apply confirmed links;
+- manual mapping fallback.
+
+These actions must not imply fuzzy/title/image matching and must not modify WB/Ozon seller article fields in CORE-2.
+
 ## Mapping Review And Conflicts
 
 Review pages cover:
@@ -90,7 +102,9 @@ Review pages cover:
 - `conflict`;
 - duplicate exact article matches;
 - duplicate external id/listing candidates;
-- rows with blocked auto-create decision.
+- invalid/non-unified external articles;
+- mapping table preview conflicts;
+- API data integrity duplicate rows.
 
 UI must display exact basis only:
 
@@ -122,7 +136,7 @@ Listing card shows:
 - immutable snapshot history table behind snapshot view permission;
 - raw-safe details collapsed and technical-view gated.
 
-Unsupported snapshot types show no working empty module. If a type is foundation-only, UI may show "not filled in CORE-2" in technical/admin context, not as a user workflow.
+Future metric hooks for sales/buyouts/returns/demand/in-work/production/shipments show no working empty module. UI may show "not filled in CORE-2" in technical/admin context, not as a user workflow.
 
 ## Exports
 
@@ -140,13 +154,13 @@ Export controls must not appear for users who would receive an empty result only
 
 Messages must be human-readable and secret-safe:
 
-- source not approved for CORE-2;
+- source lacks CORE-2 approval/evidence;
 - connection not active;
 - rate limited;
 - schema changed/invalid response;
 - duplicate exact article candidate;
 - operation row cannot be linked safely;
-- snapshot source not approved;
+- snapshot source not approved/evidenced;
 - secret redaction guard blocked persistence.
 
 No raw API payload, header, token, Client-Id, Api-Key, stack trace or internal path is shown.
@@ -163,6 +177,6 @@ Do not add operational UI for:
 - packaging;
 - labels;
 - machine vision;
-- mass changing WB vendorCode or Ozon offer_id;
-- Excel import into Product Core unless separately approved;
+- changing WB/Ozon card fields in CORE-2, including seller article/vendorCode/offer_id;
+- Product Core import through existing Excel discount workflows; external mapping table is allowed only through CORE-2 preview/apply workflow;
 - confirmed auto-mapping by fuzzy/title/image logic.

@@ -1,6 +1,6 @@
 # CORE_2_TEST_PLAN.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§7.9, §11.12, §14-§15.
 
@@ -11,6 +11,7 @@ Define mandatory tests for CORE-2 implementation tasks and release validation.
 ## Unit Tests
 
 - normalized article exact comparison;
+- structured internal SKU validator for `nash`/`chev` patch/chevron examples and invalid formats;
 - blank/duplicate article behavior;
 - no fuzzy/title/image matching;
 - listing upsert idempotency by marketplace/store/external primary id;
@@ -28,7 +29,10 @@ Define mandatory tests for CORE-2 implementation tasks and release validation.
 - Ozon Elastic action product set -> listing/promotion snapshot;
 - Ozon product info/stocks -> stock snapshot for selected action set;
 - mapping candidate status from exact normalized article;
-- optional auto-create behavior only after `GAP-CORE2-001` decision;
+- API valid article auto-links existing active variant;
+- API valid article auto-creates imported/draft product/variant when absent;
+- invalid/non-unified article creates listing only;
+- external mapping table preview/diff/conflict/apply with explicit confirmation;
 - operation detail row link visible with permissions and hidden without access.
 
 ## Migration Tests
@@ -38,6 +42,7 @@ Define mandatory tests for CORE-2 implementation tasks and release validation.
 - FK backfill idempotent;
 - FK backfill conflict rows remain unchanged;
 - rollback/clear FK leaves `product_ref` intact;
+- pre/post row count plus checksum/hash over `(id, product_ref)` is preserved for old rows;
 - `MarketplaceProduct` row counts unchanged;
 - no pending model/migration drift after implementation.
 
@@ -56,11 +61,13 @@ Define mandatory tests for CORE-2 implementation tasks and release validation.
 - listing sync status and errors render safely;
 - unmatched/needs_review/conflict filters;
 - mapping review page shows exact candidate basis only;
-- imported/draft variants page exists only if approved;
+- imported/draft variants page labels review state correctly and does not show drafts as manually confirmed products;
+- invalid/non-unified listing actions show `visual_external`, mapping table and manual mapping where permitted;
+- mapping table preview shows diff/conflicts before apply;
 - operation detail row link behavior;
 - snapshot latest values and technical raw-safe collapse/gating;
 - future ERP blocks hidden or disabled/planned;
-- no mass vendorCode/offer_id change UI.
+- no CORE-2 marketplace card-field write UI, including vendorCode/offer_id changes.
 
 ## Export Tests
 
@@ -77,7 +84,9 @@ Define mandatory tests for CORE-2 implementation tasks and release validation.
 - WB rate-limit/backoff;
 - Ozon ADR-0034 read retry behavior;
 - Ozon schema mismatch;
-- no new/unapproved endpoint calls;
+- no endpoint calls without current docs/code approval or endpoint-specific official read-only evidence;
+- official-docs evidence and fixtures for any added read-only catalog/listing source;
+- impossible duplicate external article/data-integrity handling;
 - no write endpoints in sync tasks;
 - token/header redaction in request/response snapshots.
 
@@ -118,5 +127,5 @@ Each implementation task handoff must list:
 - fixtures/mocks used;
 - regression groups affected;
 - open defects;
-- open GAP/ADR references;
+- resolved GAP/ADR decision references and remaining implementation gates;
 - screenshots/browser smoke evidence for UI-facing tasks where required by auditor.

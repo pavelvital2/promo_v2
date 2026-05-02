@@ -1,6 +1,6 @@
 # CORE_2_DATA_FLOW.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§6-7, §11.3.
 
@@ -42,23 +42,23 @@ WB/Ozon API -> sync run -> listing -> variant/mapping -> snapshots -> operation 
 
 | Step | Contract |
 | --- | --- |
-| Input | Existing approved Ozon Elastic sources: `/v1/actions`, `/v1/actions/products`, `/v1/actions/candidates`, `/v3/product/info/list`, `/v4/product/info/stocks`. |
-| Processing | For the selected Elastic action product set only, upsert Ozon `MarketplaceListing` rows when product id/offer id/sku fields are available and deterministic. No full Ozon catalog/listing sync is designed without `GAP-CORE2-002` resolution. |
+| Input | Existing approved Ozon Elastic sources: `/v1/actions`, `/v1/actions/products`, `/v1/actions/candidates`, `/v3/product/info/list`, `/v4/product/info/stocks`, plus any endpoint-specific official read-only catalog/listing source approved for the implementation task. |
+| Processing | For the selected Elastic action product set, upsert Ozon `MarketplaceListing` rows when product id/offer id/sku fields are available and deterministic. A broader catalog/listing sync may be added only with official docs confirmation, pagination/rate-limit/retry/redaction rules and mock tests. |
 | Output | Ozon listings for selected action rows; `StockSnapshot` from product info/stocks; `PromotionSnapshot` from action participation; safe operation summary. |
 | Audit | Listing synced, snapshot writes and conflict markers as needed. |
-| Error handling | Schema mismatch or missing identifiers prevents listing upsert for that row and records safe warning. |
+| Error handling | Schema mismatch or missing identifiers prevents listing upsert for that row and records safe warning. Impossible duplicate external articles within the same marketplace/store are API data integrity errors: techlog, safe summary, no auto-link. |
 | Retry/partial failure | Ozon read retries follow ADR-0034. No new Ozon write endpoint is introduced. |
 | Secrets | Client-Id/Api-Key never appear in safe payloads, logs, snapshots or exports. |
 
-## Flow 4: Exact Normalized Article Linkage
+## Flow 4: Exact Normalized Article Linkage And Mapping Modes
 
 | Step | Contract |
 | --- | --- |
-| Input | `MarketplaceListing.seller_article` / WB `vendorCode` / Ozon `offer_id` that external normalization has already unified to company article. |
-| Processing | Compare exact trimmed value to `ProductVariant.internal_sku`. Do not case-fold, split, transliterate, strip hyphens or use title/image/barcode fuzziness. |
-| Output | Existing variant candidate, `needs_review`, `conflict`, or customer-approved draft/imported variant behavior. |
-| Audit | Mapping review/conflict markers and any approved auto-create event. |
-| Error handling | Blank, duplicate or ambiguous values remain unmatched/conflict. |
+| Input | `MarketplaceListing.seller_article` / WB `vendorCode` / Ozon `offer_id` that external normalization has already unified to company article, or an explicit mapping table row from the external tool. |
+| Processing | Supported modes: 1) valid structured API article -> exact match to `ProductVariant.internal_sku`; 2) mapping table -> preview/diff/conflicts and explicit user confirmation before applying links; 3) manual mapping fallback. Do not case-fold, split, transliterate, strip hyphens or use title/image/barcode fuzziness. |
+| Output | Existing active variant linked as `matched`; absent valid API article auto-creates imported/draft `InternalProduct` + `ProductVariant` and links as `matched`; invalid/non-unified article remains listing-only until `visual_external`, mapping table or manual mapping resolves it. |
+| Audit | Mapping review/conflict markers, auto-create event, mapping table preview/apply actions and `ProductMappingHistory`. |
+| Error handling | Blank, invalid format, duplicate or ambiguous values remain unmatched/conflict. Duplicate external articles within one marketplace/store are API data integrity errors and do not auto-link. |
 | Retry/partial failure | Deterministic and re-runnable. |
 | Secrets | Not applicable; source values are product identifiers and still subject to object access. |
 

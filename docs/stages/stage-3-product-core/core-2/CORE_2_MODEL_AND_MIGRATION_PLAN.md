@@ -1,6 +1,6 @@
 # CORE_2_MODEL_AND_MIGRATION_PLAN.md
 
-Статус: исполнительная проектная документация CORE-2, подготовлена для audit-gate.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§7.2-7.5, §11.4, §14-§15.
 
@@ -30,17 +30,22 @@ Rules:
 
 ### ProductVariant Imported/Draft Lifecycle
 
-`GAP-CORE2-001` blocks implementation of auto-created variants. If customer approves Option B, model design must add an explicit lifecycle that does not overload `ProductVariant.status=active/inactive/archived`.
+Customer decision 2026-05-02 approves imported/draft auto-create under strict CORE-2 rules. Model design must add an explicit lifecycle that does not overload `ProductVariant.status=active/inactive/archived`.
 
-Recommended implementation shape after decision:
+Required implementation shape:
 
 - add a field such as `ProductVariant.review_state` or equivalent fixed dictionary;
 - allowed minimum states: `manual_confirmed`, `imported_draft`, `needs_review`;
 - keep existing `status` for active/inactive/archive lifecycle;
 - add safe source context for API auto-create basis;
-- define how the required parent `InternalProduct` shell is created or selected.
+- create/select the required parent `InternalProduct` shell when a valid API article or explicitly confirmed mapping-table row has no existing variant;
+- write `ProductMappingHistory` and audit for auto-created imported/draft variants and links.
 
-Until `GAP-CORE2-001` is resolved, implementation tasks must not auto-create `InternalProduct` or `ProductVariant`.
+Auto-created variants are not manually confirmed business products until review, even when their listing mapping status is `matched`.
+
+### Internal SKU Dictionary
+
+CORE-2 must validate `ProductVariant.internal_sku` against the fixed structured patch/chevron dictionary from `CORE_2_MAPPING_RULES_SPEC.md`. The dictionary is fixed in docs/code for CORE-2. User-editable SKU dictionaries and UI management of these dictionaries are future scope.
 
 ### Normalized Article Comparison
 
@@ -58,7 +63,7 @@ Forbidden transformations:
 - partial matching;
 - title/image/barcode fuzzy matching.
 
-If implementation adds a persisted normalized cache later, it must use the same exact rule and include migration validation.
+Automatic API matching is allowed only after the source article passes the internal SKU format validator. If implementation adds a persisted normalized cache later, it must use the same exact rule and include migration validation.
 
 ## Data Migration / Backfill
 
@@ -82,7 +87,9 @@ Listing upsert is idempotent by:
 marketplace + store + external_primary_id
 ```
 
-For rows without a stable external primary id, implementation must not create a listing unless an approved source-specific fallback is documented in `CORE_2_API_SYNC_SPEC.md` or `GAP-CORE2-002` is resolved.
+For rows without a stable external primary id, implementation must not create a listing unless an approved source-specific fallback is documented in `CORE_2_API_SYNC_SPEC.md` with official endpoint evidence and tests.
+
+If the API returns duplicate external article values within the same marketplace/store, the affected source rows are data-integrity errors. Listing upsert may still persist non-conflicting listing identity, but auto-link and auto-create are skipped for the duplicate group and a techlog/safe summary entry is required.
 
 ## Backup
 
@@ -157,5 +164,6 @@ Prohibited:
 - rewriting old `OperationDetailRow.product_ref`;
 - changing reason/result code catalogs as a side effect;
 - converting Excel operations into Product Core import operations;
-- adding new WB/Ozon endpoints without source/GAP resolution;
+- adding WB/Ozon read endpoints without endpoint-specific official docs evidence and tests;
+- adding WB/Ozon write endpoints or card-field updates in CORE-2;
 - storing secrets in model JSON fields, snapshots, audit, techlog, files or exports.

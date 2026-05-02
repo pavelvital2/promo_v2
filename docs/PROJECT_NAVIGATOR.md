@@ -77,7 +77,7 @@
 | Stage 2.1 | реализован | WB API prices/promotions/discount upload |
 | Stage 2.2 | реализован / покрыт regression | Ozon Elastic Boosting API |
 | Stage 3.0 / CORE-1 | реализован / принят | Product Core Foundation |
-| Следующий этап | требует отдельного ТЗ | перевод операций на Product Core, склад/производство позже |
+| Stage 3 / CORE-2 | проектная документация audit/recheck PASS, post-audit decisions integrated | перевод операций на Product Core; склад/производство позже |
 
 ## 8. Роли и чтение
 

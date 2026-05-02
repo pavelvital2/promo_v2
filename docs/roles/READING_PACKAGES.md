@@ -259,7 +259,7 @@
 - `docs/gaps/GAP_REGISTER.md`
 - `docs/adr/ADR_LOG.md`
 
-ТЗ: only task source sections listed in the CORE-2 task package. Do not read the full final TZ by default. Implementation is prohibited until CORE-2 documentation audit has `AUDIT PASS`. `GAP-CORE2-001`..`GAP-CORE2-005` block affected implementation slices until decisions are recorded; UX/functionality and spec-blocking gaps go through orchestrator to customer.
+ТЗ: only task source sections listed in the CORE-2 task package. Do not read the full final TZ by default. CORE-2 documentation audit/recheck passed on 2026-05-02, and `GAP-CORE2-001`..`GAP-CORE2-005` are resolved customer decisions with implementation constraints. Implementation is still prohibited until the updated post-audit design docs pass follow-up audit/recheck and a separate task-scoped implementation assignment is issued; UX/functionality and spec-blocking gaps go through orchestrator to customer.
 
 ## Аудитор Product Core CORE-2
 
