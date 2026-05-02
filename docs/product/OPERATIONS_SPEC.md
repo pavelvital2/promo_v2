@@ -269,3 +269,4 @@ Rules:
 - Completed sync/import/export operations and output files are immutable.
 - Existing Excel scenarios do not require internal product or confirmed mapping.
 - Excel import into product core/listings is prohibited unless it is the explicit `marketplace_listing_mapping_import_excel` or a future audited import step with diff, confirmation and audit.
+- Existing legacy `MarketplaceProduct` compatibility sync may mirror operation `product_ref` values into unmatched `MarketplaceListing` compatibility records; this mirror is not an Excel import workflow and does not create internal products/variants or confirmed mappings.

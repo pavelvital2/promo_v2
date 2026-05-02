@@ -132,6 +132,39 @@ class TechLogEventType(models.TextChoices):
         "ozon_api_secret_redaction_violation",
         "Ozon API secret redaction violation",
     )
+    MARKETPLACE_SYNC_STARTED = "marketplace_sync.started", "Marketplace sync started"
+    MARKETPLACE_SYNC_COMPLETED = "marketplace_sync.completed", "Marketplace sync completed"
+    MARKETPLACE_SYNC_COMPLETED_WITH_WARNINGS = (
+        "marketplace_sync.completed_with_warnings",
+        "Marketplace sync completed with warnings",
+    )
+    MARKETPLACE_SYNC_FAILED = "marketplace_sync.failed", "Marketplace sync failed"
+    MARKETPLACE_SYNC_PARTIAL_RESPONSE = (
+        "marketplace_sync.partial_response",
+        "Marketplace sync partial response",
+    )
+    MARKETPLACE_SYNC_RATE_LIMITED = "marketplace_sync.rate_limited", "Marketplace sync rate limited"
+    MARKETPLACE_SYNC_TIMEOUT = "marketplace_sync.timeout", "Marketplace sync timeout"
+    MARKETPLACE_SYNC_RESPONSE_INVALID = (
+        "marketplace_sync.response_invalid",
+        "Marketplace sync response invalid",
+    )
+    MARKETPLACE_SYNC_SECRET_REDACTION_VIOLATION = (
+        "marketplace_sync.secret_redaction_violation",
+        "Marketplace sync secret redaction violation",
+    )
+    PRODUCT_CORE_MIGRATION_STARTED = (
+        "product_core.migration.started",
+        "Product Core migration started",
+    )
+    PRODUCT_CORE_MIGRATION_COMPLETED = (
+        "product_core.migration.completed",
+        "Product Core migration completed",
+    )
+    PRODUCT_CORE_MIGRATION_FAILED = (
+        "product_core.migration.failed",
+        "Product Core migration failed",
+    )
 
 
 TECHLOG_EVENT_SEVERITY_BASELINE = {
@@ -169,6 +202,18 @@ TECHLOG_EVENT_SEVERITY_BASELINE = {
     TechLogEventType.OZON_API_ELASTIC_UPLOAD_FAILED: TechLogSeverity.ERROR,
     TechLogEventType.OZON_API_ELASTIC_UPLOAD_PARTIAL_ERRORS: TechLogSeverity.WARNING,
     TechLogEventType.OZON_API_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
+    TechLogEventType.MARKETPLACE_SYNC_STARTED: TechLogSeverity.INFO,
+    TechLogEventType.MARKETPLACE_SYNC_COMPLETED: TechLogSeverity.INFO,
+    TechLogEventType.MARKETPLACE_SYNC_COMPLETED_WITH_WARNINGS: TechLogSeverity.WARNING,
+    TechLogEventType.MARKETPLACE_SYNC_FAILED: TechLogSeverity.ERROR,
+    TechLogEventType.MARKETPLACE_SYNC_PARTIAL_RESPONSE: TechLogSeverity.WARNING,
+    TechLogEventType.MARKETPLACE_SYNC_RATE_LIMITED: TechLogSeverity.WARNING,
+    TechLogEventType.MARKETPLACE_SYNC_TIMEOUT: TechLogSeverity.WARNING,
+    TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID: TechLogSeverity.ERROR,
+    TechLogEventType.MARKETPLACE_SYNC_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
+    TechLogEventType.PRODUCT_CORE_MIGRATION_STARTED: TechLogSeverity.INFO,
+    TechLogEventType.PRODUCT_CORE_MIGRATION_COMPLETED: TechLogSeverity.INFO,
+    TechLogEventType.PRODUCT_CORE_MIGRATION_FAILED: TechLogSeverity.CRITICAL,
 }
 
 

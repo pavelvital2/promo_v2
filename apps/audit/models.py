@@ -187,6 +187,32 @@ class AuditActionCode(models.TextChoices):
         "ozon_api_elastic_upload_failed",
         "Ozon API Elastic upload failed",
     )
+    PRODUCT_CORE_CREATED = "product_core.created", "Product Core product created"
+    PRODUCT_CORE_UPDATED = "product_core.updated", "Product Core product updated"
+    PRODUCT_CORE_ARCHIVED = "product_core.archived", "Product Core product archived"
+    PRODUCT_VARIANT_CREATED = "product_variant.created", "Product variant created"
+    PRODUCT_VARIANT_UPDATED = "product_variant.updated", "Product variant updated"
+    PRODUCT_VARIANT_ARCHIVED = "product_variant.archived", "Product variant archived"
+    MARKETPLACE_LISTING_SYNCED = "marketplace_listing.synced", "Marketplace listing synced"
+    MARKETPLACE_LISTING_STATUS_CHANGED = (
+        "marketplace_listing.status_changed",
+        "Marketplace listing status changed",
+    )
+    MARKETPLACE_LISTING_MAPPED = "marketplace_listing.mapped", "Marketplace listing mapped"
+    MARKETPLACE_LISTING_UNMAPPED = "marketplace_listing.unmapped", "Marketplace listing unmapped"
+    MARKETPLACE_LISTING_MAPPING_REVIEW_MARKED = (
+        "marketplace_listing.mapping_review_marked",
+        "Marketplace listing mapping review marked",
+    )
+    MARKETPLACE_LISTING_MAPPING_CONFLICT_MARKED = (
+        "marketplace_listing.mapping_conflict_marked",
+        "Marketplace listing mapping conflict marked",
+    )
+    MARKETPLACE_LISTING_EXPORTED = "marketplace_listing.exported", "Marketplace listing exported"
+    MARKETPLACE_LISTING_IMPORT_FROM_EXCEL_CONFIRMED = (
+        "marketplace_listing.import_from_excel_confirmed",
+        "Marketplace listing import from Excel confirmed",
+    )
 
 
 class AuditSourceContext(models.TextChoices):

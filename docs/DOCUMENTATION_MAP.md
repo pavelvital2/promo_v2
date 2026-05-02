@@ -111,8 +111,11 @@
 | `docs/tasks/implementation/stage-3-product-core/TASK-PC-001..TASK-PC-010` | Task-scoped implementation tasks CORE-1 |
 | `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md` | Test protocol Stage 3.0 |
 | `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 3.0 |
+| `docs/testing/TEST_REPORT_TASK_PC_009_STAGE_3_ACCEPTANCE.md` | Accepted TASK-PC-009 test and regression evidence for implemented Stage 3.0 |
 | `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 3.0 |
 | `docs/audit/HANDOFF_STAGE_3_PRODUCT_CORE_DOCUMENTATION_TO_AUDITOR.md` | Handoff package for documentation audit |
+| `docs/audit/AUDIT_REPORT_TASK_PC_001_DATA_MODEL.md` .. `docs/audit/AUDIT_REPORT_TASK_PC_009_TESTS_ACCEPTANCE.md` | Implementation/test audit reports for TASK-PC-001..009 |
+| `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` | TASK-PC-010 documentation/runbook closeout report |
 
 ## Control Documents
 
@@ -124,7 +127,7 @@
 | `docs/testing/` | `docs/testing/TEST_PROTOCOL.md`, `docs/testing/ACCEPTANCE_CHECKLISTS.md`, `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md`, `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` |
 | `docs/operations/` | `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` |
 | `docs/traceability/` | `docs/traceability/TRACEABILITY_MATRIX.md`, `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` |
-| `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md` |
+| `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md`, `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` |
 
 ## Navigation Rules
 

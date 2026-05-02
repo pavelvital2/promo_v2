@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Листинг {{ listing.external_primary_id }}{% endblock %}
+{% block content %}
+<h1>{{ listing.get_marketplace_display }} · {{ listing.external_primary_id }}</h1>
+
+<div class="toolbar">
+  <a class="button" href="{% url 'web:marketplace_listing_list' %}">К листингам</a>
+  <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
+  {% if listing.internal_variant %}
+    <a class="button" href="{% url 'web:internal_product_card' listing.internal_variant.product_id %}">Внутренний товар</a>
+  {% endif %}
+  {% if can_map or can_unmap %}
+    <a class="button primary" href="{% url 'web:marketplace_listing_mapping' listing.pk %}">Сопоставление</a>
+  {% endif %}
+</div>
+
+<div class="grid two">
+  <section class="panel">
+    <h2>Marketplace data</h2>
+    <div class="kv">
+      <strong>Маркетплейс</strong><span>{{ listing.get_marketplace_display }}</span>
+      <strong>Магазин</strong><span>{{ listing.store.visible_id }} {{ listing.store.name }}</span>
+      <strong>External primary ID</strong><span>{{ listing.external_primary_id }}</span>
+      <strong>Артикул</strong><span>{{ listing.seller_article|default:"-" }}</span>
+      <strong>Barcode</strong><span>{{ listing.barcode|default:"-" }}</span>
+      <strong>Название</strong><span>{{ listing.title|default:"-" }}</span>
+      <strong>Бренд</strong><span>{{ listing.brand|default:"-" }}</span>
+      <strong>Категория</strong><span>{{ listing.category_name|default:"-" }}</span>
+      <strong>Статус</strong><span><span class="badge">{{ listing.get_listing_status_display }}</span></span>
+      <strong>Сопоставление</strong><span><span class="badge">{{ listing.get_mapping_status_display }}</span></span>
+      <strong>Первое обнаружение</strong><span>{{ listing.first_seen_at|default:"-" }}</span>
+      <strong>Последнее обнаружение</strong><span>{{ listing.last_seen_at|default:"-" }}</span>
+      <strong>Последний успешный sync</strong><span>{{ listing.last_successful_sync_at|default:"-" }}</span>
+      <strong>Источник</strong><span>{{ listing.get_last_source_display }}</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Связанный вариант</h2>
+    {% if listing.internal_variant %}
+      <div class="kv">
+        <strong>Товар</strong><span><a href="{% url 'web:internal_product_card' listing.internal_variant.product_id %}">{{ listing.internal_variant.product.internal_code }} {{ listing.internal_variant.product.name }}</a></span>
+        <strong>SKU</strong><span>{{ listing.internal_variant.internal_sku|default:"-" }}</span>
+        <strong>Название варианта</strong><span>{{ listing.internal_variant.name }}</span>
+        <strong>Barcode</strong><span>{{ listing.internal_variant.barcode_internal|default:"-" }}</span>
+      </div>
+    {% else %}
+      <p class="empty">Листинг не сопоставлен с внутренним вариантом.</p>
+    {% endif %}
+    {% if can_map or can_unmap %}
+      <p><a href="{% url 'web:marketplace_listing_mapping' listing.pk %}">Открыть workflow сопоставления</a></p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>External identifiers</h2>
+  <div class="pre">{{ external_ids }}</div>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Latest snapshots summary</h2>
+  {% if can_view_snapshots %}
+  <div class="grid four">
+    <div>
+      <h3>Цена</h3>
+      {% if latest_price %}
+        <p>{{ latest_price.price }} {{ latest_price.currency }}{% if latest_price.price_with_discount %} / {{ latest_price.price_with_discount }}{% endif %}</p>
+        <p class="status">{{ latest_price.snapshot_at }}</p>
+      {% else %}<p class="empty">Нет доступных price snapshots.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Остаток</h3>
+      {% if latest_stock %}
+        <p>{{ latest_stock.total_stock|default:"-" }}</p>
+        <p class="status">{{ latest_stock.snapshot_at }}</p>
+      {% else %}<p class="empty">Нет доступных stock snapshots.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Продажи / заказы</h3>
+      {% if latest_sales %}
+        <p>orders {{ latest_sales.orders_qty|default:"-" }} / sales {{ latest_sales.sales_qty|default:"-" }}</p>
+        <p class="status">{{ latest_sales.period_start }} - {{ latest_sales.period_end }}</p>
+      {% else %}<p class="empty">Нет доступных sales snapshots.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Акции</h3>
+      {% if latest_promotion %}
+        <p>{{ latest_promotion.marketplace_promotion_id }} {{ latest_promotion.participation_status }}</p>
+        <p class="status">{{ latest_promotion.created_at }}</p>
+      {% else %}<p class="empty">Нет доступных promotion snapshots.</p>{% endif %}
+    </div>
+  </div>
+  <h3>Last values cache</h3>
+  <div class="pre">{{ last_values }}</div>
+  {% else %}
+    <p class="empty">Нет права на просмотр snapshots.</p>
+  {% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Price snapshots</h2>
+  <table>
+    <thead><tr><th>Время</th><th>Цена</th><th>Цена со скидкой</th><th>Скидка</th><th>Источник</th><th>Raw-safe</th></tr></thead>
+    <tbody>
+      {% for row in price_rows %}
+        <tr>
+          <td>{{ row.snapshot.snapshot_at }}</td>
+          <td>{{ row.snapshot.price }} {{ row.snapshot.currency }}</td>
+          <td>{{ row.snapshot.price_with_discount|default:"-" }}</td>
+          <td>{{ row.snapshot.discount_percent|default:"-" }}</td>
+          <td>{{ row.snapshot.source_endpoint|default:"-" }}</td>
+          <td>{% if row.can_view_technical %}<details><summary>Показать</summary><div class="pre">{{ row.raw_safe }}</div></details>{% else %}<span class="status">Скрыто</span>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="6" class="empty">Нет доступных price snapshots.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Stock snapshots</h2>
+  <table>
+    <thead><tr><th>Время</th><th>Всего</th><th>В пути к клиенту</th><th>В пути от клиента</th><th>Источник</th><th>Raw-safe</th></tr></thead>
+    <tbody>
+      {% for row in stock_rows %}
+        <tr>
+          <td>{{ row.snapshot.snapshot_at }}</td>
+          <td>{{ row.snapshot.total_stock|default:"-" }}</td>
+          <td>{{ row.snapshot.in_way_to_client|default:"-" }}</td>
+          <td>{{ row.snapshot.in_way_from_client|default:"-" }}</td>
+          <td>{{ row.snapshot.source_endpoint|default:"-" }}</td>
+          <td>{% if row.can_view_technical %}<details><summary>Показать</summary><div class="pre">{{ row.raw_safe }}</div></details>{% else %}<span class="status">Скрыто</span>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="6" class="empty">Нет доступных stock snapshots.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Sales / orders period snapshots</h2>
+  <table>
+    <thead><tr><th>Период</th><th>Orders</th><th>Sales</th><th>Buyout</th><th>Returns</th><th>Amount</th><th>Raw-safe</th></tr></thead>
+    <tbody>
+      {% for row in sales_rows %}
+        <tr>
+          <td>{{ row.snapshot.period_start }} - {{ row.snapshot.period_end }}</td>
+          <td>{{ row.snapshot.orders_qty|default:"-" }}</td>
+          <td>{{ row.snapshot.sales_qty|default:"-" }}</td>
+          <td>{{ row.snapshot.buyout_qty|default:"-" }}</td>
+          <td>{{ row.snapshot.returns_qty|default:"-" }}</td>
+          <td>{{ row.snapshot.sales_amount|default:"-" }} {{ row.snapshot.currency }}</td>
+          <td>{% if row.can_view_technical %}<details><summary>Показать</summary><div class="pre">{{ row.raw_safe }}</div></details>{% else %}<span class="status">Скрыто</span>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="7" class="empty">Нет доступных sales snapshots.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Promotion snapshots</h2>
+  <table>
+    <thead><tr><th>Promotion ID</th><th>Название</th><th>Статус участия</th><th>Цена акции</th><th>Reason</th><th>Raw-safe</th></tr></thead>
+    <tbody>
+      {% for row in promotion_rows %}
+        <tr>
+          <td>{{ row.snapshot.marketplace_promotion_id }}</td>
+          <td>{{ row.snapshot.action_name|default:"-" }}</td>
+          <td>{{ row.snapshot.participation_status }}</td>
+          <td>{{ row.snapshot.action_price|default:"-" }}</td>
+          <td>{{ row.snapshot.reason_code|default:"-" }}</td>
+          <td>{% if row.can_view_technical %}<details><summary>Показать</summary><div class="pre">{{ row.raw_safe }}</div></details>{% else %}<span class="status">Скрыто</span>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="6" class="empty">Нет доступных promotion snapshots.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<div class="grid two" style="margin-top:16px">
+  <section class="panel">
+    <h2>Listing history</h2>
+    <table>
+      <thead><tr><th>Время</th><th>Тип</th><th>Поля</th><th>Источник</th></tr></thead>
+      <tbody>
+        {% for item in listing_history %}
+          <tr><td>{{ item.changed_at }}</td><td>{{ item.get_change_type_display }}</td><td>{{ item.changed_fields|default:"-" }}</td><td>{{ item.get_source_display }}</td></tr>
+        {% empty %}<tr><td colspan="4" class="empty">Истории листинга пока нет.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Mapping history</h2>
+    <table>
+      <thead><tr><th>Время</th><th>Действие</th><th>Статус</th><th>Новый вариант</th></tr></thead>
+      <tbody>
+        {% for item in mapping_history %}
+          <tr><td>{{ item.changed_at }}</td><td>{{ item.get_action_display }}</td><td>{{ item.get_mapping_status_after_display }}</td><td>{{ item.new_variant.internal_sku|default:"-" }}</td></tr>
+        {% empty %}<tr><td colspan="4" class="empty">Истории сопоставления пока нет.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div class="grid two" style="margin-top:16px">
+  <section class="panel">
+    <h2>Related operations</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Классификатор</th><th>Статус</th><th>Дата</th></tr></thead>
+      <tbody>
+        {% for operation in related_operations %}
+          <tr>
+            <td><a href="{% url 'web:operation_card' operation.visible_id %}">{{ operation.visible_id }}</a></td>
+            <td>{{ operation.classifier_label }}</td>
+            <td>{{ operation.status }}</td>
+            <td>{{ operation.created_at }}</td>
+          </tr>
+        {% empty %}<tr><td colspan="4" class="empty">Нет доступных связанных операций.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Related files</h2>
+    <table>
+      <thead><tr><th>Файл</th><th>Тип</th><th>Операция</th><th></th></tr></thead>
+      <tbody>
+        {% for item in related_file_links %}
+          <tr>
+            <td>{{ item.link.file_version.file.visible_id }} v{{ item.link.file_version.version_no }} {{ item.link.file_version.original_name }}</td>
+            <td>{{ item.kind }}</td>
+            <td>{{ item.operation.visible_id }}</td>
+            <td><a href="{% url 'web:download_file' item.link.file_version.pk %}">Скачать</a></td>
+          </tr>
+        {% empty %}<tr><td colspan="4" class="empty">Нет доступных связанных файлов.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

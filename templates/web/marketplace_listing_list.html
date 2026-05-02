@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="toolbar">
+  <a class="button" href="{% url 'web:internal_product_list' %}">Внутренние товары</a>
+  <a class="button" href="{% url 'web:marketplace_listing_list' %}">Все листинги</a>
+  <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
+  {% if can_export_any %}
+    {% if is_unmatched %}
+      <a class="button" href="{% url 'web:unmatched_listing_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Экспорт несопоставленных CSV</a>
+    {% else %}
+      <a class="button" href="{% url 'web:marketplace_listing_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Экспорт листингов CSV</a>
+    {% endif %}
+    <a class="button" href="{% url 'web:listing_latest_values_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Последние значения CSV</a>
+    <a class="button" href="{% url 'web:listing_mapping_report_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Отчёт сопоставлений CSV</a>
+  {% endif %}
+  {% if can_sync_any %}<span class="badge">Sync: отдельный workflow</span>{% endif %}
+  {% if can_map_any %}<span class="badge">Сопоставление: TASK-PC-006</span>{% endif %}
+</div>
+
+<form method="get" class="toolbar panel">
+  <label>Поиск {{ form.q }}</label>
+  <label>Маркетплейс {{ form.marketplace }}</label>
+  <label>Магазин {{ form.store }}</label>
+  <label>Статус листинга {{ form.listing_status }}</label>
+  <label>Статус сопоставления {{ form.mapping_status }}</label>
+  <label>Категория {{ form.category }}</label>
+  <label>Бренд {{ form.brand }}</label>
+  <label>Остаток {{ form.stock }}</label>
+  <label>Обновлено с {{ form.updated_from }}</label>
+  <label>Обновлено по {{ form.updated_to }}</label>
+  <button class="primary">Применить</button>
+</form>
+
+<section class="panel">
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Маркетплейс</th>
+          <th>Магазин</th>
+          <th>External ID</th>
+          <th>Артикул</th>
+          <th>Barcode</th>
+          <th>Название</th>
+          <th>Бренд</th>
+          <th>Категория</th>
+          <th>Статус</th>
+          <th>Сопоставление</th>
+          <th>Вариант</th>
+          <th>Цена</th>
+          <th>Остаток</th>
+          <th>Последний sync</th>
+          <th>Источник</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for listing in page.object_list %}
+          <tr>
+            <td>{{ listing.get_marketplace_display }}</td>
+            <td>{{ listing.store.visible_id }} {{ listing.store.name }}</td>
+            <td><a href="{% url 'web:marketplace_listing_card' listing.pk %}">{{ listing.external_primary_id }}</a></td>
+            <td>{{ listing.seller_article|default:"-" }}</td>
+            <td>{{ listing.barcode|default:"-" }}</td>
+            <td>{{ listing.title|default:"-" }}</td>
+            <td>{{ listing.brand|default:"-" }}</td>
+            <td>{{ listing.category_name|default:"-" }}</td>
+            <td><span class="badge">{{ listing.get_listing_status_display }}</span></td>
+            <td><span class="badge">{{ listing.get_mapping_status_display }}</span></td>
+            <td>
+              {% if listing.internal_variant %}
+                <a href="{% url 'web:internal_product_card' listing.internal_variant.product_id %}">{{ listing.internal_variant.internal_sku|default:listing.internal_variant.name }}</a>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>
+              {% if not listing.can_view_snapshot_summary %}
+                -
+              {% elif listing.last_values.price_with_discount %}
+                {{ listing.last_values.price_with_discount }} {{ listing.last_values.currency|default:"" }}
+              {% elif listing.last_values.price %}
+                {{ listing.last_values.price }} {{ listing.last_values.currency|default:"" }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>{% if listing.can_view_snapshot_summary %}{{ listing.last_values.total_stock|default:"-" }}{% else %}-{% endif %}</td>
+            <td>{{ listing.last_successful_sync_at|default:"-" }}</td>
+            <td>{{ listing.get_last_source_display }}</td>
+            <td>
+              {% if listing.can_open_mapping_workflow %}
+                <a href="{% url 'web:marketplace_listing_mapping' listing.pk %}">Сопоставить</a>
+              {% else %}
+                <a href="{% url 'web:marketplace_listing_card' listing.pk %}">Открыть</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="16" class="empty">Нет листингов в доступном контуре.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "web/_pagination.html" %}
+</section>
+{% endblock %}

@@ -3,7 +3,7 @@
 ID: TASK-PC-008  
 Тип задачи: реализация Stage 3.0 / Excel export boundary  
 Агент: разработчик Codex CLI  
-Цель: implement Product Core exports and enforce that Excel does not auto-create product core/listings.
+Цель: implement Product Core exports and enforce that Excel does not auto-create internal products/variants or confirmed mappings/history; legacy compatibility sync may mirror operation refs into unmatched listing records.
 
 ## Источник Истины
 
@@ -68,4 +68,3 @@ Report export formats, access behavior, tests, changed files and gaps.
 Нужен аудит: да.  
 Нужны тесты: да.  
 Нужен техрайтер: нет.
-

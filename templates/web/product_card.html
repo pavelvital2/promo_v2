@@ -1,46 +1,129 @@
 {% extends "base.html" %}
-{% block title %}Товар {{ product.sku }}{% endblock %}
+{% block title %}Внутренний товар {{ product.internal_code }}{% endblock %}
 {% block content %}
-<h1>{{ product.sku }}</h1>
+<h1>{{ product.internal_code }} · {{ product.name }}</h1>
+
+<div class="toolbar">
+  <a class="button" href="{% url 'web:internal_product_list' %}">К списку</a>
+  {% if can_update_product %}
+    <a class="button primary" href="{% url 'web:internal_product_update' product.pk %}">Изменить</a>
+  {% endif %}
+  {% if can_archive_product %}
+    <form method="post" action="{% url 'web:internal_product_archive' product.pk %}">
+      {% csrf_token %}
+      <button>Архивировать</button>
+    </form>
+  {% endif %}
+  {% if can_create_variant %}
+    <a class="button" href="{% url 'web:internal_variant_create' product.pk %}">Добавить вариант</a>
+  {% endif %}
+</div>
+
 <section class="panel">
+  <h2>Основные данные</h2>
   <div class="kv">
-    <strong>Маркетплейс</strong><span>{{ product.marketplace }}</span>
-    <strong>Магазин</strong><span>{{ product.store.visible_id }} {{ product.store.name }}</span>
-    <strong>Title</strong><span>{{ product.title|default:"-" }}</span>
-    <strong>Barcode</strong><span>{{ product.barcode|default:"-" }}</span>
-    <strong>Status</strong><span>{{ product.status }}</span>
-    <strong>First / last</strong><span>{{ product.first_detected_at }} / {{ product.last_seen_at }}</span>
+    <strong>Внутренний код</strong><span>{{ product.internal_code }}</span>
+    <strong>Название</strong><span>{{ product.name }}</span>
+    <strong>Тип</strong><span>{{ product.get_product_type_display }}</span>
+    <strong>Категория</strong><span>{{ product.category.name|default:"-" }}</span>
+    <strong>Статус</strong><span><span class="badge">{{ product.get_status_display }}</span></span>
+    <strong>Обновлено</strong><span>{{ product.updated_at }}</span>
+    <strong>Комментарии</strong><span>{{ product.comments|default:"-" }}</span>
   </div>
-  <h2>External ids</h2>
-  <div class="pre">{{ product.external_ids }}</div>
-  <h2>Last values</h2>
-  <div class="pre">{{ product.last_values }}</div>
+  <h2>Attributes</h2>
+  <div class="pre">{{ product.attributes }}</div>
 </section>
+
 <div class="grid two" style="margin-top:16px">
   <section class="panel">
-    <h2>Связанные операции</h2>
-    {% include "web/_operation_table.html" with operations=operations %}
+    <h2>Видимые связи с маркетплейсами</h2>
+    <div class="compact-kv">
+      <dt>WB</dt><dd>{{ visible_wb_listing_count }}</dd>
+      <dt>Ozon</dt><dd>{{ visible_ozon_listing_count }}</dd>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Маркетплейс</th><th>Магазин</th><th>ID</th><th>Артикул</th><th>Статус</th><th>Вариант</th></tr></thead>
+        <tbody>
+          {% for listing in visible_listings %}
+            <tr>
+              <td>{{ listing.get_marketplace_display }}</td>
+              <td>{{ listing.store.visible_id }} {{ listing.store.name }}</td>
+              <td><a href="{% url 'web:marketplace_listing_card' listing.pk %}">{{ listing.external_primary_id }}</a></td>
+              <td>{{ listing.seller_article|default:"-" }}</td>
+              <td>{{ listing.get_mapping_status_display }} / {{ listing.get_listing_status_display }}</td>
+              <td>{{ listing.internal_variant.internal_sku|default:listing.internal_variant.name }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="empty">Нет видимых связанных листингов.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
+
   <section class="panel">
-    <h2>Связанные файлы</h2>
-    <table><thead><tr><th>Файл</th><th>Версия</th><th>Статус</th></tr></thead><tbody>
-      {% for version in files %}
-        <tr><td>{{ version.file.visible_id }} {{ version.original_name }}</td><td>v{{ version.version_no }}</td><td>{{ version.physical_status }}</td></tr>
-      {% empty %}<tr><td colspan="3" class="empty">Нет связанных файлов.</td></tr>{% endfor %}
-    </tbody></table>
+    <h2>Планируемые блоки</h2>
+    <p class="status">Склад, производство, поставщики, BOM, упаковка и этикетки не реализованы в CORE-1.</p>
   </section>
 </div>
+
 <section class="panel" style="margin-top:16px">
-  <h2>История появления/обновления</h2>
-  <table><thead><tr><th>Время</th><th>Тип</th><th>Operation</th><th>File</th><th>Fields</th></tr></thead><tbody>
-    {% for item in history %}
-      <tr>
-        <td>{{ item.detected_at }}</td><td>{{ item.change_type }}</td>
-        <td>{% if item.operation %}<a href="{% url 'web:operation_card' item.operation.visible_id %}">{{ item.operation.visible_id }}</a>{% endif %}</td>
-        <td>{% if item.file_version %}{{ item.file_version.file.visible_id }} v{{ item.file_version.version_no }}{% endif %}</td>
-        <td>{{ item.changed_fields }}</td>
-      </tr>
-    {% empty %}<tr><td colspan="5" class="empty">История пуста.</td></tr>{% endfor %}
-  </tbody></table>
+  <h2>Варианты</h2>
+  {% if can_view_variants %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>SKU</th><th>Название</th><th>Barcode</th><th>Attributes</th><th>Identifiers</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+          {% for variant in variants %}
+            <tr>
+              <td>{{ variant.internal_sku|default:"-" }}</td>
+              <td>{{ variant.name }}</td>
+              <td>{{ variant.barcode_internal|default:"-" }}</td>
+              <td>{{ variant.variant_attributes|default:"-" }}</td>
+              <td>
+                {% for identifier in variant.identifiers.all %}
+                  <span class="badge">{{ identifier.identifier_type }}: {{ identifier.value }}</span>
+                {% empty %}-{% endfor %}
+              </td>
+              <td><span class="badge">{{ variant.get_status_display }}</span></td>
+              <td>
+                {% if can_update_variant %}<a href="{% url 'web:internal_variant_update' product.pk variant.pk %}">Изменить</a>{% endif %}
+                {% if can_archive_variant and variant.status != "archived" %}
+                  <form method="post" action="{% url 'web:internal_variant_archive' product.pk variant.pk %}" style="display:inline">
+                    {% csrf_token %}
+                    <button>Архивировать</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="empty">Варианты ещё не созданы.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">Нет права на просмотр вариантов.</p>
+  {% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Audit</h2>
+  <table>
+    <thead><tr><th>Время</th><th>Действие</th><th>Пользователь</th><th>Сообщение</th></tr></thead>
+    <tbody>
+      {% for item in audit_records %}
+        <tr>
+          <td>{{ item.occurred_at }}</td>
+          <td>{{ item.action_code }}</td>
+          <td>{{ item.user.display_name|default:"-" }}</td>
+          <td>{{ item.safe_message }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">Нет доступных audit records.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endblock %}

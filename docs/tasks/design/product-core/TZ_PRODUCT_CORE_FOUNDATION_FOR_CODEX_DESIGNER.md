@@ -369,8 +369,9 @@ MarketplaceProduct → MarketplaceListing
 Нужно зафиксировать:
 
 - Excel остаётся штатным операционным источником для существующих сценариев;
-- Excel не должен автоматически раздувать внутренний каталог и слой листингов;
-- импорт из Excel в ядро или листинги допускается только как отдельное явное действие с подтверждением и audit;
+- Excel не создаёт `InternalProduct`/`ProductVariant`, confirmed mappings или `ProductMappingHistory` автоматически;
+- legacy `MarketplaceProduct` compatibility sync may mirror operation `product_ref` into unmatched `MarketplaceListing` compatibility records, and that mirror is not explicit Excel import workflow;
+- импорт из Excel в ядро, confirmed mappings или полноценный listing-management contour допускается только как отдельное явное действие с подтверждением и audit;
 - старые Excel-сценарии Stage 1 не ломаются;
 - API становится основным источником актуальности marketplace-листингов там, где доступен API.
 
@@ -479,7 +480,9 @@ MarketplaceListing является внешним представлением 
 
 ```text
 Excel может быть входом операции и источником временных строк.
-Excel обновляет внутренний каталог или листинги только через отдельный явный импорт с подтверждением и audit.
+Excel не создаёт InternalProduct/ProductVariant, confirmed mappings или ProductMappingHistory автоматически.
+Legacy MarketplaceProduct compatibility sync may mirror operation product_ref into unmatched MarketplaceListing compatibility records, and that mirror is not explicit Excel import workflow.
+Excel-импорт в ядро, confirmed mappings или полноценный listing-management contour допускается только как отдельное явное действие с подтверждением и audit.
 ```
 
 ---
@@ -1123,7 +1126,7 @@ product_core.migration.failed
 
 ### 12.1 Excel как вход операции
 
-Excel остаётся входом существующих сценариев и не должен автоматически создавать внутренние товары или marketplace-листинги.
+Excel остаётся входом существующих сценариев и не должен автоматически создавать внутренние товары, варианты, подтверждённые связи или `ProductMappingHistory`. Существующая legacy-совместимость `MarketplaceProduct` может зеркалить product refs операций в unmatched `MarketplaceListing` compatibility records; это не считается явным импортом Excel в Product Core или workflow подтверждения связей.
 
 ### 12.2 Явный импорт из Excel
 

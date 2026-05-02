@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Сопоставление {{ listing.external_primary_id }}{% endblock %}
+{% block content %}
+<h1>Сопоставление {{ listing.get_marketplace_display }} · {{ listing.external_primary_id }}</h1>
+
+<div class="toolbar">
+  <a class="button" href="{% url 'web:marketplace_listing_card' listing.pk %}">К карточке листинга</a>
+  <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
+  <span class="badge">{{ listing.get_mapping_status_display }}</span>
+</div>
+
+<div class="grid two">
+  <section class="panel">
+    <h2>Листинг</h2>
+    <div class="kv">
+      <strong>Магазин</strong><span>{{ listing.store.visible_id }} {{ listing.store.name }}</span>
+      <strong>External ID</strong><span>{{ listing.external_primary_id }}</span>
+      <strong>Артикул</strong><span>{{ listing.seller_article|default:"-" }}</span>
+      <strong>Barcode</strong><span>{{ listing.barcode|default:"-" }}</span>
+      <strong>Название</strong><span>{{ listing.title|default:"-" }}</span>
+      <strong>Статус</strong><span>{{ listing.get_mapping_status_display }}</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Текущая связь</h2>
+    {% if listing.internal_variant %}
+      <div class="kv">
+        <strong>Товар</strong><span>{{ listing.internal_variant.product.internal_code }} {{ listing.internal_variant.product.name }}</span>
+        <strong>SKU</strong><span>{{ listing.internal_variant.internal_sku|default:"-" }}</span>
+        <strong>Вариант</strong><span>{{ listing.internal_variant.name }}</span>
+      </div>
+    {% else %}
+      <p class="empty">Связи с внутренним вариантом нет.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Exact candidates</h2>
+  <p class="status">Подсказки не являются авторитетным решением. Сопоставление создаётся только после явного подтверждения пользователя.</p>
+  <table>
+    <thead><tr><th>Основание</th><th>Значение листинга</th><th>Внутренний товар</th><th>Вариант</th><th>Значение варианта</th></tr></thead>
+    <tbody>
+      {% for candidate in candidates %}
+        <tr>
+          <td>{{ candidate.match_type }}</td>
+          <td>{{ candidate.listing_value }}</td>
+          <td>{{ candidate.variant.product.internal_code }} {{ candidate.variant.product.name }}</td>
+          <td>{{ candidate.variant.internal_sku|default:candidate.variant.name }}</td>
+          <td>{{ candidate.variant_value }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty">Exact seller_article/barcode/external identifier candidates отсутствуют.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if can_map %}
+<div class="grid two" style="margin-top:16px">
+  <section class="panel">
+    <h2>Связать существующий вариант</h2>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="link_existing">
+      {{ existing_form.as_p }}
+      <button class="primary">Подтвердить связь</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Статус без связи</h2>
+    <form method="post" style="margin-bottom:12px">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="mark_needs_review">
+      {{ marker_form.as_p }}
+      <button>Mark needs review</button>
+    </form>
+    <form method="post" style="margin-bottom:12px">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="mark_conflict">
+      {{ marker_form.as_p }}
+      <button>Mark conflict</button>
+    </form>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="leave_unmatched">
+      {{ marker_form.as_p }}
+      <button>Leave unmatched</button>
+    </form>
+  </section>
+</div>
+
+{% if can_create_product_variant %}
+<section class="panel" style="margin-top:16px">
+  <h2>Создать товар и вариант</h2>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create_product_variant">
+    <div class="grid two">
+      <div>{{ product_form.as_p }}</div>
+      <div>{{ product_variant_form.as_p }}</div>
+    </div>
+    <label>Комментарий <textarea name="reason_comment" rows="2"></textarea></label>
+    <button class="primary">Создать и сопоставить</button>
+  </form>
+</section>
+{% endif %}
+
+{% if can_create_variant %}
+<section class="panel" style="margin-top:16px">
+  <h2>Создать вариант под существующим товаром</h2>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create_variant">
+    {{ new_variant_form.as_p }}
+    <button class="primary">Создать вариант и сопоставить</button>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+
+{% if can_unmap and listing.internal_variant %}
+<section class="panel" style="margin-top:16px">
+  <h2>Снять связь</h2>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="unmap">
+    {{ unmap_form.as_p }}
+    <button>Снять связь</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

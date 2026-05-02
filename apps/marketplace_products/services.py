@@ -6,6 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.identity_access.services import has_section_access, has_store_access
+from apps.product_core.models import ListingHistory, ListingSource, MarketplaceListing
 
 from .models import MarketplaceProduct, MarketplaceProductHistory
 
@@ -20,6 +21,156 @@ def products_visible_to(user):
         if has_store_access(user, product.store, allow_global=True)
     ]
     return queryset.filter(pk__in=visible_ids)
+
+
+def _listing_status_from_product_status(status: str) -> str:
+    if status == MarketplaceProduct.Status.INACTIVE:
+        return MarketplaceListing.ListingStatus.INACTIVE
+    if status == MarketplaceProduct.Status.ARCHIVED:
+        return MarketplaceListing.ListingStatus.ARCHIVED
+    return MarketplaceListing.ListingStatus.ACTIVE
+
+
+def _seller_article_from_external_ids(external_ids) -> str:
+    if not isinstance(external_ids, dict):
+        return ""
+    for key in ("vendorCode", "vendor_code", "offer_id", "offerId"):
+        value = external_ids.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _listing_snapshot(product: MarketplaceProduct) -> dict:
+    return {
+        "external_ids": product.external_ids,
+        "seller_article": _seller_article_from_external_ids(product.external_ids),
+        "barcode": product.barcode,
+        "title": product.title,
+        "listing_status": _listing_status_from_product_status(product.status),
+        "last_values": product.last_values,
+        "first_seen_at": product.first_detected_at,
+        "last_seen_at": product.last_seen_at,
+        "last_source": ListingSource.MIGRATION,
+    }
+
+
+def _listing_history_values(listing: MarketplaceListing) -> dict:
+    return {
+        "external_ids": listing.external_ids,
+        "seller_article": listing.seller_article,
+        "barcode": listing.barcode,
+        "title": listing.title,
+        "listing_status": listing.listing_status,
+        "mapping_status": listing.mapping_status,
+        "last_values": listing.last_values,
+        "first_seen_at": listing.first_seen_at.isoformat() if listing.first_seen_at else "",
+        "last_seen_at": listing.last_seen_at.isoformat() if listing.last_seen_at else "",
+        "last_source": listing.last_source,
+    }
+
+
+@transaction.atomic
+def sync_listing_from_legacy_product(product: MarketplaceProduct) -> MarketplaceListing:
+    external_primary_id = (product.sku or "").strip()
+    defaults = _listing_snapshot(product)
+    listing, created = MarketplaceListing.objects.select_for_update().get_or_create(
+        marketplace=product.marketplace,
+        store=product.store,
+        external_primary_id=external_primary_id,
+        defaults={
+            **defaults,
+            "mapping_status": MarketplaceListing.MappingStatus.UNMATCHED,
+        },
+    )
+
+    previous = _listing_history_values(listing)
+    changed_fields: list[str] = []
+    if not created:
+        for field, value in defaults.items():
+            if field == "last_source" and listing.last_source != "":
+                continue
+            if getattr(listing, field) != value:
+                setattr(listing, field, value)
+                changed_fields.append(field)
+        if changed_fields:
+            listing.save(update_fields=[*changed_fields, "updated_at"])
+    else:
+        changed_fields = [
+            "external_ids",
+            "seller_article",
+            "barcode",
+            "title",
+            "listing_status",
+            "mapping_status",
+            "last_values",
+            "first_seen_at",
+            "last_seen_at",
+            "last_source",
+        ]
+
+    if created or changed_fields:
+        changed_at = product.last_seen_at or product.first_detected_at or timezone.now()
+        ListingHistory.objects.create(
+            listing=listing,
+            change_type=(
+                ListingHistory.ChangeType.APPEARED
+                if created
+                else ListingHistory.ChangeType.UPDATED
+            ),
+            changed_at=changed_at,
+            changed_fields=changed_fields,
+            previous_values={} if created else previous,
+            new_values=_listing_history_values(listing),
+            source=ListingSource.MIGRATION,
+        )
+    return listing
+
+
+def backfill_marketplace_listings_from_legacy_products() -> dict:
+    created = 0
+    existing = 0
+    for product in MarketplaceProduct.objects.select_related("store").order_by("id"):
+        before_exists = MarketplaceListing.objects.filter(
+            marketplace=product.marketplace,
+            store=product.store,
+            external_primary_id=(product.sku or "").strip(),
+        ).exists()
+        sync_listing_from_legacy_product(product)
+        if before_exists:
+            existing += 1
+        else:
+            created += 1
+    return {
+        "legacy_products": MarketplaceProduct.objects.count(),
+        "created_listings": created,
+        "existing_listings": existing,
+        "unmatched_backfilled_listings": MarketplaceListing.objects.filter(
+            internal_variant__isnull=True,
+            mapping_status=MarketplaceListing.MappingStatus.UNMATCHED,
+        ).count(),
+    }
+
+
+def validate_legacy_product_listing_backfill() -> dict:
+    missing_product_ids: list[int] = []
+    mismatched_mapping_product_ids: list[int] = []
+    for product in MarketplaceProduct.objects.order_by("id"):
+        listing = MarketplaceListing.objects.filter(
+            marketplace=product.marketplace,
+            store=product.store,
+            external_primary_id=(product.sku or "").strip(),
+        ).first()
+        if not listing:
+            missing_product_ids.append(product.pk)
+            continue
+        if listing.internal_variant_id or listing.mapping_status != MarketplaceListing.MappingStatus.UNMATCHED:
+            mismatched_mapping_product_ids.append(product.pk)
+    return {
+        "legacy_products": MarketplaceProduct.objects.count(),
+        "missing_listing_product_ids": missing_product_ids,
+        "mismatched_mapping_product_ids": mismatched_mapping_product_ids,
+    }
 
 
 @transaction.atomic
@@ -100,6 +251,7 @@ def record_product_from_operation_detail(operation, detail_row) -> MarketplacePr
                 "last_seen_at": product.last_seen_at.isoformat() if product.last_seen_at else "",
             },
         )
+    sync_listing_from_legacy_product(product)
     return product
 
 

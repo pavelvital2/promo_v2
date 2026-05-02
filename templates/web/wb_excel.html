@@ -3,6 +3,7 @@
 {% block content %}
 <h1>WB -> Скидки -> Excel</h1>
 <section class="panel">
+  <p class="status">Excel-сценарий WB рассчитывает скидки по загруженным файлам и не обновляет Product Core: внутренние товары, варианты, листинги и сопоставления не создаются автоматически.</p>
   <form method="post" enctype="multipart/form-data" class="grid">
     {% csrf_token %}
     <div class="toolbar">

@@ -18,6 +18,7 @@ from apps.files.models import FileObject
 from apps.files.services import create_file_version
 from apps.identity_access.services import has_permission
 from apps.marketplace_products.models import MarketplaceProduct, MarketplaceProductHistory
+from apps.marketplace_products.services import sync_listing_from_legacy_product
 from apps.operations.models import (
     LaunchMethod,
     Marketplace,
@@ -192,6 +193,7 @@ def _sync_product(*, store, operation, file_version, row, seen_at):
                 "source_operation": OperationStepCode.WB_API_PRICES_DOWNLOAD,
             },
         )
+    sync_listing_from_legacy_product(product)
     return product
 
 

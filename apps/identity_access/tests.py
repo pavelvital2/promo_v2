@@ -221,6 +221,41 @@ class IdentityAccessTests(TestCase):
         self.assertFalse(upload_ozon_permissions & ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
         self.assertFalse(upload_ozon_permissions & ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
         self.assertFalse(upload_ozon_permissions & ROLE_PERMISSION_CODES[ROLE_OBSERVER])
+        product_core_permissions = {
+            "product_core.view",
+            "product_core.create",
+            "product_core.update",
+            "product_core.archive",
+            "product_core.export",
+            "product_variant.view",
+            "product_variant.create",
+            "product_variant.update",
+            "product_variant.archive",
+            "marketplace_listing.view",
+            "marketplace_listing.sync",
+            "marketplace_listing.export",
+            "marketplace_listing.map",
+            "marketplace_listing.unmap",
+            "marketplace_listing.archive",
+            "marketplace_snapshot.view",
+            "marketplace_snapshot.technical_view",
+        }
+        self.assertTrue(product_core_permissions <= set(PERMISSION_DEFINITIONS))
+        self.assertTrue(product_core_permissions <= ROLE_PERMISSION_CODES[ROLE_OWNER])
+        self.assertTrue(product_core_permissions <= ROLE_PERMISSION_CODES[ROLE_GLOBAL_ADMIN])
+        self.assertIn("marketplace_listing.map", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertIn("marketplace_listing.unmap", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertNotIn("marketplace_listing.archive", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertNotIn("product_core.create", ROLE_PERMISSION_CODES[ROLE_LOCAL_ADMIN])
+        self.assertNotIn("marketplace_listing.map", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
+        self.assertNotIn("marketplace_listing.unmap", ROLE_PERMISSION_CODES[ROLE_MARKETPLACE_MANAGER])
+        self.assertNotIn("marketplace_listing.export", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
+        self.assertNotIn("marketplace_snapshot.technical_view", ROLE_PERMISSION_CODES[ROLE_OBSERVER])
+        self.assertFalse(has_permission(self.local_admin, "marketplace_listing.archive", self.wb_store))
+        self.assertTrue(has_permission(self.manager, "product_core.view"))
+        self.assertTrue(has_permission(self.manager, "marketplace_listing.view", self.wb_store))
+        self.assertFalse(has_permission(self.manager, "marketplace_listing.map", self.wb_store))
+        self.assertFalse(has_permission(self.observer, "marketplace_listing.export", self.wb_store))
 
     def test_seed_command_is_idempotent(self):
         before = {
@@ -484,6 +519,16 @@ class IdentityAccessTests(TestCase):
         self.assertFalse(
             has_permission(self.manager, "wb_discounts_excel.run_check", self.wb_store),
         )
+        self.assertTrue(has_permission(self.manager, "marketplace_listing.view", self.ozon_store))
+
+        UserPermissionOverride.objects.create(
+            user=self.manager,
+            permission=Permission.objects.get(code="marketplace_listing.view"),
+            effect=AccessEffect.DENY,
+            store=self.ozon_store,
+        )
+
+        self.assertFalse(has_permission(self.manager, "marketplace_listing.view", self.ozon_store))
 
     def test_store_deny_overrides_full_object_scope(self):
         self.assertTrue(

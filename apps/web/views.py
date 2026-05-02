@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -58,7 +58,6 @@ from apps.identity_access.services import (
     record_user_change,
 )
 from apps.marketplace_products.services import products_visible_to
-from apps.marketplace_products.models import MarketplaceProduct
 from apps.operations.models import (
     CheckStatus,
     MessageLevel,
@@ -77,6 +76,31 @@ from apps.platform_settings.models import (
     WB_PARAMETER_CODES,
 )
 from apps.platform_settings.services import effective_parameter_rows, save_wb_store_parameters
+from apps.product_core.models import (
+    InternalProduct,
+    PriceSnapshot,
+    Marketplace,
+    MarketplaceListing,
+    MarketplaceSyncRun,
+    ProductCategory,
+    ProductStatus,
+    ProductVariant,
+    PromotionSnapshot,
+    SalesPeriodSnapshot,
+    StockSnapshot,
+)
+from apps.product_core import exports as product_core_exports
+from apps.product_core.services import (
+    can_view_marketplace_snapshot,
+    can_view_marketplace_snapshot_technical_details,
+    exact_mapping_candidates_for_listing,
+    map_listing_to_variant,
+    mark_listing_conflict,
+    mark_listing_needs_review,
+    marketplace_listings_visible_to,
+    refresh_mapping_candidate_status,
+    unmap_listing,
+)
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import (
     API_STAGE_2_NOTICE,
@@ -88,6 +112,15 @@ from apps.stores.services import (
     visible_stores_queryset,
 )
 from apps.techlog.models import SystemNotification, TechLogRecord
+from apps.web.forms import (
+    ExistingVariantMappingForm,
+    InternalProductForm,
+    MappingMarkerForm,
+    MarketplaceListingFilterForm,
+    NewVariantUnderProductMappingForm,
+    ProductVariantForm,
+    UnmapListingForm,
+)
 
 
 PAGE_SIZE = 25
@@ -113,7 +146,11 @@ NAV_ITEMS = (
         ),
     ),
     NavItem("Операции", "web:operation_list", ("operations.view",)),
-    NavItem("Справочники", "web:reference_index", ("stores.view", "products.view")),
+    NavItem(
+        "Справочники",
+        "web:reference_index",
+        ("stores.view", "products.view", "product_core.view", "marketplace_listings.view"),
+    ),
     NavItem("Настройки", "web:settings_index", ("settings_system.view", "settings_store.view")),
     NavItem(
         "Администрирование",
@@ -878,6 +915,7 @@ def marketplaces(request: HttpRequest) -> HttpResponse:
     ozon_stores = _scenario_stores(request.user, "ozon")
     wb_api_stores = _wb_api_stores(request.user)
     ozon_api_stores = _ozon_api_stores(request.user)
+    listing_stores = _stores_with_permission(request.user, "marketplace_listing.view")
     return _render(
         request,
         "web/marketplaces.html",
@@ -886,6 +924,8 @@ def marketplaces(request: HttpRequest) -> HttpResponse:
             "ozon_stores": ozon_stores,
             "wb_api_stores": wb_api_stores,
             "ozon_api_stores": ozon_api_stores,
+            "wb_listing_stores": listing_stores.filter(marketplace="wb"),
+            "ozon_listing_stores": listing_stores.filter(marketplace="ozon"),
         },
         section="marketplaces",
     )
@@ -2312,13 +2352,20 @@ def reference_index(request: HttpRequest) -> HttpResponse:
         request.user,
         "stores.list.view",
     )
-    can_products = has_section_access(request.user, "products.view")
-    if not can_stores and not can_products:
+    can_products = (
+        has_section_access(request.user, "products.view")
+        or has_section_access(request.user, "product_core.view")
+    ) and has_permission(request.user, "product_core.view")
+    can_listings = (
+        has_section_access(request.user, "marketplace_listings.view")
+        or has_section_access(request.user, "product_core.view")
+    ) and _stores_with_permission(request.user, "marketplace_listing.view").exists()
+    if not can_stores and not can_products and not can_listings:
         raise PermissionDenied("No section access to references.")
     return _render(
         request,
         "web/reference_index.html",
-        {"can_stores": can_stores, "can_products": can_products},
+        {"can_stores": can_stores, "can_products": can_products, "can_listings": can_listings},
         section="references",
     )
 
@@ -2346,7 +2393,7 @@ def product_list(request: HttpRequest) -> HttpResponse:
         products = products.filter(status=status)
     return _render(
         request,
-        "web/product_list.html",
+        "web/legacy_product_list.html",
         {
             "page": _paginate(request, products),
             "stores": visible_stores_queryset(request.user),
@@ -2369,7 +2416,7 @@ def product_card(request: HttpRequest, pk: int) -> HttpResponse:
     ).distinct()[:50]
     return _render(
         request,
-        "web/product_card.html",
+        "web/legacy_product_card.html",
         {
             "product": product,
             "history": product.history.select_related("operation", "file_version")[:50],
@@ -2378,6 +2425,998 @@ def product_card(request: HttpRequest, pk: int) -> HttpResponse:
         },
         section="references",
     )
+
+
+@login_required
+def internal_product_list(request: HttpRequest) -> HttpResponse:
+    _require_product_core_view(request.user)
+    products, filters = _filtered_internal_products(request)
+    products = products.order_by("internal_code", "id")
+    page = _paginate(request, products)
+    _attach_internal_product_listing_counts(request.user, page.object_list)
+    return _render(
+        request,
+        "web/product_list.html",
+        {
+            "page": page,
+            "categories": ProductCategory.objects.exclude(status=ProductStatus.ARCHIVED),
+            "product_types": InternalProduct.ProductType.choices,
+            "statuses": ProductStatus.choices,
+            "filters": filters,
+            "can_create_product": has_permission(request.user, "product_core.create"),
+            "can_archive_product": has_permission(request.user, "product_core.archive"),
+            "can_export_products": has_permission(request.user, "product_core.export"),
+            "can_view_variants": has_permission(request.user, "product_variant.view"),
+        },
+        section="references",
+    )
+
+
+def _filtered_internal_products(request: HttpRequest):
+    products = InternalProduct.objects.select_related("category").annotate(
+        variant_count=Count("variants", distinct=True),
+    )
+    q = request.GET.get("q", "").strip()
+    product_type = request.GET.get("product_type", "").strip()
+    category_id = request.GET.get("category", "").strip()
+    status = request.GET.get("status", "").strip()
+    linked = request.GET.get("linked", "").strip()
+    if q:
+        products = products.filter(
+            Q(internal_code__icontains=q)
+            | Q(name__icontains=q)
+            | Q(variants__internal_sku__icontains=q)
+            | Q(variants__barcode_internal__icontains=q)
+            | Q(variants__identifiers__value__icontains=q)
+        ).distinct()
+    if product_type:
+        products = products.filter(product_type=product_type)
+    if category_id:
+        products = products.filter(category_id=category_id)
+    if status:
+        products = products.filter(status=status)
+
+    visible_linked_product_ids = set(
+        marketplace_listings_visible_to(request.user)
+        .filter(internal_variant__isnull=False)
+        .values_list("internal_variant__product_id", flat=True)
+        .distinct()
+    )
+    if linked == "linked":
+        products = products.filter(pk__in=visible_linked_product_ids)
+    elif linked == "unlinked":
+        products = products.exclude(pk__in=visible_linked_product_ids)
+
+    return products, {
+        "q": q,
+        "product_type": product_type,
+        "category": category_id,
+        "status": status,
+        "linked": linked,
+    }
+
+
+@login_required
+def internal_product_export(request: HttpRequest) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_core.export"):
+        raise PermissionDenied("No permission to export internal products.")
+    products, _filters = _filtered_internal_products(request)
+    return product_core_exports.internal_products_csv(
+        request.user,
+        products.order_by("internal_code", "id"),
+    )
+
+
+def _require_marketplace_listing_view(user) -> None:
+    has_section = has_section_access(user, "marketplace_listings.view") or has_section_access(
+        user,
+        "product_core.view",
+    )
+    if not has_section or not _stores_with_permission(user, "marketplace_listing.view").exists():
+        raise PermissionDenied("No access to marketplace listings.")
+
+
+def _listing_filter_choices(queryset):
+    return {
+        "stores": StoreAccount.objects.filter(
+            pk__in=queryset.values_list("store_id", flat=True).distinct(),
+        ).order_by("marketplace", "name", "id"),
+        "categories": list(
+            queryset.exclude(category_name="")
+            .order_by("category_name")
+            .values_list("category_name", flat=True)
+            .distinct()
+        ),
+        "brands": list(
+            queryset.exclude(brand="")
+            .order_by("brand")
+            .values_list("brand", flat=True)
+            .distinct()
+        ),
+    }
+
+
+def _filter_marketplace_listings(queryset, form: MarketplaceListingFilterForm):
+    if not form.is_valid():
+        return queryset
+    data = form.cleaned_data
+    q = (data.get("q") or "").strip()
+    if q:
+        queryset = queryset.filter(
+            Q(external_primary_id__icontains=q)
+            | Q(seller_article__icontains=q)
+            | Q(title__icontains=q)
+            | Q(barcode__icontains=q)
+        )
+    if data.get("marketplace"):
+        queryset = queryset.filter(marketplace=data["marketplace"])
+    if data.get("store"):
+        queryset = queryset.filter(store=data["store"])
+    if data.get("listing_status"):
+        queryset = queryset.filter(listing_status=data["listing_status"])
+    if data.get("mapping_status"):
+        queryset = queryset.filter(mapping_status=data["mapping_status"])
+    if data.get("category"):
+        queryset = queryset.filter(category_name=data["category"])
+    if data.get("brand"):
+        queryset = queryset.filter(brand=data["brand"])
+    if data.get("stock") == "present":
+        queryset = queryset.filter(last_values__total_stock__gt=0)
+    elif data.get("stock") == "missing":
+        queryset = queryset.filter(Q(last_values__total_stock__isnull=True) | Q(last_values__total_stock=0))
+    if data.get("updated_from"):
+        queryset = queryset.filter(updated_at__date__gte=data["updated_from"])
+    if data.get("updated_to"):
+        queryset = queryset.filter(updated_at__date__lte=data["updated_to"])
+    return queryset
+
+
+def _listing_page_querystring(request: HttpRequest) -> str:
+    params = request.GET.copy()
+    params.pop("page", None)
+    return params.urlencode()
+
+
+def _mapping_variant_queryset():
+    return (
+        ProductVariant.objects.select_related("product")
+        .exclude(status=ProductStatus.ARCHIVED)
+        .exclude(product__status=ProductStatus.ARCHIVED)
+        .order_by("product__internal_code", "internal_sku", "name", "id")
+    )
+
+
+def _mapping_product_queryset():
+    return InternalProduct.objects.exclude(status=ProductStatus.ARCHIVED).order_by(
+        "internal_code",
+        "name",
+        "id",
+    )
+
+
+def _can_use_mapping(user, listing: MarketplaceListing) -> bool:
+    return (
+        has_permission(user, "marketplace_listing.map", listing.store)
+        and has_permission(user, "product_core.view")
+        and has_permission(user, "product_variant.view")
+    )
+
+
+def _can_use_unmapping(user, listing: MarketplaceListing) -> bool:
+    return (
+        has_permission(user, "marketplace_listing.unmap", listing.store)
+        and has_permission(user, "product_core.view")
+        and has_permission(user, "product_variant.view")
+    )
+
+
+def _attach_listing_snapshot_access(user, listings) -> None:
+    for listing in listings:
+        listing.can_view_snapshot_summary = has_permission(
+            user,
+            "marketplace_snapshot.view",
+            listing.store,
+        )
+        listing.can_open_mapping_workflow = _can_use_mapping(user, listing) or _can_use_unmapping(
+            user,
+            listing,
+        )
+
+
+@login_required
+def marketplace_listing_list(request: HttpRequest) -> HttpResponse:
+    _require_marketplace_listing_view(request.user)
+    base_queryset = marketplace_listings_visible_to(request.user).select_related(
+        "store",
+        "internal_variant",
+        "internal_variant__product",
+    )
+    choices = _listing_filter_choices(base_queryset)
+    form = MarketplaceListingFilterForm(
+        request.GET or None,
+        stores=choices["stores"],
+        categories=choices["categories"],
+        brands=choices["brands"],
+    )
+    listings = _filter_marketplace_listings(base_queryset, form).order_by(
+        "marketplace",
+        "store__name",
+        "external_primary_id",
+        "id",
+    )
+    page = _paginate(request, listings)
+    _attach_listing_snapshot_access(request.user, page.object_list)
+    return _render(
+        request,
+        "web/marketplace_listing_list.html",
+        {
+            "page": page,
+            "form": form,
+            "querystring": _listing_page_querystring(request),
+            "title": "Marketplace listings",
+            "is_unmatched": False,
+            "can_export_any": _stores_with_permission(
+                request.user,
+                "marketplace_listing.export",
+            ).exists(),
+            "can_map_any": _stores_with_permission(request.user, "marketplace_listing.map").exists(),
+            "can_unmap_any": _stores_with_permission(request.user, "marketplace_listing.unmap").exists(),
+            "can_sync_any": _stores_with_permission(request.user, "marketplace_listing.sync").exists(),
+        },
+        section="references",
+    )
+
+
+@login_required
+def unmatched_listing_list(request: HttpRequest) -> HttpResponse:
+    _require_marketplace_listing_view(request.user)
+    base_queryset = (
+        marketplace_listings_visible_to(request.user)
+        .select_related("store", "internal_variant", "internal_variant__product")
+        .filter(
+            internal_variant__isnull=True,
+            mapping_status__in=[
+                MarketplaceListing.MappingStatus.UNMATCHED,
+                MarketplaceListing.MappingStatus.NEEDS_REVIEW,
+                MarketplaceListing.MappingStatus.CONFLICT,
+            ],
+        )
+    )
+    choices = _listing_filter_choices(base_queryset)
+    form = MarketplaceListingFilterForm(
+        request.GET or None,
+        stores=choices["stores"],
+        categories=choices["categories"],
+        brands=choices["brands"],
+    )
+    listings = _filter_marketplace_listings(base_queryset, form).order_by(
+        "marketplace",
+        "store__name",
+        "external_primary_id",
+        "id",
+    )
+    page = _paginate(request, listings)
+    _attach_listing_snapshot_access(request.user, page.object_list)
+    return _render(
+        request,
+        "web/marketplace_listing_list.html",
+        {
+            "page": page,
+            "form": form,
+            "querystring": _listing_page_querystring(request),
+            "title": "Несопоставленные листинги",
+            "is_unmatched": True,
+            "can_export_any": _stores_with_permission(
+                request.user,
+                "marketplace_listing.export",
+            ).exists(),
+            "can_map_any": _stores_with_permission(request.user, "marketplace_listing.map").exists(),
+            "can_unmap_any": _stores_with_permission(request.user, "marketplace_listing.unmap").exists(),
+            "can_sync_any": False,
+        },
+        section="references",
+    )
+
+
+def _filtered_listing_export_queryset(request: HttpRequest, *, unmatched: bool = False):
+    base_queryset = marketplace_listings_visible_to(request.user).select_related(
+        "store",
+        "internal_variant",
+        "internal_variant__product",
+    )
+    if unmatched:
+        base_queryset = base_queryset.filter(
+            internal_variant__isnull=True,
+            mapping_status__in=[
+                MarketplaceListing.MappingStatus.UNMATCHED,
+                MarketplaceListing.MappingStatus.NEEDS_REVIEW,
+                MarketplaceListing.MappingStatus.CONFLICT,
+            ],
+        )
+    choices = _listing_filter_choices(base_queryset)
+    form = MarketplaceListingFilterForm(
+        request.GET or None,
+        stores=choices["stores"],
+        categories=choices["categories"],
+        brands=choices["brands"],
+    )
+    return _filter_marketplace_listings(base_queryset, form).order_by(
+        "marketplace",
+        "store__name",
+        "external_primary_id",
+        "id",
+    )
+
+
+def _require_listing_export_scope(user) -> None:
+    _require_marketplace_listing_view(user)
+    if not _stores_with_permission(user, "marketplace_listing.export").exists():
+        raise PermissionDenied("No permission to export marketplace listings.")
+
+
+@login_required
+def marketplace_listing_export(request: HttpRequest) -> HttpResponse:
+    _require_listing_export_scope(request.user)
+    listings = _filtered_listing_export_queryset(request)
+    return product_core_exports.marketplace_listings_csv(
+        request.user,
+        listings,
+        filename="product_core_marketplace_listings.csv",
+    )
+
+
+@login_required
+def unmatched_listing_export(request: HttpRequest) -> HttpResponse:
+    _require_listing_export_scope(request.user)
+    listings = _filtered_listing_export_queryset(request, unmatched=True)
+    return product_core_exports.marketplace_listings_csv(
+        request.user,
+        listings,
+        filename="product_core_unmatched_listings.csv",
+    )
+
+
+@login_required
+def listing_latest_values_export(request: HttpRequest) -> HttpResponse:
+    _require_listing_export_scope(request.user)
+    listings = _filtered_listing_export_queryset(request)
+    return product_core_exports.marketplace_listings_csv(
+        request.user,
+        listings,
+        filename="product_core_listing_latest_values.csv",
+        include_latest=True,
+    )
+
+
+@login_required
+def listing_mapping_report_export(request: HttpRequest) -> HttpResponse:
+    _require_listing_export_scope(request.user)
+    listings = _filtered_listing_export_queryset(request)
+    return product_core_exports.mapping_report_csv(request.user, listings)
+
+
+def _latest_snapshot(queryset, user):
+    for snapshot in queryset[:10]:
+        if can_view_marketplace_snapshot(user, snapshot):
+            return snapshot
+    return None
+
+
+def _snapshot_rows(queryset, user, limit: int = 10) -> list[dict]:
+    rows = []
+    for snapshot in queryset[:limit]:
+        if not can_view_marketplace_snapshot(user, snapshot):
+            continue
+        row = {"snapshot": snapshot, "can_view_technical": False, "raw_safe": ""}
+        if can_view_marketplace_snapshot_technical_details(user, snapshot):
+            row["can_view_technical"] = True
+            row["raw_safe"] = _format_technical_value(snapshot.raw_safe)
+        rows.append(row)
+    return rows
+
+
+def _listing_related_operations(user, listing: MarketplaceListing):
+    operation_ids = set()
+    if listing.last_sync_run_id and listing.last_sync_run.operation_id:
+        operation_ids.add(listing.last_sync_run.operation_id)
+    sync_run_ids = list(
+        MarketplaceSyncRun.objects.filter(store=listing.store, latest_listings=listing)
+        .exclude(operation_id__isnull=True)
+        .values_list("operation_id", flat=True)
+    )
+    operation_ids.update(sync_run_ids)
+    for model in (PriceSnapshot, StockSnapshot, SalesPeriodSnapshot, PromotionSnapshot):
+        operation_ids.update(
+            model.objects.filter(listing=listing)
+            .exclude(operation_id__isnull=True)
+            .values_list("operation_id", flat=True)
+        )
+    operations = Operation.objects.filter(pk__in=operation_ids).select_related("store", "initiator_user")
+    return _decorate_operations(
+        [operation for operation in operations.order_by("-created_at", "-id") if _can_view_operation(user, operation)]
+    )
+
+
+def _listing_related_file_links(user, operations):
+    links = []
+    operation_ids = [operation.pk for operation in operations]
+    if not operation_ids:
+        return links
+    for operation in operations:
+        for link in operation.input_files.select_related("file_version", "file_version__file"):
+            if _can_download_link(user, link):
+                links.append({"operation": operation, "link": link, "kind": "input"})
+        for link in operation.output_files.select_related("file_version", "file_version__file"):
+            if _can_download_link(user, link):
+                links.append({"operation": operation, "link": link, "kind": "output"})
+    return links
+
+
+@login_required
+def marketplace_listing_card(request: HttpRequest, pk: int) -> HttpResponse:
+    _require_marketplace_listing_view(request.user)
+    listing = get_object_or_404(
+        marketplace_listings_visible_to(request.user).select_related(
+            "store",
+            "internal_variant",
+            "internal_variant__product",
+            "last_sync_run",
+            "last_sync_run__operation",
+        ),
+        pk=pk,
+    )
+    price_snapshots = listing.price_snapshots.select_related("sync_run", "operation", "listing", "listing__store")
+    stock_snapshots = listing.stock_snapshots.select_related("sync_run", "operation", "listing", "listing__store")
+    sales_snapshots = listing.sales_period_snapshots.select_related(
+        "sync_run",
+        "operation",
+        "listing",
+        "listing__store",
+    )
+    promotion_snapshots = listing.promotion_snapshots.select_related(
+        "sync_run",
+        "operation",
+        "listing",
+        "listing__store",
+    )
+    related_operations = _listing_related_operations(request.user, listing)
+    related_file_links = _listing_related_file_links(request.user, related_operations)
+    can_map = _can_use_mapping(request.user, listing)
+    can_unmap = _can_use_unmapping(request.user, listing)
+    can_view_snapshots = has_permission(request.user, "marketplace_snapshot.view", listing.store)
+    return _render(
+        request,
+        "web/marketplace_listing_card.html",
+        {
+            "listing": listing,
+            "latest_price": _latest_snapshot(price_snapshots, request.user),
+            "latest_stock": _latest_snapshot(stock_snapshots, request.user),
+            "latest_sales": _latest_snapshot(sales_snapshots, request.user),
+            "latest_promotion": _latest_snapshot(promotion_snapshots, request.user),
+            "price_rows": _snapshot_rows(price_snapshots, request.user),
+            "stock_rows": _snapshot_rows(stock_snapshots, request.user),
+            "sales_rows": _snapshot_rows(sales_snapshots, request.user),
+            "promotion_rows": _snapshot_rows(promotion_snapshots, request.user),
+            "listing_history": listing.history.select_related("sync_run", "operation", "changed_by")[:20],
+            "mapping_history": listing.mapping_history.select_related(
+                "previous_variant",
+                "new_variant",
+                "changed_by",
+                "operation",
+            )[:20],
+            "related_operations": related_operations[:20],
+            "related_file_links": related_file_links[:20],
+            "can_map": can_map,
+            "can_unmap": can_unmap,
+            "can_view_snapshots": can_view_snapshots,
+            "technical_view": has_permission(
+                request.user,
+                "marketplace_snapshot.technical_view",
+                listing.store,
+            ),
+            "external_ids": _format_technical_value(listing.external_ids),
+            "last_values": _format_technical_value(listing.last_values) if can_view_snapshots else "",
+        },
+        section="references",
+    )
+
+
+@login_required
+def marketplace_listing_mapping(request: HttpRequest, pk: int) -> HttpResponse:
+    _require_marketplace_listing_view(request.user)
+    listing = get_object_or_404(
+        marketplace_listings_visible_to(request.user).select_related(
+            "store",
+            "internal_variant",
+            "internal_variant__product",
+        ),
+        pk=pk,
+    )
+    can_map = _can_use_mapping(request.user, listing)
+    can_unmap = _can_use_unmapping(request.user, listing)
+    if not can_map and not can_unmap:
+        raise PermissionDenied("No permission to change marketplace listing mapping.")
+
+    candidates = exact_mapping_candidates_for_listing(listing)
+    if request.method == "GET" and can_map:
+        refresh_mapping_candidate_status(actor=request.user, listing=listing, candidates=candidates)
+        listing.refresh_from_db()
+
+    variants = _mapping_variant_queryset()
+    products = _mapping_product_queryset()
+    existing_form = ExistingVariantMappingForm(
+        request.POST or None if request.POST.get("action") == "link_existing" else None,
+        variants=variants,
+    )
+    product_form = InternalProductForm(
+        request.POST or None if request.POST.get("action") == "create_product_variant" else None,
+        prefix="product",
+    )
+    product_variant_form = ProductVariantForm(
+        request.POST or None if request.POST.get("action") == "create_product_variant" else None,
+        prefix="variant",
+    )
+    new_variant_form = NewVariantUnderProductMappingForm(
+        request.POST or None if request.POST.get("action") == "create_variant" else None,
+        products=products,
+        prefix="new_variant",
+    )
+    marker_form = MappingMarkerForm(
+        request.POST or None
+        if request.POST.get("action") in {"mark_needs_review", "mark_conflict", "leave_unmatched"}
+        else None,
+    )
+    unmap_form = UnmapListingForm(
+        request.POST or None if request.POST.get("action") == "unmap" else None,
+    )
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        try:
+            if action == "link_existing":
+                if not can_map:
+                    raise PermissionDenied("No permission to map listing.")
+                if existing_form.is_valid():
+                    map_listing_to_variant(
+                        actor=request.user,
+                        listing=listing,
+                        variant=existing_form.cleaned_data["variant"],
+                        source_context={
+                            "basis": "manual_existing_variant",
+                            "candidate_variant_ids": sorted({item.variant.pk for item in candidates}),
+                        },
+                        reason_comment=existing_form.cleaned_data["reason_comment"],
+                    )
+                    messages.success(request, "Листинг сопоставлен с выбранным вариантом.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            elif action == "create_product_variant":
+                if not (
+                    can_map
+                    and has_permission(request.user, "product_core.create")
+                    and has_permission(request.user, "product_variant.create")
+                ):
+                    raise PermissionDenied("No permission to create product and variant for mapping.")
+                if product_form.is_valid() and product_variant_form.is_valid():
+                    with transaction.atomic():
+                        product = product_form.save(commit=False)
+                        product.created_by = request.user
+                        product.updated_by = request.user
+                        product.save()
+                        _audit_internal_product_change(
+                            action_code=AuditActionCode.PRODUCT_CORE_CREATED,
+                            user=request.user,
+                            product=product,
+                            before=None,
+                        )
+                        variant = product_variant_form.save(commit=False)
+                        variant.product = product
+                        variant.save()
+                        _audit_variant_change(
+                            action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+                            user=request.user,
+                            variant=variant,
+                            before=None,
+                        )
+                        map_listing_to_variant(
+                            actor=request.user,
+                            listing=listing,
+                            variant=variant,
+                            source_context={"basis": "manual_create_product_variant"},
+                            reason_comment=request.POST.get("reason_comment", "").strip(),
+                        )
+                    messages.success(request, "Внутренний товар, вариант и сопоставление созданы.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            elif action == "create_variant":
+                if not (can_map and has_permission(request.user, "product_variant.create")):
+                    raise PermissionDenied("No permission to create variant for mapping.")
+                if new_variant_form.is_valid():
+                    with transaction.atomic():
+                        variant = new_variant_form.save(commit=False)
+                        variant.product = new_variant_form.cleaned_data["product"]
+                        variant.save()
+                        _audit_variant_change(
+                            action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+                            user=request.user,
+                            variant=variant,
+                            before=None,
+                        )
+                        map_listing_to_variant(
+                            actor=request.user,
+                            listing=listing,
+                            variant=variant,
+                            source_context={"basis": "manual_create_variant"},
+                            reason_comment=new_variant_form.cleaned_data["reason_comment"],
+                        )
+                    messages.success(request, "Вариант создан и сопоставлен с листингом.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            elif action == "mark_needs_review":
+                if not can_map:
+                    raise PermissionDenied("No permission to mark mapping review.")
+                if marker_form.is_valid():
+                    mark_listing_needs_review(
+                        actor=request.user,
+                        listing=listing,
+                        source_context={
+                            "basis": "manual_marker",
+                            "candidate_variant_ids": sorted({item.variant.pk for item in candidates}),
+                        },
+                        reason_comment=marker_form.cleaned_data["reason_comment"],
+                    )
+                    messages.success(request, "Листинг отмечен как требующий проверки.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            elif action == "mark_conflict":
+                if not can_map:
+                    raise PermissionDenied("No permission to mark mapping conflict.")
+                if marker_form.is_valid():
+                    mark_listing_conflict(
+                        actor=request.user,
+                        listing=listing,
+                        source_context={
+                            "basis": "manual_marker",
+                            "candidate_variant_ids": sorted({item.variant.pk for item in candidates}),
+                        },
+                        reason_comment=marker_form.cleaned_data["reason_comment"],
+                    )
+                    messages.success(request, "Листинг отмечен как конфликтный.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            elif action == "leave_unmatched":
+                if not can_map:
+                    raise PermissionDenied("No permission to leave listing unmatched.")
+                if marker_form.is_valid():
+                    unmap_listing(
+                        actor=request.user,
+                        listing=listing,
+                        source_context={"basis": "manual_leave_unmatched"},
+                        reason_comment=marker_form.cleaned_data["reason_comment"],
+                        mapping_status_after=MarketplaceListing.MappingStatus.UNMATCHED,
+                    )
+                    messages.success(request, "Листинг оставлен несопоставленным.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            elif action == "unmap":
+                if not can_unmap:
+                    raise PermissionDenied("No permission to unmap listing.")
+                if unmap_form.is_valid():
+                    unmap_listing(
+                        actor=request.user,
+                        listing=listing,
+                        source_context={"basis": "manual_unmap"},
+                        reason_comment=unmap_form.cleaned_data["reason_comment"],
+                        mapping_status_after=unmap_form.cleaned_data["mapping_status_after"],
+                    )
+                    messages.success(request, "Связь листинга с вариантом снята.")
+                    return redirect("web:marketplace_listing_card", pk=listing.pk)
+            else:
+                raise ValidationError("Unsupported mapping workflow action.")
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc))
+
+    listing.refresh_from_db()
+    return _render(
+        request,
+        "web/marketplace_listing_mapping.html",
+        {
+            "listing": listing,
+            "candidates": candidates,
+            "existing_form": existing_form,
+            "product_form": product_form,
+            "product_variant_form": product_variant_form,
+            "new_variant_form": new_variant_form,
+            "marker_form": marker_form,
+            "unmap_form": unmap_form,
+            "can_map": can_map,
+            "can_unmap": can_unmap,
+            "can_create_product_variant": can_map
+            and has_permission(request.user, "product_core.create")
+            and has_permission(request.user, "product_variant.create"),
+            "can_create_variant": can_map and has_permission(request.user, "product_variant.create"),
+        },
+        section="references",
+    )
+
+
+def _require_product_core_view(user) -> None:
+    has_section = has_section_access(user, "products.view") or has_section_access(
+        user,
+        "product_core.view",
+    )
+    if not has_section or not has_permission(user, "product_core.view"):
+        raise PermissionDenied("No access to internal products.")
+
+
+def _attach_internal_product_listing_counts(user, products) -> None:
+    product_ids = [product.pk for product in products]
+    counts = {
+        product_id: {Marketplace.WB: 0, Marketplace.OZON: 0}
+        for product_id in product_ids
+    }
+    if product_ids:
+        visible_rows = (
+            marketplace_listings_visible_to(user)
+            .filter(internal_variant__product_id__in=product_ids)
+            .values("internal_variant__product_id", "marketplace")
+            .annotate(total=Count("id"))
+        )
+        for row in visible_rows:
+            counts[row["internal_variant__product_id"]][row["marketplace"]] = row["total"]
+    for product in products:
+        product.visible_wb_listing_count = counts.get(product.pk, {}).get(Marketplace.WB, 0)
+        product.visible_ozon_listing_count = counts.get(product.pk, {}).get(Marketplace.OZON, 0)
+
+
+def _product_snapshot(product: InternalProduct) -> dict:
+    return {
+        "internal_code": product.internal_code,
+        "name": product.name,
+        "product_type": product.product_type,
+        "category_id": product.category_id,
+        "status": product.status,
+        "attributes": product.attributes,
+        "comments": product.comments,
+    }
+
+
+def _variant_snapshot(variant: ProductVariant) -> dict:
+    return {
+        "product_id": variant.product_id,
+        "internal_sku": variant.internal_sku,
+        "name": variant.name,
+        "barcode_internal": variant.barcode_internal,
+        "status": variant.status,
+        "variant_attributes": variant.variant_attributes,
+    }
+
+
+def _audit_internal_product_change(
+    *,
+    action_code: str,
+    user,
+    product: InternalProduct,
+    before: dict | None,
+) -> None:
+    create_audit_record(
+        action_code=action_code,
+        entity_type="InternalProduct",
+        entity_id=str(product.pk),
+        user=user,
+        safe_message=f"Internal product changed: {product.internal_code}.",
+        before_snapshot=before or {},
+        after_snapshot=_product_snapshot(product),
+        source_context=AuditSourceContext.UI,
+    )
+
+
+def _audit_variant_change(
+    *,
+    action_code: str,
+    user,
+    variant: ProductVariant,
+    before: dict | None,
+) -> None:
+    create_audit_record(
+        action_code=action_code,
+        entity_type="ProductVariant",
+        entity_id=str(variant.pk),
+        user=user,
+        safe_message=f"Product variant changed: {variant.internal_sku or variant.pk}.",
+        before_snapshot=before or {},
+        after_snapshot=_variant_snapshot(variant),
+        source_context=AuditSourceContext.UI,
+    )
+
+
+@login_required
+def internal_product_create(request: HttpRequest) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_core.create"):
+        raise PermissionDenied("No permission to create internal products.")
+    form = InternalProductForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        product = form.save(commit=False)
+        product.created_by = request.user
+        product.updated_by = request.user
+        product.save()
+        _audit_internal_product_change(
+            action_code=AuditActionCode.PRODUCT_CORE_CREATED,
+            user=request.user,
+            product=product,
+            before=None,
+        )
+        messages.success(request, "Внутренний товар создан.")
+        return redirect("web:internal_product_card", pk=product.pk)
+    return _render(
+        request,
+        "web/product_form.html",
+        {"form": form, "mode": "create"},
+        section="references",
+    )
+
+
+@login_required
+def internal_product_card(request: HttpRequest, pk: int) -> HttpResponse:
+    _require_product_core_view(request.user)
+    product = get_object_or_404(InternalProduct.objects.select_related("category"), pk=pk)
+    variants = product.variants.prefetch_related("identifiers").order_by("internal_sku", "name", "id")
+    can_view_variants = has_permission(request.user, "product_variant.view")
+    visible_listings = (
+        marketplace_listings_visible_to(request.user)
+        .filter(internal_variant__product=product)
+        .select_related("store", "internal_variant")
+        .order_by("marketplace", "store__name", "external_primary_id", "id")
+    )
+    listing_counts = {Marketplace.WB: 0, Marketplace.OZON: 0}
+    for row in visible_listings.values("marketplace").annotate(total=Count("id")):
+        listing_counts[row["marketplace"]] = row["total"]
+    audit_records = audit_records_visible_to(request.user).filter(
+        Q(entity_type="InternalProduct", entity_id=str(product.pk))
+        | Q(entity_type="ProductVariant", entity_id__in=[str(item.pk) for item in variants])
+    )[:20]
+    return _render(
+        request,
+        "web/product_card.html",
+        {
+            "product": product,
+            "variants": variants if can_view_variants else [],
+            "visible_listings": visible_listings[:50],
+            "visible_wb_listing_count": listing_counts[Marketplace.WB],
+            "visible_ozon_listing_count": listing_counts[Marketplace.OZON],
+            "audit_records": audit_records,
+            "can_update_product": has_permission(request.user, "product_core.update"),
+            "can_archive_product": has_permission(request.user, "product_core.archive")
+            and product.status != ProductStatus.ARCHIVED,
+            "can_view_variants": can_view_variants,
+            "can_create_variant": has_permission(request.user, "product_variant.create"),
+            "can_update_variant": has_permission(request.user, "product_variant.update"),
+            "can_archive_variant": has_permission(request.user, "product_variant.archive"),
+        },
+        section="references",
+    )
+
+
+@login_required
+def internal_product_update(request: HttpRequest, pk: int) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_core.update"):
+        raise PermissionDenied("No permission to update internal products.")
+    product = get_object_or_404(InternalProduct, pk=pk)
+    before = _product_snapshot(product)
+    form = InternalProductForm(request.POST or None, instance=product)
+    if request.method == "POST" and form.is_valid():
+        product = form.save(commit=False)
+        product.updated_by = request.user
+        product.save()
+        _audit_internal_product_change(
+            action_code=AuditActionCode.PRODUCT_CORE_UPDATED,
+            user=request.user,
+            product=product,
+            before=before,
+        )
+        messages.success(request, "Внутренний товар обновлён.")
+        return redirect("web:internal_product_card", pk=product.pk)
+    return _render(
+        request,
+        "web/product_form.html",
+        {"form": form, "mode": "update", "product": product},
+        section="references",
+    )
+
+
+@login_required
+def internal_product_archive(request: HttpRequest, pk: int) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_core.archive"):
+        raise PermissionDenied("No permission to archive internal products.")
+    product = get_object_or_404(InternalProduct, pk=pk)
+    if request.method != "POST":
+        return redirect("web:internal_product_card", pk=product.pk)
+    before = _product_snapshot(product)
+    product.status = ProductStatus.ARCHIVED
+    product.updated_by = request.user
+    product.save(update_fields=["status", "updated_by", "updated_at"])
+    _audit_internal_product_change(
+        action_code=AuditActionCode.PRODUCT_CORE_ARCHIVED,
+        user=request.user,
+        product=product,
+        before=before,
+    )
+    messages.success(request, "Внутренний товар архивирован.")
+    return redirect("web:internal_product_card", pk=product.pk)
+
+
+@login_required
+def internal_variant_create(request: HttpRequest, product_pk: int) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_variant.create"):
+        raise PermissionDenied("No permission to create product variants.")
+    product = get_object_or_404(InternalProduct, pk=product_pk)
+    form = ProductVariantForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        variant = form.save(commit=False)
+        variant.product = product
+        variant.save()
+        _audit_variant_change(
+            action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+            user=request.user,
+            variant=variant,
+            before=None,
+        )
+        messages.success(request, "Вариант создан.")
+        return redirect("web:internal_product_card", pk=product.pk)
+    return _render(
+        request,
+        "web/variant_form.html",
+        {"form": form, "mode": "create", "product": product},
+        section="references",
+    )
+
+
+@login_required
+def internal_variant_update(request: HttpRequest, product_pk: int, variant_pk: int) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_variant.update"):
+        raise PermissionDenied("No permission to update product variants.")
+    product = get_object_or_404(InternalProduct, pk=product_pk)
+    variant = get_object_or_404(ProductVariant, pk=variant_pk, product=product)
+    before = _variant_snapshot(variant)
+    form = ProductVariantForm(request.POST or None, instance=variant)
+    if request.method == "POST" and form.is_valid():
+        variant = form.save()
+        _audit_variant_change(
+            action_code=AuditActionCode.PRODUCT_VARIANT_UPDATED,
+            user=request.user,
+            variant=variant,
+            before=before,
+        )
+        messages.success(request, "Вариант обновлён.")
+        return redirect("web:internal_product_card", pk=product.pk)
+    return _render(
+        request,
+        "web/variant_form.html",
+        {"form": form, "mode": "update", "product": product, "variant": variant},
+        section="references",
+    )
+
+
+@login_required
+def internal_variant_archive(request: HttpRequest, product_pk: int, variant_pk: int) -> HttpResponse:
+    _require_product_core_view(request.user)
+    if not has_permission(request.user, "product_variant.archive"):
+        raise PermissionDenied("No permission to archive product variants.")
+    product = get_object_or_404(InternalProduct, pk=product_pk)
+    variant = get_object_or_404(ProductVariant, pk=variant_pk, product=product)
+    if request.method != "POST":
+        return redirect("web:internal_product_card", pk=product.pk)
+    before = _variant_snapshot(variant)
+    variant.status = ProductStatus.ARCHIVED
+    variant.save(update_fields=["status", "updated_at"])
+    _audit_variant_change(
+        action_code=AuditActionCode.PRODUCT_VARIANT_ARCHIVED,
+        user=request.user,
+        variant=variant,
+        before=before,
+    )
+    messages.success(request, "Вариант архивирован.")
+    return redirect("web:internal_product_card", pk=product.pk)
 
 
 @login_required

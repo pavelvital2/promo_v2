@@ -420,6 +420,6 @@ ADR фиксирует архитектурное или проектное ре
 - Статус: accepted
 - Дата: 2026-05-01
 - Контекст: Excel remains a normal operational mode, but product core must not be inflated automatically from every workbook row.
-- Решение: existing Excel operations remain unchanged and do not automatically create internal products, variants or confirmed mappings. Any Excel import into Product Core/listings must be a separate explicit workflow with validation, diff, impact warning, confirmation, operation/audit/history and rollback notes.
+- Решение: existing Excel operations remain unchanged and do not automatically create internal products, variants or confirmed mappings. Existing legacy `MarketplaceProduct` compatibility sync may mirror operation product refs into unmatched `MarketplaceListing` compatibility records; this mirror is not an Excel import workflow. Any explicit Excel import into Product Core/listings must be a separate workflow with validation, diff, impact warning, confirmation, operation/audit/history and rollback notes.
 - Последствия: Stage 1 Excel remains штатный/резервный mode. Product Core imports are gated and cannot be hidden inside discounts check/process flows.
 - Трассировка: `docs/product/PRODUCT_CORE_UI_SPEC.md`, `docs/product/OPERATIONS_SPEC.md`, `docs/product/PRODUCT_CORE_SPEC.md`

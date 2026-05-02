@@ -8,6 +8,10 @@
     <h2>WB</h2>
     <div class="market-tree">
       <section>
+        <h3>Товары / листинги</h3>
+        <p>{% if wb_listing_stores %}<a class="button primary" href="{% url 'web:marketplace_listing_list' %}?marketplace=wb">Открыть WB листинги</a>{% else %}<span class="status">Нет доступных листингов</span>{% endif %}</p>
+      </section>
+      <section>
         <h3>Цены</h3>
         <p><span class="badge warning">Планируется</span> Excel</p>
         <p><span class="badge warning">Планируется</span> API</p>
@@ -43,6 +47,10 @@
   <section class="panel">
     <h2>Ozon</h2>
     <div class="market-tree">
+      <section>
+        <h3>Товары / листинги</h3>
+        <p>{% if ozon_listing_stores %}<a class="button primary" href="{% url 'web:marketplace_listing_list' %}?marketplace=ozon">Открыть Ozon листинги</a>{% else %}<span class="status">Нет доступных листингов</span>{% endif %}</p>
+      </section>
       <section>
         <h3>Цены</h3>
         <p><span class="badge warning">Планируется</span> Excel</p>

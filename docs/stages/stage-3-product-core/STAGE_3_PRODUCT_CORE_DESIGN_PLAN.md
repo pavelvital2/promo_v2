@@ -75,3 +75,16 @@ AUDIT PASS
 
 `AUDIT PASS WITH REMARKS` allows implementation only if the auditor explicitly marks all remarks non-blocking. Any spec-blocking remark returns to design/gap handling.
 
+## Implementation Status
+
+Status as of 2026-05-02: Stage 3.0 / CORE-1 Product Core Foundation implementation tasks TASK-PC-001..009 are accepted by audit/test reports, and TASK-PC-010 performed the documentation/runbook closeout.
+
+Accepted boundaries:
+
+- `MarketplaceProduct` remains as the legacy compatibility layer. Existing `/references/products/` routes keep legacy list/card behavior and do not route to `InternalProduct` by primary-key collision.
+- Product Core UI is exposed through explicit routes under `/references/product-core/products/` and `/references/marketplace-listings/`.
+- Mapping is manual. Candidate suggestions are exact and non-authoritative; they may mark `needs_review`/`conflict` but do not confirm a mapping without explicit user action.
+- CSV exports exist for internal products, marketplace listings, latest listing values, mapping report and unmatched listings. Exports respect object access and snapshot visibility.
+- WB/Ozon Excel workflows remain Stage 1 file/operation flows and do not create `InternalProduct`/`ProductVariant` records or automatically create confirmed mappings/`ProductMappingHistory`. Existing legacy `MarketplaceProduct` compatibility sync may still mirror operation product refs into unmatched `MarketplaceListing` compatibility records.
+- Stage 1 WB/Ozon Excel, Stage 2.1 WB API and Stage 2.2 Ozon Elastic regression groups passed in the Stage 3 acceptance run.
+- Runtime rollout requires applying Stage 3 migrations before Product Core validation and acceptance checks.

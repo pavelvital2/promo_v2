@@ -141,6 +141,26 @@ PERMISSION_DEFINITIONS = {
     ),
     "ozon.api.elastic.files.download": ("Ozon API: скачать Stage 2.2 файлы", Permission.ScopeType.STORE),
     "ozon.api.operation.view": ("Ozon API: просмотр операций", Permission.ScopeType.STORE),
+    "product_core.view": ("Product Core: просмотр внутренних товаров", Permission.ScopeType.GLOBAL),
+    "product_core.create": ("Product Core: создание внутренних товаров", Permission.ScopeType.GLOBAL),
+    "product_core.update": ("Product Core: изменение внутренних товаров", Permission.ScopeType.GLOBAL),
+    "product_core.archive": ("Product Core: архивирование внутренних товаров", Permission.ScopeType.GLOBAL),
+    "product_core.export": ("Product Core: экспорт внутренних товаров", Permission.ScopeType.GLOBAL),
+    "product_variant.view": ("Product Core: просмотр вариантов", Permission.ScopeType.GLOBAL),
+    "product_variant.create": ("Product Core: создание вариантов", Permission.ScopeType.GLOBAL),
+    "product_variant.update": ("Product Core: изменение вариантов", Permission.ScopeType.GLOBAL),
+    "product_variant.archive": ("Product Core: архивирование вариантов", Permission.ScopeType.GLOBAL),
+    "marketplace_listing.view": ("Product Core: просмотр marketplace listings", Permission.ScopeType.STORE),
+    "marketplace_listing.sync": ("Product Core: запуск sync listings", Permission.ScopeType.STORE),
+    "marketplace_listing.export": ("Product Core: экспорт listings", Permission.ScopeType.STORE),
+    "marketplace_listing.map": ("Product Core: связать listing с variant", Permission.ScopeType.STORE),
+    "marketplace_listing.unmap": ("Product Core: снять связь listing с variant", Permission.ScopeType.STORE),
+    "marketplace_listing.archive": ("Product Core: архивировать listing", Permission.ScopeType.STORE),
+    "marketplace_snapshot.view": ("Product Core: просмотр snapshots", Permission.ScopeType.STORE),
+    "marketplace_snapshot.technical_view": (
+        "Product Core: просмотр технических деталей snapshots",
+        Permission.ScopeType.STORE,
+    ),
 }
 
 SECTION_DEFINITIONS = {
@@ -160,6 +180,8 @@ SECTION_DEFINITIONS = {
     "techlog.view": ("techlog", "view", "Техжурнал"),
     "wb_discounts_api.view": ("wb_discounts_api", "view", "WB API"),
     "ozon_discounts_api.view": ("ozon_discounts_api", "view", "Ozon API"),
+    "product_core.view": ("product_core", "view", "Product Core"),
+    "marketplace_listings.view": ("marketplace_listings", "view", "Marketplace listings"),
 }
 
 
@@ -218,6 +240,38 @@ OZON_API_MANAGER_CODES = {
     "ozon.api.elastic.files.download",
     "ozon.api.operation.view",
 }
+PRODUCT_CORE_ALL_CODES = {code for code in ALL_PERMISSION_CODES if code.startswith("product_core.")}
+PRODUCT_VARIANT_ALL_CODES = {code for code in ALL_PERMISSION_CODES if code.startswith("product_variant.")}
+MARKETPLACE_LISTING_ALL_CODES = {
+    code for code in ALL_PERMISSION_CODES if code.startswith("marketplace_listing.")
+}
+MARKETPLACE_SNAPSHOT_ALL_CODES = {
+    code for code in ALL_PERMISSION_CODES if code.startswith("marketplace_snapshot.")
+}
+PRODUCT_CORE_LOCAL_ADMIN_CODES = (
+    MARKETPLACE_LISTING_ALL_CODES
+    | MARKETPLACE_SNAPSHOT_ALL_CODES
+    | {
+        "product_core.view",
+        "product_variant.view",
+    }
+) - {
+    "marketplace_listing.archive",
+    "marketplace_snapshot.technical_view",
+}
+PRODUCT_CORE_MANAGER_CODES = {
+    "product_core.view",
+    "product_variant.view",
+    "marketplace_listing.view",
+    "marketplace_listing.export",
+    "marketplace_snapshot.view",
+}
+PRODUCT_CORE_OBSERVER_CODES = {
+    "product_core.view",
+    "product_variant.view",
+    "marketplace_listing.view",
+    "marketplace_snapshot.view",
+}
 
 LOCAL_ADMIN_PERMISSION_CODES = (
     {code for code in ADMIN_PERMISSION_CODES if not code.startswith("roles.")}
@@ -226,6 +280,7 @@ LOCAL_ADMIN_PERMISSION_CODES = (
     | AUDIT_TECHLOG_CODES
     | WB_API_CONNECTION_CODES
     | OZON_API_CONNECTION_CODES
+    | PRODUCT_CORE_LOCAL_ADMIN_CODES
 ) - {
     "users.owner.manage",
     "roles.edit",
@@ -246,6 +301,7 @@ MANAGER_PERMISSION_CODES = (
         "settings.param_history.view",
         "settings.param_source.view",
     }
+    | PRODUCT_CORE_MANAGER_CODES
 ) - {
     "users.owner.manage",
     "settings.system_params.edit",
@@ -272,6 +328,7 @@ OBSERVER_PERMISSION_CODES = {
     "techlog.list.view",
     "techlog.card.view",
     "logs.scope.limited",
+    *PRODUCT_CORE_OBSERVER_CODES,
 }
 
 ROLE_PERMISSION_CODES = {
@@ -296,6 +353,7 @@ ROLE_SECTION_CODES = {
         "store_access.view",
         "audit.view",
         "techlog.view",
+        "marketplace_listings.view",
     },
     ROLE_MARKETPLACE_MANAGER: {
         "home.view",
@@ -307,6 +365,8 @@ ROLE_SECTION_CODES = {
         "stores.view",
         "products.view",
         "settings_store.view",
+        "product_core.view",
+        "marketplace_listings.view",
     },
     ROLE_OBSERVER: {
         "home.view",
@@ -316,6 +376,8 @@ ROLE_SECTION_CODES = {
         "settings_store.view",
         "audit.view",
         "techlog.view",
+        "product_core.view",
+        "marketplace_listings.view",
     },
 }
 

@@ -1,38 +1,85 @@
 {% extends "base.html" %}
-{% block title %}Товары{% endblock %}
+{% block title %}Внутренние товары{% endblock %}
 {% block content %}
-<h1>Товары</h1>
+<h1>Внутренние товары</h1>
+
 <form method="get" class="toolbar panel">
-  <label>Поиск<input name="q" value="{{ filters.q }}"></label>
-  <label>Маркетплейс
-    <select name="marketplace">
+  <label>Поиск<input name="q" value="{{ filters.q }}" placeholder="Код, название, SKU, barcode"></label>
+  <label>Тип
+    <select name="product_type">
       <option value="">Все</option>
-      <option value="wb" {% if filters.marketplace == "wb" %}selected{% endif %}>WB</option>
-      <option value="ozon" {% if filters.marketplace == "ozon" %}selected{% endif %}>Ozon</option>
+      {% for value,label in product_types %}
+        <option value="{{ value }}" {% if filters.product_type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
     </select>
   </label>
-  <label>Магазин
-    <select name="store">
-      <option value="">Все доступные</option>
-      {% for store in stores %}<option value="{{ store.pk }}" {% if filters.store == store.pk|stringformat:"s" %}selected{% endif %}>{{ store.visible_id }} {{ store.name }}</option>{% endfor %}
+  <label>Категория
+    <select name="category">
+      <option value="">Все</option>
+      {% for category in categories %}
+        <option value="{{ category.pk }}" {% if filters.category == category.pk|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>
+      {% endfor %}
     </select>
   </label>
-  <label>Статус<input name="status" value="{{ filters.status }}"></label>
+  <label>Статус
+    <select name="status">
+      <option value="">Все</option>
+      {% for value,label in statuses %}
+        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Листинги
+    <select name="linked">
+      <option value="">Все</option>
+      <option value="linked" {% if filters.linked == "linked" %}selected{% endif %}>Есть видимые связи</option>
+      <option value="unlinked" {% if filters.linked == "unlinked" %}selected{% endif %}>Нет видимых связей</option>
+    </select>
+  </label>
   <button class="primary">Применить</button>
+  {% if can_create_product %}
+    <a class="button" href="{% url 'web:internal_product_create' %}">Создать товар</a>
+  {% endif %}
+  {% if can_export_products %}
+    <a class="button" href="{% url 'web:internal_product_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Экспорт CSV</a>
+  {% endif %}
 </form>
+
 <section class="panel">
-  <table><thead><tr><th>Маркетплейс</th><th>Магазин</th><th>SKU / identifier</th><th>Title</th><th>Статус</th><th>Last update</th></tr></thead><tbody>
-    {% for product in page.object_list %}
-      <tr>
-        <td>{{ product.marketplace }}</td>
-        <td>{{ product.store.visible_id }} {{ product.store.name }}</td>
-        <td><a href="{% url 'web:product_card' product.pk %}">{{ product.sku }}</a></td>
-        <td>{{ product.title|default:"-" }}</td>
-        <td>{{ product.status }}</td>
-        <td>{{ product.last_seen_at }}</td>
-      </tr>
-    {% empty %}<tr><td colspan="6" class="empty">Нет товаров в доступном контуре.</td></tr>{% endfor %}
-  </tbody></table>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Код</th>
+          <th>Название</th>
+          <th>Тип</th>
+          <th>Категория</th>
+          <th>Варианты</th>
+          <th>WB листинги</th>
+          <th>Ozon листинги</th>
+          <th>Статус</th>
+          <th>Обновлено</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in page.object_list %}
+          <tr>
+            <td><a href="{% url 'web:internal_product_card' product.pk %}">{{ product.internal_code }}</a></td>
+            <td>{{ product.name }}</td>
+            <td>{{ product.get_product_type_display }}</td>
+            <td>{{ product.category.name|default:"-" }}</td>
+            <td>{% if can_view_variants %}{{ product.variant_count }}{% else %}-{% endif %}</td>
+            <td>{{ product.visible_wb_listing_count }}</td>
+            <td>{{ product.visible_ozon_listing_count }}</td>
+            <td><span class="badge">{{ product.get_status_display }}</span></td>
+            <td>{{ product.updated_at }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="9" class="empty">Нет внутренних товаров в доступном контуре.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% include "web/_pagination.html" %}
 </section>
 {% endblock %}

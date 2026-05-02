@@ -218,6 +218,8 @@ upload Excel -> validate -> show diff -> warn impact -> confirm -> create import
 
 If that workflow is not implemented in CORE-1, UI must not imply that Excel upload will update the internal catalog.
 
+Existing legacy `MarketplaceProduct` compatibility sync may mirror operation `product_ref` values into unmatched `MarketplaceListing` compatibility records. That mirror is not an Excel import workflow and must not imply internal catalog updates or confirmed mappings.
+
 ## Export UI
 
 CORE-1 exports:

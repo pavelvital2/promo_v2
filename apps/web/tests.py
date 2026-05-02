@@ -7,12 +7,19 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.audit.models import AuditActionCode, AuditRecord
 from apps.discounts.ozon_api.actions import SELECTED_ACTION_METADATA_KEY
 from apps.discounts.wb_api.client import WBApiInvalidResponseError
 from apps.identity_access.models import AccessEffect, Permission, Role, StoreAccess, UserPermissionOverride
-from apps.identity_access.seeds import ROLE_LOCAL_ADMIN, ROLE_OBSERVER, ROLE_OWNER, seed_identity_access
+from apps.identity_access.seeds import (
+    ROLE_LOCAL_ADMIN,
+    ROLE_MARKETPLACE_MANAGER,
+    ROLE_OBSERVER,
+    ROLE_OWNER,
+    seed_identity_access,
+)
 from apps.files.models import FileObject, FileVersion
 from apps.files.services import create_file_version
 from apps.marketplace_products.models import MarketplaceProduct
@@ -30,6 +37,19 @@ from apps.operations.models import (
     Run,
 )
 from apps.platform_settings.models import StoreParameterChangeHistory, StoreParameterValue
+from apps.product_core.models import (
+    InternalProduct,
+    ListingSource,
+    Marketplace,
+    MarketplaceListing,
+    MarketplaceSyncRun,
+    PriceSnapshot,
+    ProductIdentifier,
+    ProductMappingHistory,
+    ProductStatus,
+    ProductVariant,
+    StockSnapshot,
+)
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.web.views import _summary_items
 
@@ -178,6 +198,7 @@ class HomeSmokeTests(TestCase):
             "web:operation_list",
             "web:reference_index",
             "web:product_list",
+            "web:internal_product_list",
             "web:settings_index",
             "web:admin_index",
             "web:user_list",
@@ -787,26 +808,66 @@ class HomeSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
 
-    def test_product_list_and_card_are_store_access_aware(self) -> None:
+    def test_legacy_product_list_and_card_keep_stage_1_route_compatibility(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Legacy Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        legacy_product = MarketplaceProduct.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            sku="LEGACY-SKU-1",
+            barcode="4600000000101",
+            title="Legacy marketplace product",
+            external_ids={"nmID": "LEGACY-SKU-1"},
+            last_values={"price": "999"},
+        )
+        InternalProduct.objects.create(pk=legacy_product.pk, internal_code="IP-COLLISION", name="Collision")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:product_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "LEGACY-SKU-1")
+        self.assertNotContains(response, "IP-COLLISION")
+
+        response = self.client.get(reverse("web:product_card", args=[legacy_product.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Legacy marketplace product")
+        self.assertContains(response, "LEGACY-SKU-1")
+        self.assertNotContains(response, "IP-COLLISION")
+
+    def test_internal_product_list_and_card_are_store_access_aware(self) -> None:
         user = self._owner()
         store = StoreAccount.objects.create(
             name="WB Store",
             marketplace=StoreAccount.Marketplace.WB,
             cabinet_type=StoreAccount.CabinetType.STORE,
         )
-        product = MarketplaceProduct.objects.create(
-            marketplace="wb",
+        product = InternalProduct.objects.create(internal_code="IP-001", name="Needle")
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="SKU-1",
+            name="Default",
+        )
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
             store=store,
-            sku="WB-1",
-            external_ids={"wb": "WB-1"},
-            last_values={"last_reason_code": "wb_valid_calculated"},
+            internal_variant=variant,
+            external_primary_id="WB-1",
+            seller_article="WB-ART-1",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
         )
         self.client.force_login(user)
 
-        response = self.client.get(reverse("web:product_list"))
-        self.assertContains(response, "WB-1")
-        response = self.client.get(reverse("web:product_card", args=[product.pk]))
-        self.assertContains(response, "last_reason_code")
+        response = self.client.get(reverse("web:internal_product_list"))
+        self.assertContains(response, "IP-001")
+        self.assertContains(response, "Needle")
+        response = self.client.get(reverse("web:internal_product_card", args=[product.pk]))
+        self.assertContains(response, "SKU-1")
+        self.assertContains(response, "WB-ART-1")
 
     def test_reference_index_allows_store_scoped_store_list_access(self) -> None:
         local_admin_role = Role.objects.get(code=ROLE_LOCAL_ADMIN)
@@ -838,14 +899,20 @@ class HomeSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("stores:store_list"))
-        self.assertNotContains(response, reverse("web:product_list"))
+        self.assertNotContains(response, reverse("web:internal_product_list"))
 
         response = self.client.get(reverse("stores:store_list"))
         self.assertContains(response, allowed_store.name)
         self.assertNotContains(response, denied_store.name)
 
-    def test_product_card_related_operations_match_store_and_marketplace(self) -> None:
-        user = self._owner()
+    def test_product_card_hides_inaccessible_listing_counts_and_details(self) -> None:
+        manager_role = Role.objects.get(code="marketplace_manager")
+        manager = get_user_model().objects.create_user(
+            login="pc-manager",
+            password="password",
+            display_name="PC Manager",
+            primary_role=manager_role,
+        )
         wb_store = StoreAccount.objects.create(
             name="WB Store",
             marketplace=StoreAccount.Marketplace.WB,
@@ -856,47 +923,707 @@ class HomeSmokeTests(TestCase):
             marketplace=StoreAccount.Marketplace.WB,
             cabinet_type=StoreAccount.CabinetType.STORE,
         )
-        product = MarketplaceProduct.objects.create(
-            marketplace="wb",
+        StoreAccess.objects.create(
+            user=manager,
             store=wb_store,
-            sku="SKU-1",
-            external_ids={"wb": "SKU-1"},
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
         )
-        matching_run = Run.objects.create(marketplace="wb", store=wb_store, initiated_by=user)
-        matching_operation = Operation.objects.create(
-            marketplace="wb",
-            operation_type=OperationType.CHECK,
-            status=CheckStatus.CREATED,
-            run=matching_run,
+        product = InternalProduct.objects.create(internal_code="IP-002", name="Private counts")
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="SKU-PRIVATE",
+            name="Default",
+        )
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
             store=wb_store,
-            initiator_user=user,
-            logic_version="test",
+            internal_variant=variant,
+            external_primary_id="VISIBLE-LISTING",
+            seller_article="VISIBLE-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
         )
-        other_run = Run.objects.create(marketplace="wb", store=other_store, initiated_by=user)
-        other_operation = Operation.objects.create(
-            marketplace="wb",
-            operation_type=OperationType.CHECK,
-            status=CheckStatus.CREATED,
-            run=other_run,
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
             store=other_store,
-            initiator_user=user,
-            logic_version="test",
+            internal_variant=variant,
+            external_primary_id="HIDDEN-LISTING",
+            seller_article="HIDDEN-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
         )
-        for operation in (matching_operation, other_operation):
-            OperationDetailRow.objects.create(
-                operation=operation,
-                row_no=1,
-                product_ref="SKU-1",
-                row_status="ok",
-                reason_code="wb_valid_calculated",
-                message_level="info",
-            )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:internal_product_card", args=[product.pk]))
+
+        self.assertContains(response, "VISIBLE-ART")
+        self.assertNotContains(response, "HIDDEN-ART")
+        self.assertContains(response, "<dt>WB</dt><dd>1</dd>", html=True)
+
+    def test_marketplace_listing_list_filters_and_enforces_store_access(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="listing-manager",
+            password="password",
+            display_name="Listing Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        allowed_store = StoreAccount.objects.create(
+            name="Allowed WB Listing Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        hidden_store = StoreAccount.objects.create(
+            name="Hidden WB Listing Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=allowed_store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        visible_listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=allowed_store,
+            external_primary_id="VISIBLE-NM",
+            seller_article="VISIBLE-ART",
+            barcode="460000000001",
+            title="Visible listing",
+            brand="Visible brand",
+            category_name="Visible category",
+            mapping_status=MarketplaceListing.MappingStatus.UNMATCHED,
+            last_values={"price": "100.00", "currency": "RUB", "total_stock": 5},
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        hidden_listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=hidden_store,
+            external_primary_id="HIDDEN-NM",
+            seller_article="HIDDEN-ART",
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:marketplace_listing_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "VISIBLE-ART")
+        self.assertContains(response, "100.00")
+        self.assertNotContains(response, "HIDDEN-ART")
+
+        response = self.client.get(
+            reverse("web:marketplace_listing_list"),
+            {"q": "VISIBLE", "stock": "present"},
+        )
+        self.assertContains(response, "VISIBLE-NM")
+
+        response = self.client.get(reverse("web:unmatched_listing_list"))
+        self.assertContains(response, "VISIBLE-ART")
+
+        response = self.client.get(reverse("web:marketplace_listing_card", args=[hidden_listing.pk]))
+        self.assertEqual(response.status_code, 404)
+        response = self.client.get(reverse("web:marketplace_listing_card", args=[visible_listing.pk]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_product_core_exports_apply_access_and_do_not_leak_hidden_listing_details(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="export-manager",
+            password="password",
+            display_name="Export Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        allowed_store = StoreAccount.objects.create(
+            name="Allowed Export Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        hidden_store = StoreAccount.objects.create(
+            name="Hidden Export Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=allowed_store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        UserPermissionOverride.objects.create(
+            user=manager,
+            permission=Permission.objects.get(code="product_core.export"),
+            effect=AccessEffect.ALLOW,
+        )
+        product = InternalProduct.objects.create(internal_code="IP-EXPORT", name="Export product")
+        variant = ProductVariant.objects.create(product=product, internal_sku="SKU-EXPORT", name="Default")
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=allowed_store,
+            internal_variant=variant,
+            external_primary_id="VISIBLE-EXPORT-NM",
+            seller_article="VISIBLE-EXPORT-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=hidden_store,
+            internal_variant=variant,
+            external_primary_id="HIDDEN-EXPORT-NM",
+            seller_article="HIDDEN-EXPORT-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:internal_product_export"))
+
+        body = response.content.decode("utf-8-sig")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("IP-EXPORT", body)
+        self.assertIn(",1,0,", body)
+        self.assertNotIn("VISIBLE-EXPORT-ART", body)
+        self.assertNotIn("HIDDEN-EXPORT-ART", body)
+        self.assertNotIn("Hidden Export Store", body)
+
+        response = self.client.get(reverse("web:marketplace_listing_export"))
+        body = response.content.decode("utf-8-sig")
+        self.assertIn("VISIBLE-EXPORT-ART", body)
+        self.assertNotIn("HIDDEN-EXPORT-ART", body)
+        self.assertNotIn("Hidden Export Store", body)
+
+    def test_listing_latest_values_export_redacts_secret_like_values_and_raw_safe(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="latest-export-manager",
+            password="password",
+            display_name="Latest Export Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="Latest Export Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        run = MarketplaceSyncRun.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            sync_type=MarketplaceSyncRun.SyncType.PRICES,
+            source=ListingSource.WB_API_PRICES,
+            status=MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS,
+            started_at=timezone.now(),
+            finished_at=timezone.now(),
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="LATEST-NM",
+            seller_article="LATEST-ART",
+            last_values={
+                "price": "100.00",
+                "currency": "RUB",
+                "api_key": "SECRET-VALUE-123456",
+                "nested": {"Authorization": "Bearer abcdefghijklmnop"},
+            },
+            last_source=ListingSource.WB_API_PRICES,
+        )
+        PriceSnapshot.objects.create(
+            listing=listing,
+            sync_run=run,
+            snapshot_at=timezone.now(),
+            price="100.00",
+            currency="RUB",
+            raw_safe={"debug_marker": "RAW-SAFE-SHOULD-NOT-EXPORT"},
+            source_endpoint="wb_prices_list_goods_filter",
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:listing_latest_values_export"))
+
+        body = response.content.decode("utf-8-sig")
+        self.assertContains(response, "LATEST-ART")
+        self.assertIn("100.00", body)
+        self.assertIn("[redacted]", body)
+        self.assertNotIn("api_key", body)
+        self.assertNotIn("SECRET-VALUE-123456", body)
+        self.assertNotIn("Authorization", body)
+        self.assertNotIn("RAW-SAFE-SHOULD-NOT-EXPORT", body)
+
+    def test_unmatched_and_mapping_report_exports_use_visible_rows(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Mapping Export Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        product = InternalProduct.objects.create(internal_code="IP-MAPPING-EXPORT", name="Mapped")
+        variant = ProductVariant.objects.create(product=product, internal_sku="SKU-MAPPING-EXPORT", name="Default")
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="MAPPED-EXPORT-NM",
+            seller_article="MAPPED-EXPORT-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="UNMATCHED-EXPORT-NM",
+            seller_article="UNMATCHED-EXPORT-ART",
+            mapping_status=MarketplaceListing.MappingStatus.UNMATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
         self.client.force_login(user)
 
-        response = self.client.get(reverse("web:product_card", args=[product.pk]))
+        response = self.client.get(reverse("web:unmatched_listing_export"))
+        body = response.content.decode("utf-8-sig")
+        self.assertIn("UNMATCHED-EXPORT-ART", body)
+        self.assertNotIn("MAPPED-EXPORT-ART", body)
 
-        self.assertContains(response, matching_operation.visible_id)
-        self.assertNotContains(response, other_operation.visible_id)
+        response = self.client.get(reverse("web:listing_mapping_report_export"))
+        body = response.content.decode("utf-8-sig")
+        self.assertIn("MAPPED-EXPORT-ART", body)
+        self.assertIn("SKU-MAPPING-EXPORT", body)
+        self.assertIn("UNMATCHED-EXPORT-ART", body)
+
+    def test_marketplace_listing_card_hides_raw_safe_without_technical_permission(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="listing-snapshot-manager",
+            password="password",
+            display_name="Listing Snapshot Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="WB Snapshot Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        run = Run.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=manager,
+        )
+        operation = Operation.objects.create(
+            marketplace="wb",
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.RUNNING,
+            run=run,
+            store=store,
+            initiator_user=manager,
+            logic_version="test",
+        )
+        output_version = create_file_version(
+            store=store,
+            uploaded_by=manager,
+            uploaded_file=SimpleUploadedFile("prices.xlsx", b"prices"),
+            scenario=FileObject.Scenario.WB_DISCOUNTS_API_PRICE_EXPORT,
+            kind=FileObject.Kind.OUTPUT,
+            logical_name="wb api prices",
+            module=OperationModule.WB_API,
+        )
+        OperationOutputFile.objects.create(
+            operation=operation,
+            file_version=output_version,
+            output_kind=OutputKind.PROMOTION_EXPORT,
+        )
+        Operation.objects.filter(pk=operation.pk).update(status=ProcessStatus.COMPLETED_SUCCESS)
+        operation.refresh_from_db()
+        sync_run = MarketplaceSyncRun.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            sync_type=MarketplaceSyncRun.SyncType.PRICES,
+            source=ListingSource.WB_API_PRICES,
+            status=MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS,
+            started_at=timezone.now(),
+            finished_at=timezone.now(),
+            requested_by=manager,
+            operation=operation,
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="RAW-NM",
+            external_ids={"nmID": "RAW-NM"},
+            seller_article="RAW-ART",
+            last_values={"price": "123.45", "currency": "RUB", "total_stock": 9},
+            last_successful_sync_at=sync_run.finished_at,
+            last_sync_run=sync_run,
+            last_source=ListingSource.WB_API_PRICES,
+        )
+        PriceSnapshot.objects.create(
+            listing=listing,
+            sync_run=sync_run,
+            operation=operation,
+            snapshot_at=timezone.now(),
+            price="123.45",
+            currency="RUB",
+            raw_safe={"debug_marker": "RAW-SAFE-MARKER"},
+            source_endpoint="wb_prices_list_goods_filter",
+        )
+        StockSnapshot.objects.create(
+            listing=listing,
+            sync_run=sync_run,
+            operation=operation,
+            snapshot_at=timezone.now(),
+            total_stock=9,
+            raw_safe={"stock_marker": "RAW-STOCK-MARKER"},
+            source_endpoint="wb_stock_summary",
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:marketplace_listing_card", args=[listing.pk]))
+
+        self.assertContains(response, "RAW-ART")
+        self.assertContains(response, operation.visible_id)
+        self.assertContains(response, reverse("web:download_file", args=[output_version.pk]))
+        self.assertContains(response, "Скрыто")
+        self.assertNotContains(response, "RAW-SAFE-MARKER")
+        self.assertNotContains(response, "RAW-STOCK-MARKER")
+
+        UserPermissionOverride.objects.create(
+            user=manager,
+            permission=Permission.objects.get(code="marketplace_snapshot.technical_view"),
+            effect=AccessEffect.ALLOW,
+            store=store,
+        )
+        response = self.client.get(reverse("web:marketplace_listing_card", args=[listing.pk]))
+
+        self.assertContains(response, "RAW-SAFE-MARKER")
+        self.assertContains(response, "RAW-STOCK-MARKER")
+
+    def test_mapping_workflow_requires_permission_and_does_not_auto_confirm_candidates(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="mapping-manager",
+            password="password",
+            display_name="Mapping Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        local_admin = get_user_model().objects.create_user(
+            login="mapping-local-admin",
+            password="password",
+            display_name="Mapping Local Admin",
+            primary_role=Role.objects.get(code=ROLE_LOCAL_ADMIN),
+        )
+        store = StoreAccount.objects.create(
+            name="WB Mapping Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        for user in (manager, local_admin):
+            StoreAccess.objects.create(
+                user=user,
+                store=store,
+                access_level=StoreAccess.AccessLevel.WORK,
+                effect=AccessEffect.ALLOW,
+            )
+        product = InternalProduct.objects.create(internal_code="IP-MAP", name="Mapped product")
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="MAP-ART",
+            name="Mapped variant",
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="WB-MAP-1",
+            seller_article="MAP-ART",
+            mapping_status=MarketplaceListing.MappingStatus.UNMATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+
+        self.client.force_login(manager)
+        response = self.client.get(reverse("web:marketplace_listing_mapping", args=[listing.pk]))
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(local_admin)
+        response = self.client.get(reverse("web:marketplace_listing_mapping", args=[listing.pk]))
+        listing.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Подсказки не являются авторитетным решением")
+        self.assertContains(response, "exact_seller_article")
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.NEEDS_REVIEW)
+        self.assertTrue(
+            ProductMappingHistory.objects.filter(
+                listing=listing,
+                action=ProductMappingHistory.MappingAction.NEEDS_REVIEW_MARKER,
+            ).exists()
+        )
+
+        response = self.client.post(
+            reverse("web:marketplace_listing_mapping", args=[listing.pk]),
+            {
+                "action": "link_existing",
+                "variant": str(variant.pk),
+                "reason_comment": "Explicitly confirmed by user.",
+            },
+        )
+        listing.refresh_from_db()
+        self.assertEqual(response["Location"], reverse("web:marketplace_listing_card", args=[listing.pk]))
+        self.assertEqual(listing.internal_variant, variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.MATCHED)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.MARKETPLACE_LISTING_MAPPED,
+                user=local_admin,
+                store=store,
+            ).exists()
+        )
+
+    def test_leave_unmatched_records_history_and_audit_for_already_unmatched_listing(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Already Unmatched Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="WB-ALREADY-UNMATCHED",
+            seller_article="NO-MATCH",
+            mapping_status=MarketplaceListing.MappingStatus.UNMATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("web:marketplace_listing_mapping", args=[listing.pk]),
+            {
+                "action": "leave_unmatched",
+                "reason_comment": "Explicitly keep unmatched.",
+            },
+        )
+
+        listing.refresh_from_db()
+        self.assertEqual(response["Location"], reverse("web:marketplace_listing_card", args=[listing.pk]))
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.UNMATCHED)
+        history = ProductMappingHistory.objects.get(listing=listing)
+        self.assertEqual(history.action, ProductMappingHistory.MappingAction.UNMAP)
+        self.assertIsNone(history.previous_variant)
+        self.assertIsNone(history.new_variant)
+        self.assertEqual(history.mapping_status_after, MarketplaceListing.MappingStatus.UNMATCHED)
+        self.assertEqual(history.reason_comment, "Explicitly keep unmatched.")
+        self.assertEqual(history.source_context, {"basis": "manual_leave_unmatched"})
+        audit = AuditRecord.objects.get(
+            action_code=AuditActionCode.MARKETPLACE_LISTING_UNMAPPED,
+            entity_type="ProductMappingHistory",
+            entity_id=str(history.pk),
+            user=user,
+            store=store,
+        )
+        self.assertEqual(audit.source_context, "ui")
+        self.assertEqual(audit.after_snapshot["mapping_status"], MarketplaceListing.MappingStatus.UNMATCHED)
+        self.assertIsNone(audit.after_snapshot["variant_id"])
+        self.assertEqual(audit.after_snapshot["mapping_action"], ProductMappingHistory.MappingAction.UNMAP)
+        self.assertEqual(audit.after_snapshot["reason_comment"], "Explicitly keep unmatched.")
+        self.assertEqual(audit.after_snapshot["mapping_source_context"], {"basis": "manual_leave_unmatched"})
+
+    def test_mapping_workflow_conflict_unmap_and_create_product_variant(self) -> None:
+        user = self._owner()
+        store = StoreAccount.objects.create(
+            name="WB Mapping Owner Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        product = InternalProduct.objects.create(internal_code="IP-CONFLICT", name="Conflict product")
+        variant = ProductVariant.objects.create(product=product, internal_sku="DUP-WEB", name="First")
+        other_variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="DUP-WEB-2",
+            name="Second",
+        )
+        ProductIdentifier.objects.create(
+            variant=other_variant,
+            identifier_type=ProductIdentifier.IdentifierType.LEGACY_ARTICLE,
+            value="DUP-WEB",
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="WB-CONFLICT",
+            seller_article="DUP-WEB",
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:marketplace_listing_mapping", args=[listing.pk]))
+        listing.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+        self.assertIsNone(listing.internal_variant)
+
+        self.client.post(
+            reverse("web:marketplace_listing_mapping", args=[listing.pk]),
+            {"action": "link_existing", "variant": str(variant.pk), "reason_comment": "Resolve."},
+        )
+        listing.refresh_from_db()
+        self.assertEqual(listing.internal_variant, variant)
+
+        self.client.post(
+            reverse("web:marketplace_listing_mapping", args=[listing.pk]),
+            {
+                "action": "unmap",
+                "mapping_status_after": MarketplaceListing.MappingStatus.CONFLICT,
+                "reason_comment": "Still conflicting.",
+            },
+        )
+        listing.refresh_from_db()
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+        self.assertTrue(
+            ProductMappingHistory.objects.filter(
+                listing=listing,
+                action=ProductMappingHistory.MappingAction.UNMAP,
+                previous_variant=variant,
+                mapping_status_after=MarketplaceListing.MappingStatus.CONFLICT,
+            ).exists()
+        )
+
+        new_listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="WB-NEW",
+            seller_article="NEW-WEB",
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        response = self.client.post(
+            reverse("web:marketplace_listing_mapping", args=[new_listing.pk]),
+            {
+                "action": "create_product_variant",
+                "product-internal_code": "IP-WEB-NEW",
+                "product-name": "Web new product",
+                "product-product_type": InternalProduct.ProductType.FINISHED_GOOD,
+                "product-status": ProductStatus.ACTIVE,
+                "product-comments": "",
+                "product-attributes_json": "{}",
+                "variant-internal_sku": "NEW-WEB",
+                "variant-name": "Web new variant",
+                "variant-barcode_internal": "",
+                "variant-status": ProductStatus.ACTIVE,
+                "variant-variant_attributes_json": "{}",
+                "reason_comment": "Create from mapping workflow.",
+            },
+        )
+        new_listing.refresh_from_db()
+        self.assertEqual(response["Location"], reverse("web:marketplace_listing_card", args=[new_listing.pk]))
+        self.assertIsNotNone(new_listing.internal_variant)
+        self.assertEqual(new_listing.internal_variant.internal_sku, "NEW-WEB")
+        self.assertEqual(new_listing.mapping_status, MarketplaceListing.MappingStatus.MATCHED)
+
+    def test_internal_product_and_variant_create_update_archive_flows(self) -> None:
+        user = self._owner()
+        self.client.force_login(user)
+
+        create_response = self.client.post(
+            reverse("web:internal_product_create"),
+            {
+                "internal_code": "IP-FLOW",
+                "name": "Flow product",
+                "product_type": InternalProduct.ProductType.FINISHED_GOOD,
+                "status": "active",
+                "attributes_json": '{"color": "black"}',
+                "comments": "created",
+            },
+        )
+        product = InternalProduct.objects.get(internal_code="IP-FLOW")
+        self.assertEqual(create_response["Location"], reverse("web:internal_product_card", args=[product.pk]))
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.PRODUCT_CORE_CREATED,
+                entity_type="InternalProduct",
+                entity_id=str(product.pk),
+            ).exists()
+        )
+
+        update_response = self.client.post(
+            reverse("web:internal_product_update", args=[product.pk]),
+            {
+                "internal_code": "IP-FLOW",
+                "name": "Flow product updated",
+                "product_type": InternalProduct.ProductType.MATERIAL,
+                "status": "inactive",
+                "attributes_json": '{"color": "white"}',
+                "comments": "updated",
+            },
+        )
+        product.refresh_from_db()
+        self.assertEqual(update_response["Location"], reverse("web:internal_product_card", args=[product.pk]))
+        self.assertEqual(product.name, "Flow product updated")
+        self.assertEqual(product.attributes, {"color": "white"})
+
+        variant_response = self.client.post(
+            reverse("web:internal_variant_create", args=[product.pk]),
+            {
+                "internal_sku": "FLOW-SKU",
+                "name": "Flow variant",
+                "barcode_internal": "4600000000000",
+                "status": "active",
+                "variant_attributes_json": '{"size": "M"}',
+            },
+        )
+        variant = ProductVariant.objects.get(product=product, internal_sku="FLOW-SKU")
+        self.assertEqual(variant_response["Location"], reverse("web:internal_product_card", args=[product.pk]))
+
+        variant_update_response = self.client.post(
+            reverse("web:internal_variant_update", args=[product.pk, variant.pk]),
+            {
+                "internal_sku": "FLOW-SKU",
+                "name": "Flow variant updated",
+                "barcode_internal": "4600000000001",
+                "status": "inactive",
+                "variant_attributes_json": '{"size": "L"}',
+            },
+        )
+        variant.refresh_from_db()
+        self.assertEqual(variant_update_response["Location"], reverse("web:internal_product_card", args=[product.pk]))
+        self.assertEqual(variant.name, "Flow variant updated")
+        self.assertEqual(variant.variant_attributes, {"size": "L"})
+
+        self.client.post(reverse("web:internal_variant_archive", args=[product.pk, variant.pk]))
+        variant.refresh_from_db()
+        self.assertEqual(variant.status, "archived")
+
+        self.client.post(reverse("web:internal_product_archive", args=[product.pk]))
+        product.refresh_from_db()
+        self.assertEqual(product.status, "archived")
+
+    def test_product_core_write_requires_permissions(self) -> None:
+        observer_role = Role.objects.get(code=ROLE_OBSERVER)
+        user = get_user_model().objects.create_user(
+            login="pc-observer-web",
+            password="password",
+            display_name="PC Observer Web",
+            primary_role=observer_role,
+        )
+        product = InternalProduct.objects.create(internal_code="IP-DENY", name="Deny")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("web:internal_product_create"))
+        self.assertEqual(response.status_code, 403)
+        response = self.client.get(reverse("web:internal_product_update", args=[product.pk]))
+        self.assertEqual(response.status_code, 403)
 
     def test_operation_card_uses_separate_output_and_detail_download_permissions(self) -> None:
         observer_role = Role.objects.get(code=ROLE_OBSERVER)
@@ -1505,6 +2232,47 @@ class HomeSmokeTests(TestCase):
             f"{reverse('web:ozon_excel')}?store={store.pk}&operation=OP-2026-999002",
         )
         self.assertEqual(self.client.session[session_key], before)
+
+    def test_excel_pages_show_product_core_boundary_and_uploads_do_not_create_core_records(self) -> None:
+        user = self._owner()
+        wb_store = StoreAccount.objects.create(
+            name="WB Boundary Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        ozon_store = StoreAccount.objects.create(
+            name="Ozon Boundary Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(f"{reverse('web:wb_excel')}?store={wb_store.pk}")
+        self.assertContains(response, "не обновляет Product Core")
+        response = self.client.get(f"{reverse('web:ozon_excel')}?store={ozon_store.pk}")
+        self.assertContains(response, "не обновляет Product Core")
+
+        self.client.post(
+            reverse("web:wb_excel"),
+            {
+                "store": wb_store.pk,
+                "action": "upload_price",
+                "price_file": SimpleUploadedFile("prices.xlsx", b"price"),
+            },
+        )
+        self.client.post(
+            reverse("web:ozon_excel"),
+            {
+                "store": ozon_store.pk,
+                "action": "upload_input",
+                "input_file": SimpleUploadedFile("ozon.xlsx", b"input"),
+            },
+        )
+
+        self.assertEqual(InternalProduct.objects.count(), 0)
+        self.assertEqual(ProductVariant.objects.count(), 0)
+        self.assertEqual(MarketplaceListing.objects.count(), 0)
+        self.assertEqual(ProductMappingHistory.objects.count(), 0)
 
     def test_excel_page_shows_process_output_download_inline(self) -> None:
         user = self._owner()

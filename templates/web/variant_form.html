@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "create" %}Создать вариант{% else %}Изменить вариант{% endif %}{% endblock %}
+{% block content %}
+<h1>{% if mode == "create" %}Создать вариант{% else %}Изменить вариант{% endif %} · {{ product.internal_code }}</h1>
+
+<form method="post" class="panel">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div class="grid two">
+    {% for field in form %}
+      <label>
+        {{ field.label }}
+        {{ field }}
+        {% if field.errors %}<span class="error">{{ field.errors }}</span>{% endif %}
+      </label>
+    {% endfor %}
+  </div>
+  <div class="toolbar" style="margin-top:16px">
+    <button class="primary">Сохранить</button>
+    <a class="button" href="{% url 'web:internal_product_card' product.pk %}">Отмена</a>
+  </div>
+</form>
+{% endblock %}

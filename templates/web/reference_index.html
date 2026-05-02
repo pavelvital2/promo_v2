@@ -12,9 +12,17 @@
   {% endif %}
   {% if can_products %}
   <section class="panel">
-    <h2>Товары</h2>
-    <p class="status">Товары, найденные в Excel-операциях доступных магазинов.</p>
-    <a class="button" href="{% url 'web:product_list' %}">Открыть товары</a>
+    <h2>Внутренние товары</h2>
+    <p class="status">Internal Product Core: товары компании, варианты и видимые связи WB/Ozon.</p>
+    <a class="button" href="{% url 'web:internal_product_list' %}">Открыть внутренние товары</a>
+  </section>
+  {% endif %}
+  {% if can_listings %}
+  <section class="panel">
+    <h2>Marketplace listings</h2>
+    <p class="status">Внешние WB/Ozon листинги, статусы, snapshots и связи с внутренними вариантами.</p>
+    <a class="button" href="{% url 'web:marketplace_listing_list' %}">Открыть листинги</a>
+    <a class="button" href="{% url 'web:unmatched_listing_list' %}">Несопоставленные</a>
   </section>
   {% endif %}
 </div>

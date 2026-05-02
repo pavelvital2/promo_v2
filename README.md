@@ -2,7 +2,7 @@
 
 Django + PostgreSQL modular monolith for WB/Ozon promotion discount workflows.
 
-Current repository state: Stage 2.1 WB API is implemented and release-ready according to the Stage 2.1 release report. Stage 1 Excel workflows remain supported and are not replaced by the API mode.
+Current repository state: Stage 3.0 / CORE-1 Product Core Foundation is implemented and accepted according to the Stage 3 acceptance and audit reports. Stage 1 Excel workflows, Stage 2.1 WB API and Stage 2.2 Ozon Elastic API regression suites passed during Stage 3 acceptance. Stage 1 Excel workflows remain supported and are not replaced by API or Product Core modes.
 
 ## Current Scope
 
@@ -19,9 +19,20 @@ Implemented areas include:
   - WB current promotions download and promotion Excel exports for regular promotions with products;
   - WB discount calculation from API sources using the accepted WB logic;
   - explicit WB discount API upload flow with drift check and status polling;
-  - Stage 2.1 UI screens, tests, audit and release evidence.
+  - Stage 2.1 UI screens, tests, audit and release evidence;
+- Ozon Stage 2.2 Elastic API flow remains covered by the Stage 3 regression suite;
+- Product Core Stage 3.0 foundation:
+  - internal products, variants, categories and identifiers;
+  - marketplace listings with legacy `MarketplaceProduct` compatibility;
+  - listing sync run and snapshot foundation with safe current cache;
+  - internal product, marketplace listing and manual mapping web routes;
+  - exact, non-authoritative candidate suggestions that never create confirmed mappings automatically;
+  - Product Core permissions, audit/history records and techlog event catalog;
+  - CSV exports for internal products, listings, latest values, mapping report and unmatched listings.
 
-Stage 2.2 Ozon API is not part of the completed Stage 2.1 release scope.
+Legacy product compatibility is intentional. Existing `/references/products/` routes still show legacy `MarketplaceProduct` records. Product Core uses explicit routes under `/references/product-core/products/` and `/references/marketplace-listings/`.
+
+Excel remains an operational boundary. WB/Ozon Excel upload, check and process flows do not create `InternalProduct`/`ProductVariant` records and do not automatically create confirmed mappings or `ProductMappingHistory`. Existing legacy `MarketplaceProduct` compatibility sync may still mirror operation `product_ref` values into unmatched `MarketplaceListing` compatibility records.
 
 ## WB API Limitations
 
@@ -42,8 +53,12 @@ Start with:
 - `docs/DOCUMENTATION_MAP.md` - documentation navigation map;
 - `docs/stages/stage-2/STAGE_2_SCOPE.md` - Stage 2 split and boundaries;
 - `docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md` - executable Stage 2.1 WB scope;
+- `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_SCOPE.md` - Stage 3 Product Core boundaries;
+- `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_MIGRATION_PLAN.md` - legacy `MarketplaceProduct -> MarketplaceListing` migration plan;
 - `docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md` - TASK-011..TASK-017 index;
 - `docs/reports/STAGE_2_1_WB_RELEASE_READINESS.md` - current release-readiness evidence;
+- `docs/testing/TEST_REPORT_TASK_PC_009_STAGE_3_ACCEPTANCE.md` - Stage 3 Product Core acceptance evidence;
+- `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` - Stage 3 documentation/runbook closeout;
 - `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` - release/update operations.
 
 The source TZ remains the source of truth for audits and disputed requirements. Agents should use task-scoped reading packages instead of rereading the full TZ for every task.
@@ -58,6 +73,7 @@ cp .env.example .env
 # Configure PostgreSQL and Django values in .env before running migrations or runserver.
 python manage.py check
 python manage.py migrate
+python manage.py shell -c "from apps.marketplace_products.services import validate_legacy_product_listing_backfill; print(validate_legacy_product_listing_backfill())"
 python manage.py test
 python manage.py runserver 127.0.0.1:8000
 ```

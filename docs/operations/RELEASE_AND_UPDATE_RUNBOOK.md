@@ -56,6 +56,41 @@ BASE_URL=http://127.0.0.1:8080 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres
 
 `deploy/systemd/promo_v2.service.example` запускает Django через `gunicorn config.wsgi:application` на `127.0.0.1:8000`. `deploy/nginx/promo_v2.conf.example` проксирует nginx на этот upstream и слушает port `8080`; port `80` не занимать без отдельного решения, потому что на текущем сервере он занят существующим `nginx.service`.
 
+### Stage 3.0 Product Core release notes
+
+Stage 3.0 / CORE-1 adds `apps.product_core` migrations and additive Product Core permissions/audit/techlog catalogs. Production rollout must apply migrations before runtime acceptance or Product Core tables such as `product_core_marketplacelisting` will be absent.
+
+After `python manage.py migrate --noinput`, run the legacy listing backfill validation:
+
+```bash
+POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres python manage.py shell -c "from apps.marketplace_products.services import validate_legacy_product_listing_backfill; print(validate_legacy_product_listing_backfill())"
+```
+
+Expected release gate:
+
+- `missing_listing_product_ids` is empty;
+- `mismatched_mapping_product_ids` is empty;
+- legacy `MarketplaceProduct` rows remain intact and existing Stage 1/2 `OperationDetailRow.product_ref` history remains raw/compatible.
+
+Product Core routes introduced by Stage 3:
+
+- `/references/product-core/products/` - internal products and variants;
+- `/references/marketplace-listings/` - marketplace listings;
+- `/references/marketplace-listings/unmatched/` - unmatched/review/conflict listing subset;
+- `/references/marketplace-listings/<id>/mapping/` - manual mapping workflow.
+
+Legacy `/references/products/` remains the `MarketplaceProduct` compatibility view. Do not use it as an `InternalProduct` route.
+
+Product Core CSV exports:
+
+- `/references/product-core/products/export.csv`;
+- `/references/marketplace-listings/export.csv`;
+- `/references/marketplace-listings/latest-values.csv`;
+- `/references/marketplace-listings/mapping-report.csv`;
+- `/references/marketplace-listings/unmatched/export.csv`.
+
+Excel boundary after Stage 3: WB/Ozon Excel upload/check/process remains a Stage 1 operation flow. It must not be treated as an automatic import source for `InternalProduct`/`ProductVariant` records, confirmed mappings or `ProductMappingHistory`. Existing legacy `MarketplaceProduct` compatibility sync may still mirror operation `product_ref` values into unmatched `MarketplaceListing` compatibility records.
+
 ## Проверка после обновления
 
 - `python manage.py check`;
@@ -63,6 +98,11 @@ BASE_URL=http://127.0.0.1:8080 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres
 - вход владельца;
 - доступ главной;
 - список операций;
+- legacy product list/card at `/references/products/`;
+- Product Core internal products at `/references/product-core/products/`;
+- marketplace listings at `/references/marketplace-listings/`;
+- unmatched listings and mapping page access for a test listing where available;
+- Product Core CSV export links for an authorized user;
 - загрузка тестового `.xlsx` в безопасном тестовом контуре или dry-run, если реализован;
 - доступ к audit/tech log;
 - отсутствие новых critical system notifications;

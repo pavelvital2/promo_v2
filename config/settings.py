@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.identity_access",
     "apps.stores",
     "apps.marketplace_products",
+    "apps.product_core",
     "apps.operations",
     "apps.files",
     "apps.discounts.wb_api.promotions",

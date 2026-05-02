@@ -29,7 +29,7 @@ InternalProduct
 | UI | lists/cards for internal products, variants, listings, unmatched listings and manual mapping workflow |
 | Rights | product core permissions, store-scoped listing access, separate map/unmap/export/snapshot permissions |
 | Audit/techlog | audit actions for manual changes/mapping and techlog events for sync/migration failures |
-| Excel boundary | existing Excel scenarios stay operational; Excel does not automatically create internal products/listings |
+| Excel boundary | existing Excel scenarios stay operational; Excel does not create internal products/variants or confirmed mappings/history; legacy compatibility sync may mirror operation refs into unmatched listing records |
 | Agent readiness | task-scoped implementation tasks, reading packages, testing, traceability and audit handoff |
 
 ## Не входит в CORE-1

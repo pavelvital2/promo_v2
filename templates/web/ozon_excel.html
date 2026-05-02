@@ -3,6 +3,7 @@
 {% block content %}
 <h1>Ozon -> Скидки -> Excel</h1>
 <section class="panel">
+  <p class="status">Excel-сценарий Ozon рассчитывает скидки по загруженному файлу и не обновляет Product Core: внутренние товары, варианты, листинги и сопоставления не создаются автоматически.</p>
   <form method="post" enctype="multipart/form-data" class="grid">
     {% csrf_token %}
     <div class="toolbar">
