@@ -121,10 +121,15 @@
 | `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md` | Test protocol Stage 3.0 |
 | `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` | Acceptance checklists Stage 3.0 |
 | `docs/testing/TEST_REPORT_TASK_PC_009_STAGE_3_ACCEPTANCE.md` | Accepted TASK-PC-009 test and regression evidence for implemented Stage 3.0 |
+| `docs/testing/TEST_REPORT_TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md` | CORE-1 release validation test evidence: PASS WITH NOTES |
 | `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` | Traceability matrix Stage 3.0 |
 | `docs/audit/HANDOFF_STAGE_3_PRODUCT_CORE_DOCUMENTATION_TO_AUDITOR.md` | Handoff package for documentation audit |
 | `docs/audit/AUDIT_REPORT_TASK_PC_001_DATA_MODEL.md` .. `docs/audit/AUDIT_REPORT_TASK_PC_009_TESTS_ACCEPTANCE.md` | Implementation/test audit reports for TASK-PC-001..009 |
+| `docs/audit/AUDIT_REPORT_TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md` | Audit of CORE-1 release validation: AUDIT PASS WITH NOTES |
 | `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` | TASK-PC-010 documentation/runbook closeout report |
+| `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md` | Final CORE-1 release validation report; CORE-2 design may start |
+| `docs/tasks/validation/stage-3-product-core/TASK_REL_PC_001_CORE_1_RELEASE_VALIDATION.md` | Release validation task and acceptance gate after CORE-1 implementation |
+| `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` | Next authorized input document for CORE-2 design after CORE-1 release validation |
 
 ## Documentation Tasks
 
@@ -142,7 +147,7 @@
 | `docs/testing/` | `docs/testing/TEST_PROTOCOL.md`, `docs/testing/ACCEPTANCE_CHECKLISTS.md`, `docs/testing/STAGE_3_PRODUCT_CORE_TEST_PROTOCOL.md`, `docs/testing/STAGE_3_PRODUCT_CORE_ACCEPTANCE_CHECKLISTS.md` |
 | `docs/operations/` | `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` |
 | `docs/traceability/` | `docs/traceability/TRACEABILITY_MATRIX.md`, `docs/traceability/STAGE_3_PRODUCT_CORE_TRACEABILITY_MATRIX.md` |
-| `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md`, `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` |
+| `docs/reports/` | `docs/reports/DESIGNER_FIX_REPORT.md`, `docs/reports/DOCUMENT_REORGANIZATION_REPORT.md`, `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md`, `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md` |
 
 ## Navigation Rules
 

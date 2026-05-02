@@ -51,4 +51,4 @@
 - Stage 2.1 WB API исполняется только по task-scoped пакету Stage 2.1; Ozon API Stage 2.2 не смешивается с этими задачами.
 - Stage 0 UI Ozon Elastic исполняется только после аудита проектной документации и по пакету `docs/tasks/implementation/stage-0/OZON_ELASTIC_UI_READING_PACKAGE.md`.
 - Stage 3.0 CORE-1 Product Core исполняется только после audit pass документации по `docs/audit/HANDOFF_STAGE_3_PRODUCT_CORE_DOCUMENTATION_TO_AUDITOR.md` and task-scoped packages in `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_AGENT_READING_PACKAGES.md`.
-- На 2026-05-02 Stage 3.0 CORE-1 Product Core implementation accepted by TASK-PC-009 audit/test reports; operational rollout requires Stage 3 migrations and backfill validation from `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md`.
+- На 2026-05-02 Stage 3.0 CORE-1 Product Core release validation accepted as PASS WITH NOTES in `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`; CORE-2 design may start from `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md`, while CORE-2 implementation still requires a separate design audit gate.

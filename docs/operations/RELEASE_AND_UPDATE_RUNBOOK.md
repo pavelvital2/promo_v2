@@ -60,6 +60,8 @@ BASE_URL=http://127.0.0.1:8080 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres
 
 Stage 3.0 / CORE-1 adds `apps.product_core` migrations and additive Product Core permissions/audit/techlog catalogs. Production rollout must apply migrations before runtime acceptance or Product Core tables such as `product_core_marketplacelisting` will be absent.
 
+CORE-1 release validation is accepted as PASS WITH NOTES in `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`. The accepted notes do not block CORE-2 design, but production rollout still requires target-environment release gates: use `scripts/pre_update_backup.sh` or document an equivalent split-path backup procedure, run restore check in a non-production DB, perform target-environment smoke checks, and do not run live destructive WB/Ozon uploads without explicit approval.
+
 After `python manage.py migrate --noinput`, run the legacy listing backfill validation:
 
 ```bash

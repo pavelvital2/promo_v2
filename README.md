@@ -2,7 +2,7 @@
 
 Django + PostgreSQL modular monolith for WB/Ozon promotion discount workflows.
 
-Current repository state: Stage 3.0 / CORE-1 Product Core Foundation is implemented and accepted according to the Stage 3 acceptance and audit reports. Stage 1 Excel workflows, Stage 2.1 WB API and Stage 2.2 Ozon Elastic API regression suites passed during Stage 3 acceptance. Stage 1 Excel workflows remain supported and are not replaced by API or Product Core modes.
+Current repository state: Stage 3.0 / CORE-1 Product Core Foundation is implemented and accepted for release validation as PASS WITH NOTES according to `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md`. Stage 1 Excel workflows, Stage 2.1 WB API and Stage 2.2 Ozon Elastic API regression suites passed during Stage 3 acceptance and CORE-1 release validation. Stage 1 Excel workflows remain supported and are not replaced by API or Product Core modes. CORE-2 design may start from `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md`; CORE-2 implementation remains prohibited until its own design audit gate passes.
 
 ## Current Scope
 
@@ -62,6 +62,7 @@ Start with:
 - `docs/reports/STAGE_2_1_WB_RELEASE_READINESS.md` - current release-readiness evidence;
 - `docs/testing/TEST_REPORT_TASK_PC_009_STAGE_3_ACCEPTANCE.md` - Stage 3 Product Core acceptance evidence;
 - `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` - Stage 3 documentation/runbook closeout;
+- `docs/reports/CORE_1_RELEASE_VALIDATION_REPORT.md` - CORE-1 release validation final status and notes;
 - `docs/operations/RELEASE_AND_UPDATE_RUNBOOK.md` - release/update operations.
 
 The source TZ remains the source of truth for audits and disputed requirements. Agents should use task-scoped reading packages instead of rereading the full TZ for every task.
