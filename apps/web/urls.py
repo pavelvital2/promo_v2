@@ -65,6 +65,11 @@ urlpatterns = [
         name="listing_mapping_report_export",
     ),
     path(
+        "references/marketplace-listings/operation-links.csv",
+        views.operation_link_report_export,
+        name="operation_link_report_export",
+    ),
+    path(
         "references/marketplace-listings/unmatched/",
         views.unmatched_listing_list,
         name="unmatched_listing_list",

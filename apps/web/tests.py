@@ -27,6 +27,7 @@ from apps.operations.models import (
     CheckStatus,
     Operation,
     OperationDetailRow,
+    MessageLevel,
     OperationMode,
     OperationModule,
     OperationOutputFile,
@@ -1087,12 +1088,163 @@ class HomeSmokeTests(TestCase):
         self.assertNotIn("VISIBLE-EXPORT-ART", body)
         self.assertNotIn("HIDDEN-EXPORT-ART", body)
         self.assertNotIn("Hidden Export Store", body)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.PRODUCT_CORE_EXPORT_GENERATED,
+                entity_id="internal_products",
+                user=manager,
+            ).exists(),
+        )
 
         response = self.client.get(reverse("web:marketplace_listing_export"))
         body = response.content.decode("utf-8-sig")
         self.assertIn("VISIBLE-EXPORT-ART", body)
         self.assertNotIn("HIDDEN-EXPORT-ART", body)
         self.assertNotIn("Hidden Export Store", body)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.PRODUCT_CORE_EXPORT_GENERATED,
+                entity_id="marketplace_listings",
+                user=manager,
+            ).exists(),
+        )
+
+    def test_listing_export_blanks_internal_identifiers_without_product_core_view(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="listing-export-no-product-view",
+            password="password",
+            display_name="Listing Export No Product View",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="Identifier Gate Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        for code in ("product_core.view", "product_variant.view"):
+            UserPermissionOverride.objects.create(
+                user=manager,
+                permission=Permission.objects.get(code=code),
+                effect=AccessEffect.DENY,
+            )
+        product = InternalProduct.objects.create(internal_code="IP-HIDDEN-EXPORT", name="Hidden product")
+        variant = ProductVariant.objects.create(product=product, internal_sku="SKU-HIDDEN-EXPORT", name="Hidden variant")
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="VISIBLE-LINKED-NM",
+            seller_article="VISIBLE-LINKED-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:marketplace_listing_export"))
+
+        body = response.content.decode("utf-8-sig")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("VISIBLE-LINKED-ART", body)
+        self.assertNotIn("IP-HIDDEN-EXPORT", body)
+        self.assertNotIn("Hidden product", body)
+        self.assertNotIn("SKU-HIDDEN-EXPORT", body)
+        self.assertNotIn("Hidden variant", body)
+
+    def test_listing_related_exports_blank_internal_identifiers_without_variant_view(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="listing-export-no-variant-view",
+            password="password",
+            display_name="Listing Export No Variant View",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="Variant Gate Export Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        UserPermissionOverride.objects.create(
+            user=manager,
+            permission=Permission.objects.get(code="product_variant.view"),
+            effect=AccessEffect.DENY,
+        )
+        product = InternalProduct.objects.create(
+            internal_code="IP-VARIANT-GATED",
+            name="Variant gated product",
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            internal_sku="SKU-VARIANT-GATED",
+            name="Variant gated variant",
+        )
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="VARIANT-GATED-NM",
+            seller_article="VARIANT-GATED-ART",
+            last_values={"price": "101.00", "total_stock": 5},
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        run = Run.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=manager,
+        )
+        operation = Operation.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.CREATED,
+            run=run,
+            store=store,
+            initiator_user=manager,
+            logic_version="test",
+        )
+        OperationDetailRow.objects.create(
+            operation=operation,
+            marketplace_listing=listing,
+            row_no=1,
+            product_ref="VARIANT-GATED-NM",
+            row_status="ok",
+            reason_code="wb_api_price_row_valid",
+            message_level=MessageLevel.INFO,
+        )
+        self.client.force_login(manager)
+
+        export_names = [
+            "marketplace_listing_export",
+            "listing_latest_values_export",
+            "listing_mapping_report_export",
+            "operation_link_report_export",
+        ]
+        for export_name in export_names:
+            with self.subTest(export_name=export_name):
+                response = self.client.get(reverse(f"web:{export_name}"))
+                body = response.content.decode("utf-8-sig")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("VARIANT-GATED-ART", body)
+                self.assertNotIn("IP-VARIANT-GATED", body)
+                self.assertNotIn("Variant gated product", body)
+                self.assertNotIn("SKU-VARIANT-GATED", body)
+                self.assertNotIn("Variant gated variant", body)
 
     def test_listing_latest_values_export_redacts_secret_like_values_and_raw_safe(self) -> None:
         manager = get_user_model().objects.create_user(
@@ -1131,6 +1283,9 @@ class HomeSmokeTests(TestCase):
                 "currency": "RUB",
                 "api_key": "SECRET-VALUE-123456",
                 "nested": {"Authorization": "Bearer abcdefghijklmnop"},
+                "raw_safe": {"debug_marker": "LATEST-RAW-SAFE-SHOULD-NOT-EXPORT"},
+                "request_headers": {"X-Debug": "LATEST-REQUEST-HEADER-SHOULD-NOT-EXPORT"},
+                "stack_trace": "LATEST-STACK-SHOULD-NOT-EXPORT",
             },
             last_source=ListingSource.WB_API_PRICES,
         )
@@ -1154,7 +1309,55 @@ class HomeSmokeTests(TestCase):
         self.assertNotIn("api_key", body)
         self.assertNotIn("SECRET-VALUE-123456", body)
         self.assertNotIn("Authorization", body)
+        self.assertNotIn("LATEST-RAW-SAFE-SHOULD-NOT-EXPORT", body)
+        self.assertNotIn("LATEST-REQUEST-HEADER-SHOULD-NOT-EXPORT", body)
+        self.assertNotIn("LATEST-STACK-SHOULD-NOT-EXPORT", body)
         self.assertNotIn("RAW-SAFE-SHOULD-NOT-EXPORT", body)
+
+    def test_listing_latest_values_export_denies_when_snapshot_scope_is_absent(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="latest-export-no-snapshot",
+            password="password",
+            display_name="Latest Export No Snapshot",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="No Snapshot Export Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        UserPermissionOverride.objects.create(
+            user=manager,
+            permission=Permission.objects.get(code="marketplace_snapshot.view"),
+            store=store,
+            effect=AccessEffect.DENY,
+        )
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            external_primary_id="NO-SNAPSHOT-NM",
+            seller_article="NO-SNAPSHOT-ART",
+            last_values={"price": "100.00"},
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:listing_latest_values_export"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.PRODUCT_CORE_EXPORT_GENERATED,
+                entity_id="listing_latest_values",
+                user=manager,
+            ).exists(),
+        )
 
     def test_unmatched_and_mapping_report_exports_use_visible_rows(self) -> None:
         user = self._owner()
@@ -1194,6 +1397,102 @@ class HomeSmokeTests(TestCase):
         self.assertIn("MAPPED-EXPORT-ART", body)
         self.assertIn("SKU-MAPPING-EXPORT", body)
         self.assertIn("UNMATCHED-EXPORT-ART", body)
+
+    def test_operation_link_report_exports_visible_rows_and_blanks_variant_without_permission(self) -> None:
+        manager = get_user_model().objects.create_user(
+            login="operation-link-export-manager",
+            password="password",
+            display_name="Operation Link Export Manager",
+            primary_role=Role.objects.get(code=ROLE_MARKETPLACE_MANAGER),
+        )
+        store = StoreAccount.objects.create(
+            name="Operation Link Store",
+            marketplace=StoreAccount.Marketplace.WB,
+            cabinet_type=StoreAccount.CabinetType.STORE,
+        )
+        StoreAccess.objects.create(
+            user=manager,
+            store=store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        for code in ("product_core.view", "product_variant.view"):
+            UserPermissionOverride.objects.create(
+                user=manager,
+                permission=Permission.objects.get(code=code),
+                effect=AccessEffect.DENY,
+            )
+        product = InternalProduct.objects.create(internal_code="IP-OP-LINK", name="Operation link product")
+        variant = ProductVariant.objects.create(product=product, internal_sku="SKU-OP-LINK", name="Operation link variant")
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=store,
+            internal_variant=variant,
+            external_primary_id="OP-LINK-NM",
+            seller_article="OP-LINK-ART",
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MANUAL_IMPORT,
+        )
+        run = Run.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            store=store,
+            initiated_by=manager,
+        )
+        operation = Operation.objects.create(
+            marketplace=Marketplace.WB,
+            module=OperationModule.WB_API,
+            mode=OperationMode.API,
+            operation_type=OperationType.NOT_APPLICABLE,
+            step_code=OperationStepCode.WB_API_PRICES_DOWNLOAD,
+            status=ProcessStatus.CREATED,
+            run=run,
+            store=store,
+            initiator_user=manager,
+            logic_version="test",
+        )
+        linked_row = OperationDetailRow.objects.create(
+            operation=operation,
+            marketplace_listing=listing,
+            row_no=1,
+            product_ref="OP-LINK-NM",
+            row_status="ok",
+            reason_code="wb_api_price_row_valid",
+            message_level=MessageLevel.INFO,
+        )
+        unresolved_row = OperationDetailRow.objects.create(
+            operation=operation,
+            row_no=2,
+            product_ref="OP-LINK-NM",
+            row_status="ok",
+            reason_code="wb_api_price_row_valid",
+            message_level=MessageLevel.INFO,
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(reverse("web:operation_link_report_export"))
+
+        body = response.content.decode("utf-8-sig")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(operation.visible_id, body)
+        self.assertIn("OP-LINK-NM", body)
+        self.assertIn("OP-LINK-ART", body)
+        self.assertIn("linked", body)
+        self.assertIn("not_linked", body)
+        self.assertNotIn("SKU-OP-LINK", body)
+        self.assertNotIn("IP-OP-LINK", body)
+        unresolved_row.refresh_from_db()
+        linked_row.refresh_from_db()
+        self.assertIsNone(unresolved_row.marketplace_listing_id)
+        self.assertEqual(linked_row.marketplace_listing_id, listing.pk)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.PRODUCT_CORE_EXPORT_GENERATED,
+                entity_id="operation_link_report",
+                user=manager,
+            ).exists(),
+        )
 
     def test_marketplace_listing_card_hides_raw_safe_without_technical_permission(self) -> None:
         manager = get_user_model().objects.create_user(

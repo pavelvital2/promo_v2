@@ -15,6 +15,9 @@
     {% endif %}
     <a class="button" href="{% url 'web:listing_latest_values_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Последние значения CSV</a>
     <a class="button" href="{% url 'web:listing_mapping_report_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Отчёт сопоставлений CSV</a>
+    {% if can_export_operation_links %}
+      <a class="button" href="{% url 'web:operation_link_report_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">Связи операций CSV</a>
+    {% endif %}
   {% endif %}
   {% if can_sync_any %}<span class="badge">Sync: отдельный workflow</span>{% endif %}
   {% if can_map_any %}<span class="badge">Сопоставление: TASK-PC-006</span>{% endif %}

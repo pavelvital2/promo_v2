@@ -190,6 +190,7 @@ class AuditActionCode(models.TextChoices):
     PRODUCT_CORE_CREATED = "product_core.created", "Product Core product created"
     PRODUCT_CORE_UPDATED = "product_core.updated", "Product Core product updated"
     PRODUCT_CORE_ARCHIVED = "product_core.archived", "Product Core product archived"
+    PRODUCT_CORE_EXPORT_GENERATED = "product_core.export_generated", "Product Core export generated"
     PRODUCT_VARIANT_CREATED = "product_variant.created", "Product variant created"
     PRODUCT_VARIANT_UPDATED = "product_variant.updated", "Product variant updated"
     PRODUCT_VARIANT_ARCHIVED = "product_variant.archived", "Product variant archived"

@@ -77,6 +77,12 @@ class AuditTask006Tests(TestCase):
             logic_version="task-006",
         )
 
+    def test_product_core_export_generated_action_is_available(self):
+        self.assertEqual(
+            AuditActionCode.PRODUCT_CORE_EXPORT_GENERATED,
+            "product_core.export_generated",
+        )
+
     def test_audit_record_links_operation_and_is_immutable(self):
         record = create_audit_record(
             action_code=AuditActionCode.OPERATION_CHECK_STARTED,

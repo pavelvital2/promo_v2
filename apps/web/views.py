@@ -63,6 +63,7 @@ from apps.operations.models import (
     MessageLevel,
     OperationMode,
     OperationModule,
+    OperationDetailRow,
     OperationStepCode,
     Operation,
     OperationType,
@@ -124,6 +125,18 @@ from apps.web.forms import (
 
 
 PAGE_SIZE = 25
+SAFE_EXPORT_FILTER_KEYS = {
+    "brand",
+    "category",
+    "listing_status",
+    "mapping_status",
+    "marketplace",
+    "q",
+    "stock",
+    "store",
+    "updated_from",
+    "updated_to",
+}
 
 
 @dataclass(frozen=True)
@@ -2502,10 +2515,12 @@ def internal_product_export(request: HttpRequest) -> HttpResponse:
     if not has_permission(request.user, "product_core.export"):
         raise PermissionDenied("No permission to export internal products.")
     products, _filters = _filtered_internal_products(request)
-    return product_core_exports.internal_products_csv(
+    response = product_core_exports.internal_products_csv(
         request.user,
         products.order_by("internal_code", "id"),
     )
+    _audit_product_core_export(request, "internal_products")
+    return response
 
 
 def _require_marketplace_listing_view(user) -> None:
@@ -2624,6 +2639,20 @@ def _attach_listing_snapshot_access(user, listings) -> None:
         )
 
 
+def _can_export_operation_links(user) -> bool:
+    stores = _stores_with_permission(user, "marketplace_listing.export")
+    for store in stores:
+        if store.marketplace == Marketplace.WB and has_permission(user, "wb.api.operation.view", store):
+            return True
+        if store.marketplace == Marketplace.OZON and has_permission(user, "ozon.api.operation.view", store):
+            return True
+        if has_permission(user, SCENARIO_CHECK_RESULT_PERMISSION.get(store.marketplace, ""), store):
+            return True
+        if has_permission(user, SCENARIO_PROCESS_RESULT_PERMISSION.get(store.marketplace, ""), store):
+            return True
+    return False
+
+
 @login_required
 def marketplace_listing_list(request: HttpRequest) -> HttpResponse:
     _require_marketplace_listing_view(request.user)
@@ -2660,6 +2689,7 @@ def marketplace_listing_list(request: HttpRequest) -> HttpResponse:
                 request.user,
                 "marketplace_listing.export",
             ).exists(),
+            "can_export_operation_links": _can_export_operation_links(request.user),
             "can_map_any": _stores_with_permission(request.user, "marketplace_listing.map").exists(),
             "can_unmap_any": _stores_with_permission(request.user, "marketplace_listing.unmap").exists(),
             "can_sync_any": _stores_with_permission(request.user, "marketplace_listing.sync").exists(),
@@ -2711,6 +2741,7 @@ def unmatched_listing_list(request: HttpRequest) -> HttpResponse:
                 request.user,
                 "marketplace_listing.export",
             ).exists(),
+            "can_export_operation_links": _can_export_operation_links(request.user),
             "can_map_any": _stores_with_permission(request.user, "marketplace_listing.map").exists(),
             "can_unmap_any": _stores_with_permission(request.user, "marketplace_listing.unmap").exists(),
             "can_sync_any": False,
@@ -2755,45 +2786,98 @@ def _require_listing_export_scope(user) -> None:
         raise PermissionDenied("No permission to export marketplace listings.")
 
 
+def _audit_product_core_export(request: HttpRequest, export_type: str) -> None:
+    create_audit_record(
+        action_code=AuditActionCode.PRODUCT_CORE_EXPORT_GENERATED,
+        entity_type="ProductCoreExport",
+        entity_id=export_type,
+        user=request.user,
+        safe_message=f"Product Core export generated: {export_type}.",
+        after_snapshot={
+            "export_type": export_type,
+            "filter_keys": sorted(key for key in request.GET.keys() if key in SAFE_EXPORT_FILTER_KEYS),
+            "delivery": "streamed_csv",
+        },
+        source_context=AuditSourceContext.UI,
+    )
+
+
 @login_required
 def marketplace_listing_export(request: HttpRequest) -> HttpResponse:
     _require_listing_export_scope(request.user)
     listings = _filtered_listing_export_queryset(request)
-    return product_core_exports.marketplace_listings_csv(
+    response = product_core_exports.marketplace_listings_csv(
         request.user,
         listings,
         filename="product_core_marketplace_listings.csv",
     )
+    _audit_product_core_export(request, "marketplace_listings")
+    return response
 
 
 @login_required
 def unmatched_listing_export(request: HttpRequest) -> HttpResponse:
     _require_listing_export_scope(request.user)
     listings = _filtered_listing_export_queryset(request, unmatched=True)
-    return product_core_exports.marketplace_listings_csv(
+    response = product_core_exports.marketplace_listings_csv(
         request.user,
         listings,
         filename="product_core_unmatched_listings.csv",
     )
+    _audit_product_core_export(request, "unmatched_conflict_listings")
+    return response
 
 
 @login_required
 def listing_latest_values_export(request: HttpRequest) -> HttpResponse:
     _require_listing_export_scope(request.user)
     listings = _filtered_listing_export_queryset(request)
-    return product_core_exports.marketplace_listings_csv(
+    response = product_core_exports.marketplace_listings_csv(
         request.user,
         listings,
         filename="product_core_listing_latest_values.csv",
         include_latest=True,
     )
+    _audit_product_core_export(request, "listing_latest_values")
+    return response
 
 
 @login_required
 def listing_mapping_report_export(request: HttpRequest) -> HttpResponse:
     _require_listing_export_scope(request.user)
     listings = _filtered_listing_export_queryset(request)
-    return product_core_exports.mapping_report_csv(request.user, listings)
+    response = product_core_exports.mapping_report_csv(request.user, listings)
+    _audit_product_core_export(request, "mapping_report")
+    return response
+
+
+def _operation_link_export_queryset(request: HttpRequest):
+    operations = _visible_operations_queryset(request.user)
+    operation_ids = [
+        operation.pk
+        for operation in operations
+        if has_permission(
+            request.user,
+            "marketplace_listing.export",
+            operation.store,
+        )
+    ]
+    return OperationDetailRow.objects.filter(operation_id__in=operation_ids).order_by(
+        "operation_id",
+        "row_no",
+        "id",
+    )
+
+
+@login_required
+def operation_link_report_export(request: HttpRequest) -> HttpResponse:
+    _require_listing_export_scope(request.user)
+    if not _can_export_operation_links(request.user):
+        raise PermissionDenied("No permission to export operation link report.")
+    rows = _operation_link_export_queryset(request)
+    response = product_core_exports.operation_link_report_csv(request.user, rows)
+    _audit_product_core_export(request, "operation_link_report")
+    return response
 
 
 def _latest_snapshot(queryset, user):
