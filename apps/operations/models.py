@@ -22,6 +22,10 @@ _run_visible_id_service_update_allowed = ContextVar(
     "run_visible_id_service_update_allowed",
     default=False,
 )
+_operation_detail_listing_fk_enrichment_update_allowed = ContextVar(
+    "operation_detail_listing_fk_enrichment_update_allowed",
+    default=False,
+)
 
 
 @contextmanager
@@ -42,12 +46,25 @@ def allow_run_visible_id_service_update():
         _run_visible_id_service_update_allowed.reset(token)
 
 
+@contextmanager
+def allow_operation_detail_listing_fk_enrichment_update():
+    token = _operation_detail_listing_fk_enrichment_update_allowed.set(True)
+    try:
+        yield
+    finally:
+        _operation_detail_listing_fk_enrichment_update_allowed.reset(token)
+
+
 def _operation_visible_id_update_allowed() -> bool:
     return _operation_visible_id_service_update_allowed.get()
 
 
 def _run_visible_id_update_allowed() -> bool:
     return _run_visible_id_service_update_allowed.get()
+
+
+def _operation_detail_listing_fk_enrichment_update_allowed_now() -> bool:
+    return _operation_detail_listing_fk_enrichment_update_allowed.get()
 
 
 class GuardedDeleteQuerySet(models.QuerySet):
@@ -345,7 +362,7 @@ OperationManager = models.Manager.from_queryset(OperationQuerySet)
 
 class OperationRelatedQuerySet(GuardedDeleteQuerySet):
     def update(self, **kwargs):
-        if self.filter(
+        terminal_records_exist = self.filter(
             models.Q(operation__operation_type=OperationType.CHECK, operation__status__in=CHECK_TERMINAL_STATUSES)
             | models.Q(
                 operation__operation_type=OperationType.PROCESS,
@@ -355,7 +372,12 @@ class OperationRelatedQuerySet(GuardedDeleteQuerySet):
                 operation__operation_type=OperationType.NOT_APPLICABLE,
                 operation__status__in=PROCESS_TERMINAL_STATUSES,
             )
-        ).exists():
+        ).exists()
+        if terminal_records_exist and not (
+            self.model._meta.label == "operations.OperationDetailRow"
+            and set(kwargs) == {"marketplace_listing_id"}
+            and _operation_detail_listing_fk_enrichment_update_allowed_now()
+        ):
             raise ValidationError("Terminal operation related records are immutable.")
         return super().update(**kwargs)
 

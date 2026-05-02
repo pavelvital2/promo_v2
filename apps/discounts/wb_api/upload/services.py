@@ -43,6 +43,7 @@ from apps.operations.models import (
     OutputKind,
     ProcessStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import (
     ApiOperationResult,
     complete_api_operation,
@@ -468,7 +469,7 @@ def _create_upload_report(*, actor, store, operation, summary: dict):
 def _complete_blocked_by_drift(*, operation, actor, store, calculation_operation, result_file, rows, drift_rows, drift_snapshots):
     for row in rows:
         drift = next((item for item in drift_rows if item["nmID"] == row.nm_id), None)
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=row.row_no,
             product_ref=row.nm_id,
@@ -482,6 +483,7 @@ def _complete_blocked_by_drift(*, operation, actor, store, calculation_operation
                 "drift": drift,
             },
         )
+        enrich_detail_row_marketplace_listing(detail_row)
     summary = {
         "result_code": "wb_api_upload_blocked_by_drift",
         "calculation_operation_id": calculation_operation.pk,
@@ -712,7 +714,7 @@ def upload_wb_api_discounts(
                     quarantine=quarantine,
                     has_row_error=has_row_error,
                 )
-                OperationDetailRow.objects.create(
+                detail_row = OperationDetailRow.objects.create(
                     operation=operation,
                     row_no=row.row_no,
                     product_ref=row.nm_id,
@@ -730,6 +732,7 @@ def upload_wb_api_discounts(
                         "quarantine": quarantine,
                     },
                 )
+                enrich_detail_row_marketplace_listing(detail_row)
             if wb_status == 5:
                 _record_techlog(
                     operation=operation,

@@ -29,6 +29,7 @@ from apps.operations.models import (
     ProcessStatus,
     RunStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import (
     ApiOperationResult,
     ParameterSnapshotSpec,
@@ -223,7 +224,7 @@ def _persist_api_details(operation: Operation, result: wb_excel_services.Calcula
                 "source_stage1_reason_code": detail.reason_code,
                 "upload_ready": False,
             }
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=detail.row_no,
             product_ref=detail.article,
@@ -234,6 +235,7 @@ def _persist_api_details(operation: Operation, result: wb_excel_services.Calcula
             problem_field=detail.problem_field,
             final_value=final_value or None,
         )
+        enrich_detail_row_marketplace_listing(detail_row)
 
 
 def _record_failure(operation: Operation, actor, store, exc: Exception) -> None:

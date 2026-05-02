@@ -36,6 +36,7 @@ from apps.operations.models import (
     ProcessStatus,
     RunStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import (
@@ -446,7 +447,7 @@ def _persist_success(
         )
         row_no += 1
         for product in products:
-            OperationDetailRow.objects.create(
+            detail_row = OperationDetailRow.objects.create(
                 operation=operation,
                 row_no=row_no,
                 product_ref=product.nm_id,
@@ -470,6 +471,7 @@ def _persist_success(
                     "planDiscount": product.plan_discount,
                 },
             )
+            enrich_detail_row_marketplace_listing(detail_row)
             WBPromotionProduct.objects.create(
                 promotion=persisted_promotion,
                 nmID=product.nm_id,

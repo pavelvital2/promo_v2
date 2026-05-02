@@ -24,6 +24,7 @@ from apps.operations.models import (
     ProcessStatus,
     RunStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
 from apps.stores.models import StoreAccount
 from apps.stores.services import default_ozon_secret_resolver, require_ozon_store_for_ozon_api
@@ -279,7 +280,7 @@ def _persist_success(*, actor, store, operation, action_id: str, source_group: s
         source_details = dict(row.get("source_details") or {})
         source_details["missing_elastic_fields"] = missing
         row["source_details"] = source_details
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=row_no,
             product_ref=row.get("product_id", ""),
@@ -294,6 +295,7 @@ def _persist_success(*, actor, store, operation, action_id: str, source_group: s
             problem_field="product_id/price_min_elastic/price_max_elastic" if missing else "",
             final_value=row,
         )
+        enrich_detail_row_marketplace_listing(detail_row)
         row_no += 1
 
     safe_snapshot = {

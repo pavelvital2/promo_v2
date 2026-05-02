@@ -1,5 +1,7 @@
 from datetime import timedelta
+from io import StringIO
 
+from django.core.management import call_command
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models.deletion import ProtectedError
 from django.test import TestCase
@@ -23,16 +25,29 @@ from .models import (
     OZON_REASON_CODES,
     Operation,
     OperationDetailRow,
+    OperationModule,
+    OperationStepCode,
     OperationType,
     ProcessStatus,
     RunStatus,
     WarningConfirmation,
+    allow_operation_detail_listing_fk_enrichment_update,
+)
+from .listing_enrichment import (
+    CONFLICT_API_DATA_INTEGRITY_DUPLICATE,
+    CONFLICT_MULTIPLE_LISTING_MATCHES,
+    CONFLICT_NO_LISTING_MATCH,
+    CONFLICT_ROW_NOT_PRODUCT_IDENTIFIER,
+    backfill_operation_detail_listing_fk,
+    operation_detail_product_ref_checksum,
+    resolve_listing_for_detail_row,
 )
 from .services import (
     InputFileSpec,
     ParameterSnapshotSpec,
     ShellExecutionResult,
     complete_check_operation,
+    create_api_operation,
     complete_process_operation,
     create_check_operation,
     create_process_operation,
@@ -694,3 +709,263 @@ class OperationsShellTests(TestCase):
 
         with self.assertRaises(ProtectedError):
             listing.delete()
+
+    def _listing(self, *, store=None, marketplace="wb", external_primary_id="listing-1", **kwargs):
+        return MarketplaceListing.objects.create(
+            marketplace=marketplace,
+            store=store or self.store,
+            external_primary_id=external_primary_id,
+            last_source=ListingSource.MIGRATION,
+            **kwargs,
+        )
+
+    def _detail_row(self, *, operation=None, product_ref="SKU-1", reason_code="wb_valid_calculated", **kwargs):
+        operation = operation or create_check_operation(
+            marketplace="wb",
+            store=self.store,
+            initiator_user=self.user,
+            input_files=[],
+            parameters=[],
+            logic_version="logic-v1",
+        )
+        return OperationDetailRow.objects.create(
+            operation=operation,
+            row_no=kwargs.pop("row_no", 1),
+            product_ref=product_ref,
+            row_status=kwargs.pop("row_status", "ok"),
+            reason_code=reason_code,
+            message_level=kwargs.pop("message_level", MessageLevel.INFO),
+            message=kwargs.pop("message", ""),
+            **kwargs,
+        )
+
+    def _api_operation(self, *, marketplace="wb", store=None, step_code=None, module=None):
+        store = store or self.store
+        if step_code is None:
+            step_code = OperationStepCode.WB_API_PRICES_DOWNLOAD
+        if module is None:
+            module = OperationModule.WB_API if marketplace == "wb" else OperationModule.OZON_API
+        return create_api_operation(
+            marketplace=marketplace,
+            store=store,
+            initiator_user=self.user,
+            step_code=step_code,
+            logic_version="logic-v1",
+            module=module,
+        )
+
+    def test_listing_resolver_matches_external_primary_id_and_seller_article_in_same_scope(self):
+        primary_listing = self._listing(external_primary_id=" 1001 ")
+        primary_row = self._detail_row(product_ref="1001")
+        self.assertEqual(resolve_listing_for_detail_row(primary_row).listing, primary_listing)
+
+        article_listing = self._listing(
+            external_primary_id="1002",
+            seller_article="SELLER-ARTICLE-1",
+        )
+        article_row = self._detail_row(product_ref=" SELLER-ARTICLE-1 ", row_no=2)
+        self.assertEqual(resolve_listing_for_detail_row(article_row).listing, article_listing)
+        article_row.refresh_from_db()
+        self.assertEqual(article_row.product_ref, " SELLER-ARTICLE-1 ")
+
+    def test_listing_resolver_matches_wb_and_ozon_external_ids(self):
+        wb_nm = self._listing(external_primary_id="wb-1", external_ids={"nmID": "501"})
+        wb_vendor = self._listing(external_primary_id="wb-2", external_ids={"vendorCode": "vendor-501"})
+        self.assertEqual(resolve_listing_for_detail_row(self._detail_row(product_ref="501")).listing, wb_nm)
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="vendor-501", row_no=2)).listing,
+            wb_vendor,
+        )
+
+        ozon_store = StoreAccount.objects.create(
+            name="Ozon Store For Enrichment",
+            marketplace=StoreAccount.Marketplace.OZON,
+        )
+        ozon_operation = self._api_operation(
+            marketplace="ozon",
+            store=ozon_store,
+            step_code=OperationStepCode.OZON_API_ELASTIC_PRODUCT_DATA_DOWNLOAD,
+        )
+        ozon_product = self._listing(
+            store=ozon_store,
+            marketplace="ozon",
+            external_primary_id="ozon-1",
+            external_ids={"product_id": "7001"},
+        )
+        ozon_offer = self._listing(
+            store=ozon_store,
+            marketplace="ozon",
+            external_primary_id="ozon-2",
+            external_ids={"offer_id": "offer-7001"},
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(
+                self._detail_row(operation=ozon_operation, product_ref="7001", reason_code="", row_no=1)
+            ).listing,
+            ozon_product,
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(
+                self._detail_row(operation=ozon_operation, product_ref="offer-7001", reason_code="", row_no=2)
+            ).listing,
+            ozon_offer,
+        )
+
+    def test_listing_resolver_rejects_cross_scope_duplicate_blank_summary_and_fuzzy_matches(self):
+        other_store = StoreAccount.objects.create(
+            name="Other WB Store For Enrichment",
+            marketplace=StoreAccount.Marketplace.WB,
+        )
+        self._listing(store=other_store, external_primary_id="CROSS-STORE")
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="CROSS-STORE")).conflict_class,
+            CONFLICT_NO_LISTING_MATCH,
+        )
+
+        self._listing(external_primary_id="dup-1", seller_article="DUP-ARTICLE")
+        self._listing(external_primary_id="dup-2", seller_article="DUP-ARTICLE")
+        duplicate = resolve_listing_for_detail_row(self._detail_row(product_ref="DUP-ARTICLE", row_no=2))
+        self.assertEqual(duplicate.conflict_class, CONFLICT_API_DATA_INTEGRITY_DUPLICATE)
+
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="   ", row_no=3)).conflict_class,
+            CONFLICT_ROW_NOT_PRODUCT_IDENTIFIER,
+        )
+
+        promotion_operation = self._api_operation(step_code=OperationStepCode.WB_API_PROMOTIONS_DOWNLOAD)
+        summary_row = self._detail_row(
+            operation=promotion_operation,
+            product_ref="12345",
+            reason_code="wb_api_promotion_regular",
+            row_no=1,
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(summary_row).conflict_class,
+            CONFLICT_ROW_NOT_PRODUCT_IDENTIFIER,
+        )
+
+        self._listing(
+            external_primary_id="Case-Sensitive-Article",
+            seller_article="Partial Article",
+            barcode="BARCODE-ONLY",
+            title="Exact Title Match",
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="case-sensitive-article", row_no=4)).conflict_class,
+            CONFLICT_NO_LISTING_MATCH,
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="Partial", row_no=5)).conflict_class,
+            CONFLICT_NO_LISTING_MATCH,
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="BARCODE-ONLY", row_no=6)).conflict_class,
+            CONFLICT_NO_LISTING_MATCH,
+        )
+        self.assertEqual(
+            resolve_listing_for_detail_row(self._detail_row(product_ref="Exact Title Match", row_no=7)).conflict_class,
+            CONFLICT_NO_LISTING_MATCH,
+        )
+
+    def test_terminal_operation_guard_allows_only_listing_fk_update(self):
+        operation = create_check_operation(
+            marketplace="wb",
+            store=self.store,
+            initiator_user=self.user,
+            input_files=[],
+            parameters=[],
+            logic_version="logic-v1",
+        )
+        row = self._detail_row(operation=operation, product_ref="GUARD-ARTICLE")
+        operation = complete_check_operation(operation, result=ShellExecutionResult(summary={"rows": 1}))
+        listing = self._listing(external_primary_id="guard-listing", seller_article="GUARD-ARTICLE")
+
+        with allow_operation_detail_listing_fk_enrichment_update():
+            OperationDetailRow.objects.filter(pk=row.pk).update(marketplace_listing_id=listing.pk)
+        row.refresh_from_db()
+        self.assertEqual(row.marketplace_listing_id, listing.pk)
+        self.assertEqual(row.product_ref, "GUARD-ARTICLE")
+
+        blocked_updates = [
+            {"product_ref": "changed"},
+            {"row_status": "changed"},
+            {"reason_code": "wb_missing_article"},
+            {"message": "changed"},
+            {"problem_field": "changed"},
+            {"final_value": {"changed": True}},
+            {"created_at": timezone.now()},
+        ]
+        for update_kwargs in blocked_updates:
+            with self.subTest(update_kwargs=update_kwargs):
+                with self.assertRaises(ValidationError):
+                    with allow_operation_detail_listing_fk_enrichment_update():
+                        OperationDetailRow.objects.filter(pk=row.pk).update(**update_kwargs)
+
+        operation.summary = {"changed": True}
+        with self.assertRaises(ValidationError):
+            operation.save(update_fields=["summary"])
+
+    def test_existing_different_fk_is_not_overwritten(self):
+        existing = self._listing(external_primary_id="existing", seller_article="EXISTING")
+        target = self._listing(external_primary_id="target", seller_article="TARGET")
+        row = self._detail_row(product_ref="TARGET", marketplace_listing=existing)
+
+        result = resolve_listing_for_detail_row(row)
+        self.assertEqual(result.conflict_class, CONFLICT_MULTIPLE_LISTING_MATCHES)
+        backfill_operation_detail_listing_fk(dry_run=False, limit=10)
+        row.refresh_from_db()
+        self.assertEqual(row.marketplace_listing_id, existing.pk)
+        self.assertNotEqual(row.marketplace_listing_id, target.pk)
+
+    def test_backfill_command_dry_run_write_idempotency_and_checksum_stability(self):
+        listing = self._listing(external_primary_id="backfill-listing", seller_article="BACKFILL-ARTICLE")
+        row = self._detail_row(product_ref="BACKFILL-ARTICLE")
+        ozon_store = StoreAccount.objects.create(
+            name="Ozon Excel Backfill Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+        )
+        ozon_listing = self._listing(
+            store=ozon_store,
+            marketplace="ozon",
+            external_primary_id="OZON-BACKFILL-1",
+            external_ids={"product_id": "OZON-BACKFILL-1", "offer_id": "OFFER-BACKFILL-1"},
+        )
+        ozon_operation = create_check_operation(
+            marketplace="ozon",
+            store=ozon_store,
+            initiator_user=self.user,
+            input_files=[],
+            parameters=[],
+            logic_version="logic-v1",
+        )
+        ozon_row = self._detail_row(
+            operation=ozon_operation,
+            product_ref="OFFER-BACKFILL-1",
+            reason_code="use_max_boost_price",
+            row_no=2,
+        )
+        before_count, before_checksum = operation_detail_product_ref_checksum()
+
+        dry_run = backfill_operation_detail_listing_fk(dry_run=True, limit=10)
+        row.refresh_from_db()
+        self.assertIsNone(row.marketplace_listing_id)
+        self.assertEqual(dry_run.row_count_before, before_count)
+        self.assertEqual(dry_run.checksum_before, before_checksum)
+        self.assertEqual(dry_run.checksum_after, before_checksum)
+
+        out = StringIO()
+        call_command("backfill_operation_detail_listing_fk", "--write", "--limit", "10", stdout=out)
+        row.refresh_from_db()
+        ozon_row.refresh_from_db()
+        self.assertEqual(row.marketplace_listing_id, listing.pk)
+        self.assertEqual(ozon_row.marketplace_listing_id, ozon_listing.pk)
+        after_count, after_checksum = operation_detail_product_ref_checksum()
+        self.assertEqual(after_count, before_count)
+        self.assertEqual(after_checksum, before_checksum)
+        self.assertIn('"changed_product_ref_count": 0', out.getvalue())
+
+        second = backfill_operation_detail_listing_fk(dry_run=False, limit=10)
+        row.refresh_from_db()
+        self.assertEqual(row.marketplace_listing_id, listing.pk)
+        self.assertGreaterEqual(second.idempotent_count, 1)
+        self.assertEqual(second.checksum_after, before_checksum)

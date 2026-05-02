@@ -27,6 +27,7 @@ from apps.operations.models import (
     OperationType,
     ProcessStatus,
 )
+from apps.product_core.models import MarketplaceListing
 from apps.platform_settings.models import ParameterDefinition, StoreParameterValue, SystemParameterValue
 from apps.stores.models import StoreAccount
 
@@ -243,6 +244,10 @@ class WbExcelTask007Tests(TestCase):
         self.assertEqual(operation.parameter_snapshots.count(), 3)
         reason_codes = set(operation.detail_rows.values_list("reason_code", flat=True))
         self.assertEqual(reason_codes, {"wb_valid_calculated"})
+        listing = MarketplaceListing.objects.get(store=self.store, marketplace="wb", external_primary_id="123")
+        detail = operation.detail_rows.get(product_ref="123")
+        self.assertEqual(detail.marketplace_listing, listing)
+        self.assertEqual(detail.product_ref, "123")
 
     def test_process_reuses_actual_check_and_writes_only_new_discount_column(self):
         price = self._price(

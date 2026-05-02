@@ -32,6 +32,7 @@ from apps.operations.models import (
     OutputKind,
     ProcessStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
 from apps.stores.models import StoreAccount
 from apps.stores.services import default_ozon_secret_resolver, require_ozon_store_for_ozon_api
@@ -574,7 +575,7 @@ def _write_upload_report(*, store: StoreAccount, actor, operation: Operation, de
 def _persist_upload_details(operation: Operation, detail_rows: list[dict]) -> None:
     for row_no, row in enumerate(detail_rows, start=1):
         rejected = row["result_status"] == "rejected"
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=row_no,
             product_ref=row["product_id"],
@@ -585,6 +586,7 @@ def _persist_upload_details(operation: Operation, detail_rows: list[dict]) -> No
             problem_field="ozon_response" if rejected else "",
             final_value=row,
         )
+        enrich_detail_row_marketplace_listing(detail_row)
 
 
 def _record_upload_failure(operation, actor, store, exc: Exception) -> None:

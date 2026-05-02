@@ -59,6 +59,7 @@ from apps.identity_access.models import Role, StoreAccess, User
 from apps.identity_access.seeds import ROLE_LOCAL_ADMIN, ROLE_MARKETPLACE_MANAGER, ROLE_OWNER, seed_identity_access
 from apps.operations.models import Marketplace, OperationMode, OperationModule, OperationStepCode, OperationType
 from apps.operations.models import Operation
+from apps.product_core.models import ListingSource, MarketplaceListing
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import OZON_API_CONNECTION_TYPE, OZON_API_MODULE
 
@@ -478,6 +479,14 @@ class OzonActionsDownloadTests(TestCase):
         self.assertEqual([item["action_id"] for item in non_elastic], ["regular-1"])
 
     def test_actions_download_operation_classifier_summary_and_safe_snapshot(self):
+        MarketplaceListing.objects.create(
+            marketplace=Marketplace.OZON,
+            store=self.store,
+            external_primary_id="elastic-101",
+            external_ids={"product_id": "elastic-101", "offer_id": "action-offer"},
+            seller_article="action-offer",
+            last_source=ListingSource.OZON_API_ACTIONS,
+        )
         FakeActionsClient.responses = [
             {
                 "result": [
@@ -513,6 +522,7 @@ class OzonActionsDownloadTests(TestCase):
         self.assertNotIn("Api-Key", dumped)
         self.assertEqual(operation.detail_rows.count(), 3)
         self.assertEqual(set(operation.detail_rows.values_list("reason_code", flat=True)), {""})
+        self.assertFalse(operation.detail_rows.filter(marketplace_listing__isnull=False).exists())
 
     def test_download_requires_active_connection_permission_and_object_access(self):
         self.connection.status = ConnectionBlock.Status.CONFIGURED
@@ -576,6 +586,14 @@ class OzonActionsDownloadTests(TestCase):
 
     def test_active_products_download_uses_saved_action_id_and_paginates(self):
         self._select_action("elastic-active")
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.OZON,
+            store=self.store,
+            external_primary_id="101",
+            external_ids={"product_id": "101", "offer_id": "offer-101"},
+            seller_article="offer-101",
+            last_source=ListingSource.OZON_API_ACTIONS,
+        )
         FakeProductsClient.calls = []
         FakeProductsClient.active_responses = [
             {
@@ -614,6 +632,10 @@ class OzonActionsDownloadTests(TestCase):
             list(operation.detail_rows.order_by("row_no").values_list("reason_code", flat=True)),
             ["", ""],
         )
+        linked_row = operation.detail_rows.get(product_ref="101")
+        unlinked_row = operation.detail_rows.get(product_ref="102")
+        self.assertEqual(linked_row.marketplace_listing, listing)
+        self.assertIsNone(unlinked_row.marketplace_listing_id)
         self.assertEqual(FakeProductsClient.calls[0]["limit"], 100)
         self.assertEqual(FakeProductsClient.calls[0]["action_id"], "elastic-active")
         self.assertEqual(FakeProductsClient.calls[1]["last_id"], "page-2")

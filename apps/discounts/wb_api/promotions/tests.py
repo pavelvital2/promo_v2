@@ -27,6 +27,7 @@ from apps.operations.models import (
     OutputKind,
 )
 from apps.operations.services import create_run
+from apps.product_core.models import ListingSource, MarketplaceListing
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import WB_API_CONNECTION_TYPE, WB_API_MODULE
 from apps.techlog.models import TechLogRecord
@@ -181,6 +182,14 @@ class WBApiPromotionsTask013Tests(TestCase):
         self.assertFalse(end_equal.is_current_at_fetch)
 
     def test_download_uses_all_promo_window_saves_timestamps_and_exports_excel(self):
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=self.store,
+            external_primary_id="501",
+            external_ids={"nmID": "501", "vendorCode": "vendor-501"},
+            seller_article="vendor-501",
+            last_source=ListingSource.WB_API_PRICES,
+        )
         factory = FakeClientFactory(
             pages=[[self._promotion(101), self._promotion(102, end_delta_hours=0)], []],
             details={101: {"id": 101, "description": "regular-safe"}},
@@ -260,6 +269,24 @@ class WBApiPromotionsTask013Tests(TestCase):
             reason_code=REASON_PRODUCT_INVALID,
         )
         self.assertEqual(invalid_detail.problem_field, "planPrice/planDiscount")
+        product_detail = OperationDetailRow.objects.get(
+            operation=operation,
+            product_ref="501",
+            reason_code="wb_api_promotion_product_valid",
+        )
+        summary_detail = OperationDetailRow.objects.get(
+            operation=operation,
+            product_ref="101",
+            reason_code=REASON_REGULAR,
+        )
+        filtered_summary = OperationDetailRow.objects.get(
+            operation=operation,
+            product_ref="102",
+            reason_code="wb_api_promotion_not_current_filtered",
+        )
+        self.assertEqual(product_detail.marketplace_listing, listing)
+        self.assertIsNone(summary_detail.marketplace_listing_id)
+        self.assertIsNone(filtered_summary.marketplace_listing_id)
 
         persisted_products = WBPromotionProduct.objects.filter(
             source_snapshot=snapshot,

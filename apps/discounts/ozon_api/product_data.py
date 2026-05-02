@@ -25,6 +25,7 @@ from apps.operations.models import (
     ProcessStatus,
     RunStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
 from apps.stores.models import StoreAccount
 from apps.stores.services import default_ozon_secret_resolver, require_ozon_store_for_ozon_api
@@ -332,7 +333,7 @@ def _persist_success(
     for row_no, row in enumerate(rows, start=1):
         reason_code = _detail_reason_code(row)
         warning_count += int(bool(reason_code))
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=row_no,
             product_ref=row.get("product_id", ""),
@@ -347,6 +348,7 @@ def _persist_success(
             problem_field="/".join(row.get("missing_fields") or []),
             final_value=row,
         )
+        enrich_detail_row_marketplace_listing(detail_row)
 
     diagnostics_counts = {
         "ozon_api_missing_product_info": sum(

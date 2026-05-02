@@ -39,6 +39,7 @@ from apps.operations.models import (
     ProcessStatus,
     RunStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import ApiOperationResult, complete_api_operation, create_api_operation, start_operation
 from apps.stores.models import StoreAccount
 from apps.stores.services import require_ozon_store_for_ozon_api
@@ -352,7 +353,7 @@ def _write_result_report(*, rows: list[dict], store: StoreAccount, user, operati
 def _persist_details(operation, rows: list[dict]) -> None:
     for row_no, row in enumerate(rows, start=1):
         blocked = row["planned_action"] == "blocked"
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=row_no,
             product_ref=row.get("product_id", ""),
@@ -371,6 +372,7 @@ def _persist_details(operation, rows: list[dict]) -> None:
             ),
             final_value=row,
         )
+        enrich_detail_row_marketplace_listing(detail_row)
 
 
 def _record_failure(operation, actor, store, exc: Exception):

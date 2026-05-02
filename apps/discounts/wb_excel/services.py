@@ -22,6 +22,7 @@ from apps.operations.models import (
     MessageLevel,
     OperationDetailRow,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import (
     InputFileSpec,
     ParameterSnapshotSpec,
@@ -703,12 +704,18 @@ def _persist_details(operation, details: list[Detail]) -> None:
         )
 
 
+def _enrich_operation_detail_listings(operation) -> None:
+    for row in operation.detail_rows.select_related("operation").order_by("id"):
+        enrich_detail_row_marketplace_listing(row)
+
+
 def _check_executor(operation) -> ShellExecutionResult:
     price_version, promo_versions = _versions_from_operation(operation)
     parameters = _parameters_from_operation(operation)
     result = calculate(price_version, promo_versions, parameters)
     _persist_details(operation, result.details)
     sync_products_for_operation(operation)
+    _enrich_operation_detail_listings(operation)
     return ShellExecutionResult(
         summary=result.summary,
         error_count=result.error_count,
@@ -722,6 +729,7 @@ def _process_executor(operation) -> ShellExecutionResult:
     result = calculate(price_version, promo_versions, parameters)
     _persist_details(operation, result.details)
     sync_products_for_operation(operation)
+    _enrich_operation_detail_listings(operation)
     if result.error_count:
         return ShellExecutionResult(
             summary={**result.summary, "output_created": False},

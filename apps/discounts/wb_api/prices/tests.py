@@ -26,6 +26,7 @@ from apps.operations.models import (
     OperationType,
 )
 from apps.operations.services import create_run
+from apps.product_core.models import MarketplaceListing
 from apps.stores.models import ConnectionBlock, StoreAccount
 from apps.stores.services import WB_API_CONNECTION_TYPE, WB_API_MODULE
 from apps.techlog.models import TechLogRecord
@@ -187,6 +188,11 @@ class WBApiPricesTask012Tests(TestCase):
         product = MarketplaceProduct.objects.get(store=self.store, sku="101")
         self.assertEqual(product.external_ids["source"], "wb_prices_api")
         self.assertEqual(product.last_values["price"], "1000")
+        listing = MarketplaceListing.objects.get(store=self.store, marketplace="wb", external_primary_id="101")
+        detail = OperationDetailRow.objects.get(operation=operation, product_ref="101")
+        self.assertEqual(detail.marketplace_listing, listing)
+        self.assertEqual(detail.product_ref, "101")
+        self.assertEqual(listing.external_ids["vendorCode"], "vendor-101")
         self.assertEqual(
             MarketplaceProductHistory.objects.filter(product=product, operation=operation, file_version=output).count(),
             1,

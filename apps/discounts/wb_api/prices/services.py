@@ -32,6 +32,7 @@ from apps.operations.models import (
     ProcessStatus,
     RunStatus,
 )
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import (
     ApiOperationResult,
     complete_api_operation,
@@ -253,7 +254,7 @@ def _persist_success(*, actor, store, operation, rows, pages, fetched_at):
             row=row,
             seen_at=fetched_at,
         )
-        OperationDetailRow.objects.create(
+        detail_row = OperationDetailRow.objects.create(
             operation=operation,
             row_no=row.row_no,
             product_ref=row.nm_id,
@@ -276,6 +277,8 @@ def _persist_success(*, actor, store, operation, rows, pages, fetched_at):
         OperationDetailRow.objects.filter(operation=operation, row_no=row.row_no).update(
             product_ref=product.sku,
         )
+        detail_row.product_ref = product.sku
+        enrich_detail_row_marketplace_listing(detail_row)
 
     summary = {
         "result_code": "wb_api_price_download_success",

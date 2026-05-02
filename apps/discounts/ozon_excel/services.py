@@ -27,6 +27,7 @@ from apps.discounts.ozon_shared.calculation import (
     problem_field_for_decision,
 )
 from apps.operations.models import Marketplace, MessageLevel, OperationDetailRow
+from apps.operations.listing_enrichment import enrich_detail_row_marketplace_listing
 from apps.operations.services import (
     InputFileSpec,
     ShellExecutionResult,
@@ -285,6 +286,11 @@ def _persist_details(operation, details: list[Detail]) -> None:
         )
 
 
+def _enrich_operation_detail_listings(operation) -> None:
+    for row in operation.detail_rows.select_related("operation").order_by("id"):
+        enrich_detail_row_marketplace_listing(row)
+
+
 def _versions_from_operation(operation) -> list[FileVersion]:
     links = operation.input_files.select_related("file_version", "file_version__file").order_by(
         "ordinal_no",
@@ -297,6 +303,7 @@ def _check_executor(operation) -> ShellExecutionResult:
     result = calculate(_versions_from_operation(operation))
     _persist_details(operation, result.details)
     sync_products_for_operation(operation)
+    _enrich_operation_detail_listings(operation)
     return ShellExecutionResult(
         summary=result.summary,
         error_count=result.error_count,
@@ -309,6 +316,7 @@ def _process_executor(operation) -> ShellExecutionResult:
     result = calculate(input_versions)
     _persist_details(operation, result.details)
     sync_products_for_operation(operation)
+    _enrich_operation_detail_listings(operation)
     if result.error_count:
         return ShellExecutionResult(
             summary={**result.summary, "output_created": False},
