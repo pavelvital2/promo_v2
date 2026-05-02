@@ -50,11 +50,15 @@ from .services import (
     exact_mapping_candidates_for_listing,
     fail_marketplace_sync_run,
     map_listing_to_variant,
+    MarketplaceSyncAdapterError,
     mark_listing_conflict,
     mark_listing_needs_review,
     marketplace_listings_visible_to,
     refresh_mapping_candidate_status,
     start_marketplace_sync_run,
+    sync_ozon_elastic_action_rows_to_product_core,
+    sync_wb_price_rows_to_product_core,
+    sync_wb_regular_promotion_rows_to_product_core,
     unmap_listing,
 )
 
@@ -771,9 +775,19 @@ class ProductCoreSyncFoundationTests(TestCase):
             name="WB Sync Store",
             marketplace=StoreAccount.Marketplace.WB,
         )
+        cls.ozon_store = StoreAccount.objects.create(
+            name="Ozon Sync Store",
+            marketplace=StoreAccount.Marketplace.OZON,
+        )
         StoreAccess.objects.create(
             user=cls.manager,
             store=cls.store,
+            access_level=StoreAccess.AccessLevel.WORK,
+            effect=AccessEffect.ALLOW,
+        )
+        StoreAccess.objects.create(
+            user=cls.manager,
+            store=cls.ozon_store,
             access_level=StoreAccess.AccessLevel.WORK,
             effect=AccessEffect.ALLOW,
         )
@@ -952,3 +966,271 @@ class ProductCoreSyncFoundationTests(TestCase):
             )
         self.assertFalse(StockSnapshot.objects.exists())
         self.assertFalse(PromotionSnapshot.objects.exists())
+
+    def test_wb_price_adapter_upserts_listing_snapshot_and_cache(self):
+        sync_run = sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": 101,
+                    "vendorCode": "ART-101",
+                    "derived_price": "123.45",
+                    "discounted_price": "100.00",
+                    "discount": 19,
+                    "currency": "RUB",
+                    "external_ids": {"sizeIDs": [1], "techSizeNames": ["0"]},
+                }
+            ],
+            requested_by=self.manager,
+        )
+
+        listing = MarketplaceListing.objects.get(store=self.store, external_primary_id="101")
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS)
+        self.assertEqual(listing.seller_article, "ART-101")
+        self.assertEqual(listing.last_values["price"], "123.45")
+        self.assertEqual(listing.last_values["price_with_discount"], "100.00")
+        self.assertEqual(PriceSnapshot.objects.filter(sync_run=sync_run, listing=listing).count(), 1)
+
+    def test_wb_price_adapter_uses_duplicate_active_sync_guard(self):
+        start_marketplace_sync_run(
+            marketplace=Marketplace.WB,
+            store=self.store,
+            sync_type=MarketplaceSyncRun.SyncType.PRICES,
+            source=ListingSource.WB_API_PRICES,
+        )
+
+        with self.assertRaises(DuplicateActiveSyncRun):
+            sync_wb_price_rows_to_product_core(
+                store=self.store,
+                rows=[{"nmID": 110, "derived_price": "10.00", "currency": "RUB"}],
+            )
+
+    def test_wb_price_adapter_failure_preserves_previous_cache(self):
+        listing = self._listing(external_primary_id="102", last_values={"price": "77.00"})
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[{"nmID": 102, "derived_price": "88.00", "currency": "RUB"}],
+        )
+        listing.refresh_from_db()
+        self.assertEqual(listing.last_values["price"], "88.00")
+        last_sync_run = listing.last_sync_run
+
+        with self.assertRaises(ValueError):
+            sync_wb_price_rows_to_product_core(
+                store=self.store,
+                rows=[
+                    {
+                        "nmID": 102,
+                        "derived_price": "10.00",
+                        "currency": "RUB",
+                        "external_ids": {"authorization": "Bearer abcdefghijklmnopqrstuvwxyz1234567890"},
+                    }
+                ],
+            )
+
+        listing.refresh_from_db()
+        failed_run = MarketplaceSyncRun.objects.exclude(pk=last_sync_run.pk).latest("id")
+        self.assertEqual(failed_run.status, MarketplaceSyncRun.SyncStatus.INTERRUPTED_FAILED)
+        self.assertEqual(listing.last_values["price"], "88.00")
+        self.assertEqual(listing.last_sync_run, last_sync_run)
+
+    def test_wb_regular_promotion_adapter_skips_missing_listing_without_fabrication(self):
+        sync_run = sync_wb_regular_promotion_rows_to_product_core(
+            store=self.store,
+            promotion_id=555,
+            action_name="Regular promo",
+            rows=[
+                {
+                    "nmID": 201,
+                    "inAction": True,
+                    "planPrice": "99.00",
+                    "planDiscount": 10,
+                    "currencyCode": "RUB",
+                }
+            ],
+        )
+
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(sync_run.summary["listings_upserted_count"], 0)
+        self.assertEqual(sync_run.summary["listings_matched_count"], 0)
+        self.assertEqual(sync_run.summary["missing_listing_match_count"], 1)
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.store, external_primary_id="201").exists())
+        self.assertFalse(PromotionSnapshot.objects.filter(sync_run=sync_run).exists())
+
+    def test_wb_regular_promotion_adapter_writes_snapshot_for_existing_deterministic_listing(self):
+        listing = self._listing(external_primary_id="201")
+
+        sync_run = sync_wb_regular_promotion_rows_to_product_core(
+            store=self.store,
+            promotion_id=555,
+            action_name="Regular promo",
+            rows=[
+                {
+                    "nmID": 201,
+                    "inAction": True,
+                    "planPrice": "99.00",
+                    "planDiscount": 10,
+                    "currencyCode": "RUB",
+                }
+            ],
+        )
+
+        listing.refresh_from_db()
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS)
+        self.assertEqual(sync_run.summary["listings_upserted_count"], 0)
+        self.assertEqual(sync_run.summary["listings_matched_count"], 1)
+        self.assertEqual(sync_run.summary["promotion_snapshots_count"], 1)
+        self.assertEqual(listing.last_values["promotions"][0]["marketplace_promotion_id"], "555")
+
+    def test_wb_regular_auto_promotion_no_fabricated_rows(self):
+        auto_run = sync_wb_regular_promotion_rows_to_product_core(
+            store=self.store,
+            promotion_id=556,
+            rows=[{"nmID": 202}],
+            is_auto_promotion=True,
+        )
+
+        self.assertEqual(auto_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.store, external_primary_id="202").exists())
+
+    def test_ozon_elastic_adapter_scoped_success_and_invalid_group_failure(self):
+        sync_run = sync_ozon_elastic_action_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="act-1",
+            source_group="active",
+            rows=[
+                {
+                    "product_id": "9001",
+                    "offer_id": "OFFER-1",
+                    "name": "Ozon Product",
+                    "action_price": "120.00",
+                    "price_min_elastic": "100.00",
+                    "price_max_elastic": "140.00",
+                }
+            ],
+        )
+        listing = MarketplaceListing.objects.get(store=self.ozon_store, external_primary_id="9001")
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_SUCCESS)
+        self.assertEqual(listing.seller_article, "OFFER-1")
+        self.assertEqual(sync_run.summary["not_full_catalog"], True)
+        self.assertEqual(listing.last_values["promotions"][0]["marketplace_promotion_id"], "act-1")
+
+        with self.assertRaises(MarketplaceSyncAdapterError):
+            sync_ozon_elastic_action_rows_to_product_core(
+                store=self.ozon_store,
+                action_id="act-1",
+                source_group="full_catalog",
+                rows=[],
+            )
+
+    def test_duplicate_external_article_guard_skips_affected_rows(self):
+        sync_run = sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {"nmID": "301", "vendorCode": "DUP", "derived_price": "1.00", "currency": "RUB"},
+                {"nmID": "302", "vendorCode": "DUP", "derived_price": "2.00", "currency": "RUB"},
+                {"nmID": "303", "vendorCode": "OK", "derived_price": "3.00", "currency": "RUB"},
+            ],
+        )
+
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(sync_run.summary["duplicate_external_article_count"], 1)
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.store, external_primary_id="301").exists())
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.store, external_primary_id="302").exists())
+        self.assertTrue(MarketplaceListing.objects.filter(store=self.store, external_primary_id="303").exists())
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                event_type=TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID,
+                store=self.store,
+            ).exists()
+        )
+
+    def test_wb_price_duplicate_same_article_same_primary_id_is_skipped(self):
+        sync_run = sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {"nmID": "311", "vendorCode": "DUP-SAME", "derived_price": "1.00", "currency": "RUB"},
+                {"nmID": "311", "vendorCode": "DUP-SAME", "derived_price": "2.00", "currency": "RUB"},
+            ],
+        )
+
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(sync_run.summary["duplicate_external_article_count"], 1)
+        self.assertEqual(sync_run.summary["source_data_integrity_warning"]["affected_rows_count"], 2)
+        self.assertEqual(sync_run.summary["skipped_rows_count"], 2)
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.store, external_primary_id="311").exists())
+        self.assertFalse(PriceSnapshot.objects.filter(sync_run=sync_run).exists())
+
+    def test_wb_regular_promotion_duplicate_article_rows_skip_snapshots(self):
+        self._listing(external_primary_id="401")
+
+        sync_run = sync_wb_regular_promotion_rows_to_product_core(
+            store=self.store,
+            promotion_id=555,
+            action_name="Regular promo",
+            rows=[
+                {
+                    "nmID": "401",
+                    "vendorCode": "PROMO-DUP",
+                    "inAction": True,
+                    "planPrice": "99.00",
+                    "planDiscount": 10,
+                    "currencyCode": "RUB",
+                },
+                {
+                    "nmID": "401",
+                    "vendorCode": "PROMO-DUP",
+                    "inAction": True,
+                    "planPrice": "98.00",
+                    "planDiscount": 11,
+                    "currencyCode": "RUB",
+                },
+            ],
+        )
+
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(sync_run.summary["duplicate_external_article_count"], 1)
+        self.assertEqual(sync_run.summary["source_data_integrity_warning"]["affected_rows_count"], 2)
+        self.assertEqual(sync_run.summary["listings_upserted_count"], 0)
+        self.assertEqual(sync_run.summary["listings_matched_count"], 0)
+        self.assertEqual(sync_run.summary["promotion_snapshots_count"], 0)
+        self.assertEqual(sync_run.summary["skipped_rows_count"], 2)
+        self.assertFalse(PromotionSnapshot.objects.filter(sync_run=sync_run).exists())
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                event_type=TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID,
+                store=self.store,
+            ).exists()
+        )
+
+    def test_ozon_elastic_duplicate_same_article_same_primary_id_is_skipped(self):
+        sync_run = sync_ozon_elastic_action_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="act-dup",
+            source_group="active",
+            rows=[
+                {"product_id": "9011", "offer_id": "OZON-DUP", "action_price": "120.00"},
+                {"product_id": "9011", "offer_id": "OZON-DUP", "action_price": "119.00"},
+            ],
+        )
+
+        self.assertEqual(sync_run.status, MarketplaceSyncRun.SyncStatus.COMPLETED_WITH_WARNINGS)
+        self.assertEqual(sync_run.summary["duplicate_external_article_count"], 1)
+        self.assertEqual(sync_run.summary["source_data_integrity_warning"]["affected_rows_count"], 2)
+        self.assertEqual(sync_run.summary["skipped_rows_count"], 2)
+        self.assertFalse(MarketplaceListing.objects.filter(store=self.ozon_store, external_primary_id="9011").exists())
+        self.assertFalse(PromotionSnapshot.objects.filter(sync_run=sync_run).exists())
+
+    def test_adapter_redaction_rejects_secret_like_summaries(self):
+        with self.assertRaises(ValueError):
+            sync_ozon_elastic_action_rows_to_product_core(
+                store=self.ozon_store,
+                action_id="act-2",
+                source_group="candidate",
+                rows=[
+                    {
+                        "product_id": "9010",
+                        "offer_id": "Bearer abcdefghijklmnopqrstuvwxyz1234567890",
+                    }
+                ],
+            )

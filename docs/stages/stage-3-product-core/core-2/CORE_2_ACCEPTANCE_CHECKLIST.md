@@ -1,6 +1,6 @@
 # CORE_2_ACCEPTANCE_CHECKLIST.md
 
-Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; готова к follow-up audit/recheck.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; `TASK-PC2-002` closed / ready for commit after test and audit PASS. Full CORE-2 remains in progress and is not release-complete.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§14-16, §11.13.
 
@@ -24,6 +24,14 @@
 | Rollout runbook includes backup/validation/rollback/post-deploy checks. |  |
 
 ## Implementation Acceptance Checklist
+
+### Task Closeout Status
+
+| Task | Status | Evidence |
+| --- | --- | --- |
+| `TASK-PC2-002 Marketplace Listing Sync Integration` | CLOSED / READY FOR COMMIT | Test PASS in `docs/testing/TEST_REPORT_TASK_PC2_002_MARKETPLACE_LISTING_SYNC.md`; audit PASS in `docs/audit/AUDIT_REPORT_TASK_PC2_002_MARKETPLACE_LISTING_SYNC.md`; closeout report in `docs/reports/TASK_PC2_002_MARKETPLACE_LISTING_SYNC_REPORT.md`. |
+
+Only `TASK-PC2-002` is marked closed here. Full CORE-2 remains in progress and is not marked release-complete.
 
 | Area | PASS/FAIL |
 | --- | --- |

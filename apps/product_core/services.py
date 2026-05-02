@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, asdict
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.audit.models import AuditActionCode, AuditSourceContext
@@ -19,6 +20,7 @@ from apps.techlog.services import create_techlog_record
 from .models import (
     ListingSource,
     ListingHistory,
+    Marketplace,
     MarketplaceListing,
     MarketplaceSyncRun,
     PriceSnapshot,
@@ -37,6 +39,10 @@ ACTIVE_SYNC_STATUSES = (
     MarketplaceSyncRun.SyncStatus.CREATED,
     MarketplaceSyncRun.SyncStatus.RUNNING,
 )
+WB_PRICES_ENDPOINT_CODE = "wb_prices_list_goods_filter"
+WB_PROMOTIONS_ENDPOINT_CODE = "wb_promotions_nomenclatures"
+OZON_ACTION_PRODUCTS_ENDPOINT_CODE = "ozon_actions_products"
+OZON_ACTION_CANDIDATES_ENDPOINT_CODE = "ozon_actions_candidates"
 
 
 @dataclass(frozen=True)
@@ -49,6 +55,10 @@ class MappingCandidate:
 
 class DuplicateActiveSyncRun(ValidationError):
     """Raised when the same store/marketplace/sync type already has an active run."""
+
+
+class MarketplaceSyncAdapterError(ValidationError):
+    """Raised when Product Core approved-source sync adapter input is invalid."""
 
 
 def marketplace_listings_visible_to(user):
@@ -546,6 +556,615 @@ def create_promotion_snapshot(
         raw_safe=raw_safe,
         source_endpoint=source_endpoint,
     )
+
+
+def _row_dict(row) -> dict:
+    if isinstance(row, dict):
+        return dict(row)
+    if is_dataclass(row):
+        return asdict(row)
+    return {
+        name: getattr(row, name)
+        for name in dir(row)
+        if not name.startswith("_") and not callable(getattr(row, name))
+    }
+
+
+def _first_present(row: dict, *names: str):
+    for name in names:
+        value = row.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _string_value(value) -> str:
+    return "" if value in (None, "") else str(value).strip()
+
+
+def _decimal_or_none(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
+
+
+def _safe_summary_value(value):
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _safe_summary_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_safe_summary_value(item) for item in value]
+    return value
+
+
+def _detect_duplicate_articles(normalized_rows: list[dict]) -> set[str]:
+    article_counts: dict[str, int] = {}
+    for row in normalized_rows:
+        article = _string_value(row.get("seller_article"))
+        if article:
+            article_counts[article] = article_counts.get(article, 0) + 1
+    return {article for article, count in article_counts.items() if count > 1}
+
+
+def _source_data_integrity_warning_summary(
+    *,
+    duplicate_articles: set[str],
+    affected_count: int,
+) -> dict:
+    return {
+        "duplicate_external_article_count": len(duplicate_articles),
+        "affected_rows_count": affected_count,
+    }
+
+
+def _record_source_data_integrity_warning(
+    *,
+    sync_run: MarketplaceSyncRun,
+    duplicate_articles: set[str],
+    affected_count: int,
+) -> None:
+    create_techlog_record(
+        severity="warning",
+        event_type="marketplace_sync.response_invalid",
+        source_component="apps.product_core.sync",
+        operation=sync_run.operation,
+        store=sync_run.store,
+        safe_message=(
+            "Marketplace sync source contains duplicate external article values; "
+            "affected rows were skipped."
+        ),
+        entity_type="MarketplaceSyncRun",
+        entity_id=sync_run.pk,
+        sensitive_details_ref="redacted:marketplace-sync-source-data-integrity",
+    )
+    sync_run.summary = {
+        **(sync_run.summary or {}),
+        "source_data_integrity_warning": {
+            "duplicate_external_article_count": len(duplicate_articles),
+            "affected_rows_count": affected_count,
+        },
+    }
+    sync_run.full_clean()
+    sync_run.save(update_fields=["summary"])
+
+
+def _upsert_listing_from_source(
+    *,
+    sync_run: MarketplaceSyncRun,
+    external_primary_id: str,
+    external_ids: dict,
+    seller_article: str = "",
+    title: str = "",
+    barcode: str = "",
+    brand: str = "",
+    category_name: str = "",
+    category_external_id: str = "",
+) -> tuple[MarketplaceListing, bool]:
+    if not external_primary_id:
+        raise MarketplaceSyncAdapterError("Marketplace listing external primary id is required.")
+    external_ids = _safe_summary_value(external_ids or {})
+    assert_no_secret_like_values(external_ids, field_name="marketplace listing external_ids")
+    defaults = {
+        "external_ids": external_ids,
+        "seller_article": seller_article,
+        "title": title,
+        "barcode": barcode,
+        "brand": brand,
+        "category_name": category_name,
+        "category_external_id": category_external_id,
+        "listing_status": MarketplaceListing.ListingStatus.ACTIVE,
+        "last_source": sync_run.source,
+    }
+    listing, created = MarketplaceListing.objects.select_for_update().get_or_create(
+        marketplace=sync_run.marketplace,
+        store=sync_run.store,
+        external_primary_id=external_primary_id,
+        defaults=defaults,
+    )
+    changed_fields: list[str] = []
+    if not created:
+        for field, value in defaults.items():
+            if getattr(listing, field) != value:
+                setattr(listing, field, value)
+                changed_fields.append(field)
+        if changed_fields:
+            listing.full_clean()
+            listing.save(update_fields=[*changed_fields, "updated_at"])
+    return listing, created
+
+
+def _find_existing_listing_for_wb_promotion_row(
+    *,
+    sync_run: MarketplaceSyncRun,
+    external_primary_id: str,
+    seller_article: str = "",
+) -> MarketplaceListing | None:
+    lookup = Q()
+    if external_primary_id:
+        lookup |= Q(external_primary_id=external_primary_id)
+        lookup |= Q(external_ids__nmID=external_primary_id)
+    if seller_article:
+        lookup |= Q(seller_article=seller_article)
+        lookup |= Q(external_ids__vendorCode=seller_article)
+    if not lookup:
+        return None
+
+    matches = list(
+        MarketplaceListing.objects.select_for_update()
+        .filter(
+            marketplace=sync_run.marketplace,
+            store=sync_run.store,
+        )
+        .filter(lookup)[:2]
+    )
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def _normalize_wb_price_row(row) -> dict:
+    data = _row_dict(row)
+    nm_id = _string_value(_first_present(data, "nm_id", "nmID", "external_primary_id"))
+    vendor_code = _string_value(_first_present(data, "vendor_code", "vendorCode", "seller_article"))
+    external_ids = dict(data.get("external_ids") or {})
+    if nm_id and "nmID" not in external_ids:
+        external_ids["nmID"] = nm_id
+    if vendor_code and "vendorCode" not in external_ids:
+        external_ids["vendorCode"] = vendor_code
+    external_ids.setdefault("source", "wb_prices_api")
+    price = _decimal_or_none(_first_present(data, "derived_price", "price"))
+    price_with_discount = _decimal_or_none(
+        _first_present(data, "discounted_price", "discountedPrice", "price_with_discount")
+    )
+    discount_percent = _decimal_or_none(_first_present(data, "discount", "discount_percent"))
+    return {
+        "external_primary_id": nm_id,
+        "seller_article": vendor_code,
+        "external_ids": external_ids,
+        "price": price,
+        "price_with_discount": price_with_discount,
+        "discount_percent": discount_percent,
+        "currency": _string_value(_first_present(data, "currency", "currencyIsoCode4217")),
+        "raw_safe": {
+            "nmID": nm_id,
+            "vendorCode": vendor_code,
+            "price": str(price) if price is not None else None,
+            "price_with_discount": str(price_with_discount) if price_with_discount is not None else None,
+            "discount_percent": str(discount_percent) if discount_percent is not None else None,
+            "currency": _string_value(_first_present(data, "currency", "currencyIsoCode4217")),
+            "reason_code": data.get("reason_code"),
+            "upload_ready": data.get("upload_ready"),
+        },
+    }
+
+
+def sync_wb_price_rows_to_product_core(
+    *,
+    store,
+    rows,
+    operation=None,
+    requested_by=None,
+    launch_method: str = "service",
+) -> MarketplaceSyncRun:
+    """Upsert Product Core WB listings from already-approved Stage 2.1 price rows."""
+
+    sync_run = start_marketplace_sync_run(
+        marketplace=Marketplace.WB,
+        store=store,
+        sync_type=MarketplaceSyncRun.SyncType.PRICES,
+        source=ListingSource.WB_API_PRICES,
+        operation=operation,
+        requested_by=requested_by,
+        launch_method=launch_method,
+        summary={"source": "wb_prices", "approved_source": WB_PRICES_ENDPOINT_CODE},
+    )
+    try:
+        normalized_rows = [_normalize_wb_price_row(row) for row in rows]
+        duplicate_articles = _detect_duplicate_articles(normalized_rows)
+        skipped_count = 0
+        listing_count = 0
+        snapshot_count = 0
+        warning_count = 0
+        for row in normalized_rows:
+            if not row["external_primary_id"]:
+                warning_count += 1
+                skipped_count += 1
+                continue
+            if row["seller_article"] in duplicate_articles:
+                warning_count += 1
+                skipped_count += 1
+                continue
+            listing, _created = _upsert_listing_from_source(
+                sync_run=sync_run,
+                external_primary_id=row["external_primary_id"],
+                external_ids=row["external_ids"],
+                seller_article=row["seller_article"],
+            )
+            listing_count += 1
+            if row["price"] is not None and row["currency"]:
+                create_price_snapshot(
+                    sync_run=sync_run,
+                    listing=listing,
+                    price=row["price"],
+                    price_with_discount=row["price_with_discount"],
+                    discount_percent=row["discount_percent"],
+                    currency=row["currency"],
+                    raw_safe={key: value for key, value in row["raw_safe"].items() if value is not None},
+                    source_endpoint=WB_PRICES_ENDPOINT_CODE,
+                )
+                snapshot_count += 1
+            else:
+                warning_count += 1
+        if duplicate_articles:
+            duplicate_affected_count = sum(
+                1 for row in normalized_rows if row["seller_article"] in duplicate_articles
+            )
+            _record_source_data_integrity_warning(
+                sync_run=sync_run,
+                duplicate_articles=duplicate_articles,
+                affected_count=duplicate_affected_count,
+            )
+        else:
+            duplicate_affected_count = 0
+        return complete_marketplace_sync_run(
+            sync_run,
+            summary={
+                "source": "wb_prices",
+                "approved_source": WB_PRICES_ENDPOINT_CODE,
+                "rows_count": len(normalized_rows),
+                "listings_upserted_count": listing_count,
+                "price_snapshots_count": snapshot_count,
+                "skipped_rows_count": skipped_count,
+                "duplicate_external_article_count": len(duplicate_articles),
+                "source_data_integrity_warning": _source_data_integrity_warning_summary(
+                    duplicate_articles=duplicate_articles,
+                    affected_count=duplicate_affected_count,
+                ) if duplicate_articles else None,
+            },
+            warning_count=warning_count,
+        )
+    except Exception as exc:
+        fail_marketplace_sync_run(
+            sync_run,
+            error_summary={
+                "source": "wb_prices",
+                "approved_source": WB_PRICES_ENDPOINT_CODE,
+                "failure": getattr(exc, "safe_message", str(exc)),
+            },
+        )
+        raise
+
+
+def _normalize_wb_promotion_row(row, *, promotion_id=None, action_name: str = "") -> dict:
+    data = _row_dict(row)
+    nm_id = _string_value(_first_present(data, "nm_id", "nmID", "external_primary_id"))
+    action_price = _decimal_or_none(_first_present(data, "plan_price", "planPrice", "action_price"))
+    return {
+        "external_primary_id": nm_id,
+        "seller_article": _string_value(_first_present(data, "vendor_code", "vendorCode", "seller_article")),
+        "external_ids": {
+            "nmID": nm_id,
+            "source": "wb_promotions_api",
+        },
+        "marketplace_promotion_id": _string_value(
+            _first_present(data, "promotion_id", "wb_promotion_id", "marketplace_promotion_id")
+            or promotion_id
+        ),
+        "action_name": _string_value(_first_present(data, "action_name", "name") or action_name),
+        "participation_status": "in_action" if bool(_first_present(data, "in_action", "inAction")) else "candidate",
+        "action_price": action_price,
+        "constraints": {
+            "planDiscount": _first_present(data, "plan_discount", "planDiscount"),
+            "discount": data.get("discount"),
+            "currencyCode": _first_present(data, "currency_code", "currencyCode"),
+        },
+        "reason_code": _string_value(data.get("reason_code")),
+    }
+
+
+def sync_wb_regular_promotion_rows_to_product_core(
+    *,
+    store,
+    rows,
+    promotion_id=None,
+    action_name: str = "",
+    operation=None,
+    requested_by=None,
+    is_auto_promotion: bool = False,
+    launch_method: str = "service",
+) -> MarketplaceSyncRun:
+    """Create WB promotion snapshots only from real regular-promotion product rows."""
+
+    sync_run = start_marketplace_sync_run(
+        marketplace=Marketplace.WB,
+        store=store,
+        sync_type=MarketplaceSyncRun.SyncType.PROMOTIONS,
+        source=ListingSource.WB_API_PRICES,
+        operation=operation,
+        requested_by=requested_by,
+        launch_method=launch_method,
+        summary={"source": "wb_promotions", "approved_source": WB_PROMOTIONS_ENDPOINT_CODE},
+    )
+    try:
+        if is_auto_promotion:
+            return complete_marketplace_sync_run(
+                sync_run,
+                summary={
+                    "source": "wb_promotions",
+                    "approved_source": WB_PROMOTIONS_ENDPOINT_CODE,
+                    "auto_promotion_without_product_rows": True,
+                    "rows_count": 0,
+                    "listings_upserted_count": 0,
+                    "promotion_snapshots_count": 0,
+                },
+                warning_count=1,
+            )
+        normalized_rows = [
+            _normalize_wb_promotion_row(row, promotion_id=promotion_id, action_name=action_name)
+            for row in rows
+        ]
+        duplicate_articles = _detect_duplicate_articles(normalized_rows)
+        skipped_count = 0
+        matched_listing_count = 0
+        snapshot_count = 0
+        warning_count = 0
+        missing_listing_match_count = 0
+        for row in normalized_rows:
+            if not row["external_primary_id"] or not row["marketplace_promotion_id"]:
+                skipped_count += 1
+                warning_count += 1
+                continue
+            if row["seller_article"] in duplicate_articles:
+                skipped_count += 1
+                warning_count += 1
+                continue
+            listing = _find_existing_listing_for_wb_promotion_row(
+                sync_run=sync_run,
+                external_primary_id=row["external_primary_id"],
+                seller_article=row["seller_article"],
+            )
+            if listing is None:
+                skipped_count += 1
+                missing_listing_match_count += 1
+                warning_count += 1
+                continue
+            matched_listing_count += 1
+            create_promotion_snapshot(
+                sync_run=sync_run,
+                listing=listing,
+                marketplace_promotion_id=row["marketplace_promotion_id"],
+                action_name=row["action_name"],
+                participation_status=row["participation_status"],
+                action_price=row["action_price"],
+                constraints={key: value for key, value in row["constraints"].items() if value not in (None, "")},
+                reason_code=row["reason_code"],
+                raw_safe={
+                    "nmID": row["external_primary_id"],
+                    "promotion_id": row["marketplace_promotion_id"],
+                    "participation_status": row["participation_status"],
+                },
+                source_endpoint=WB_PROMOTIONS_ENDPOINT_CODE,
+            )
+            snapshot_count += 1
+        duplicate_affected_count = sum(
+            1 for row in normalized_rows if row["seller_article"] in duplicate_articles
+        )
+        if duplicate_articles:
+            _record_source_data_integrity_warning(
+                sync_run=sync_run,
+                duplicate_articles=duplicate_articles,
+                affected_count=duplicate_affected_count,
+            )
+        return complete_marketplace_sync_run(
+            sync_run,
+            summary={
+                "source": "wb_promotions",
+                "approved_source": WB_PROMOTIONS_ENDPOINT_CODE,
+                "rows_count": len(normalized_rows),
+                "listings_upserted_count": 0,
+                "listings_matched_count": matched_listing_count,
+                "promotion_snapshots_count": snapshot_count,
+                "skipped_rows_count": skipped_count,
+                "missing_listing_match_count": missing_listing_match_count,
+                "duplicate_external_article_count": len(duplicate_articles),
+                "source_data_integrity_warning": _source_data_integrity_warning_summary(
+                    duplicate_articles=duplicate_articles,
+                    affected_count=duplicate_affected_count,
+                ) if duplicate_articles else None,
+            },
+            warning_count=warning_count,
+        )
+    except Exception as exc:
+        fail_marketplace_sync_run(
+            sync_run,
+            error_summary={
+                "source": "wb_promotions",
+                "approved_source": WB_PROMOTIONS_ENDPOINT_CODE,
+                "failure": getattr(exc, "safe_message", str(exc)),
+            },
+        )
+        raise
+
+
+def _normalize_ozon_elastic_row(row, *, action_id: str, source_group: str) -> dict:
+    data = _row_dict(row)
+    product_id = _string_value(_first_present(data, "product_id", "id", "external_primary_id"))
+    offer_id = _string_value(_first_present(data, "offer_id", "offer", "seller_article"))
+    name = _string_value(_first_present(data, "name", "title"))
+    action_price = _decimal_or_none(
+        _first_present(data, "action_price", "current_action_price", "calculated_action_price")
+    )
+    external_ids = {
+        "product_id": product_id,
+        "offer_id": offer_id,
+        "sku": _first_present(data, "sku", "fbo_sku", "fbs_sku"),
+        "action_id": str(action_id),
+        "source_group": source_group,
+        "source": "ozon_elastic_actions_api",
+    }
+    return {
+        "external_primary_id": product_id,
+        "seller_article": offer_id,
+        "title": name,
+        "external_ids": {key: value for key, value in external_ids.items() if value not in (None, "")},
+        "marketplace_promotion_id": str(action_id),
+        "participation_status": source_group,
+        "action_name": _string_value(_first_present(data, "action_name")),
+        "action_price": action_price,
+        "constraints": {
+            "price_min_elastic": _first_present(data, "price_min_elastic", "O_price_min_elastic"),
+            "price_max_elastic": _first_present(data, "price_max_elastic", "P_price_max_elastic"),
+        },
+        "raw_safe": {
+            "action_id": str(action_id),
+            "product_id": product_id,
+            "offer_id": offer_id,
+            "source_group": source_group,
+        },
+    }
+
+
+def sync_ozon_elastic_action_rows_to_product_core(
+    *,
+    store,
+    rows,
+    action_id: str,
+    source_group: str,
+    operation=None,
+    requested_by=None,
+    launch_method: str = "service",
+) -> MarketplaceSyncRun:
+    """Upsert Ozon listings only for the selected Elastic action product set."""
+
+    if source_group not in {"active", "candidate", "candidate_and_active"}:
+        raise MarketplaceSyncAdapterError("Unsupported Ozon Elastic source group.")
+    endpoint_code = (
+        OZON_ACTION_CANDIDATES_ENDPOINT_CODE
+        if source_group == "candidate"
+        else OZON_ACTION_PRODUCTS_ENDPOINT_CODE
+    )
+    sync_run = start_marketplace_sync_run(
+        marketplace=Marketplace.OZON,
+        store=store,
+        sync_type=MarketplaceSyncRun.SyncType.PROMOTIONS,
+        source=ListingSource.OZON_API_ACTIONS,
+        operation=operation,
+        requested_by=requested_by,
+        launch_method=launch_method,
+        summary={
+            "source": "ozon_elastic_actions",
+            "approved_source": endpoint_code,
+            "action_id": str(action_id),
+            "source_group": source_group,
+            "not_full_catalog": True,
+        },
+    )
+    try:
+        normalized_rows = [
+            _normalize_ozon_elastic_row(row, action_id=str(action_id), source_group=source_group)
+            for row in rows
+        ]
+        duplicate_articles = _detect_duplicate_articles(normalized_rows)
+        skipped_count = 0
+        listing_count = 0
+        snapshot_count = 0
+        warning_count = 0
+        for row in normalized_rows:
+            if not row["external_primary_id"]:
+                skipped_count += 1
+                warning_count += 1
+                continue
+            if row["seller_article"] in duplicate_articles:
+                skipped_count += 1
+                warning_count += 1
+                continue
+            listing, _created = _upsert_listing_from_source(
+                sync_run=sync_run,
+                external_primary_id=row["external_primary_id"],
+                external_ids=row["external_ids"],
+                seller_article=row["seller_article"],
+                title=row["title"],
+            )
+            listing_count += 1
+            create_promotion_snapshot(
+                sync_run=sync_run,
+                listing=listing,
+                marketplace_promotion_id=row["marketplace_promotion_id"],
+                action_name=row["action_name"],
+                participation_status=row["participation_status"],
+                action_price=row["action_price"],
+                constraints={key: value for key, value in row["constraints"].items() if value not in (None, "")},
+                raw_safe=row["raw_safe"],
+                source_endpoint=endpoint_code,
+            )
+            snapshot_count += 1
+        if duplicate_articles:
+            duplicate_affected_count = sum(
+                1 for row in normalized_rows if row["seller_article"] in duplicate_articles
+            )
+            _record_source_data_integrity_warning(
+                sync_run=sync_run,
+                duplicate_articles=duplicate_articles,
+                affected_count=duplicate_affected_count,
+            )
+        else:
+            duplicate_affected_count = 0
+        return complete_marketplace_sync_run(
+            sync_run,
+            summary={
+                "source": "ozon_elastic_actions",
+                "approved_source": endpoint_code,
+                "action_id": str(action_id),
+                "source_group": source_group,
+                "not_full_catalog": True,
+                "rows_count": len(normalized_rows),
+                "listings_upserted_count": listing_count,
+                "promotion_snapshots_count": snapshot_count,
+                "skipped_rows_count": skipped_count,
+                "duplicate_external_article_count": len(duplicate_articles),
+                "source_data_integrity_warning": _source_data_integrity_warning_summary(
+                    duplicate_articles=duplicate_articles,
+                    affected_count=duplicate_affected_count,
+                ) if duplicate_articles else None,
+            },
+            warning_count=warning_count,
+        )
+    except Exception as exc:
+        fail_marketplace_sync_run(
+            sync_run,
+            error_summary={
+                "source": "ozon_elastic_actions",
+                "approved_source": endpoint_code,
+                "action_id": str(action_id),
+                "source_group": source_group,
+                "failure": getattr(exc, "safe_message", str(exc)),
+            },
+        )
+        raise
 
 
 def _assert_mapping_permission(actor, listing: MarketplaceListing, permission_code: str) -> None:
