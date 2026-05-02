@@ -222,7 +222,7 @@ WB reason/result codes этапа 1:
 
 ## Stage 2.1 WB API additions
 
-Трассировка: `tz_stage_2.1.txt` §6-§14; ADR-0016..ADR-0020.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §6-§14; ADR-0016..ADR-0020.
 
 Stage 2.1 использует ту же PostgreSQL БД и существующие инварианты immutable operations/files/audit. Excel mode Stage 1 не заменяется.
 

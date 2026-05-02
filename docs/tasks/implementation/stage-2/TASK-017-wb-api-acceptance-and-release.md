@@ -6,7 +6,7 @@ ID: TASK-017
 Цель: выполнить Stage 2.1 acceptance checks, собрать evidence и подготовить release readiness без изменения бизнес-логики.
 
 Источник истины:
-- `tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
+- `docs/source/stage-inputs/tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
 
 Входные документы:
 - `AGENTS.md`
@@ -43,7 +43,7 @@ ID: TASK-017
 - `docs/adr/ADR_LOG.md`
 
 Разделы ТЗ для чтения:
-- `tz_stage_2.1.txt` §5.5, §6.6, §9.2, §10.1, §11, §15.4, §16, §18.
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §5.5, §6.6, §9.2, §10.1, §11, §15.4, §16, §18.
 
 Связанные GAP/ADR:
 - ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020.
@@ -66,7 +66,7 @@ ID: TASK-017
 - Test-only fixtures under `apps/**/tests*` or future `apps/discounts/wb_api/tests/`, without product logic changes and without real secrets.
 
 Запрещённые файлы / области изменения:
-- `itogovoe_tz_platforma_marketplace_codex.txt`, `tz_stage_2.1.txt`.
+- `itogovoe_tz_platforma_marketplace_codex.txt`, `docs/source/stage-inputs/tz_stage_2.1.txt`.
 - `docs/audit/AUDIT_REPORT_STAGE_2_1_WB_DOCUMENTATION.md`.
 - Product logic except explicitly assigned fixes from orchestrator.
 - Stage 1 accepted comparison artifacts and expected results.

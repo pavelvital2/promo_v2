@@ -169,7 +169,7 @@ Process:
 
 ## Stage 2.1 WB API operations
 
-Трассировка: `tz_stage_2.1.txt` §6-§11.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §6-§11.
 
 Stage 2.1 добавляет `mode=api` для WB. Excel mode Stage 1 не заменяется.
 

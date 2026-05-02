@@ -6,7 +6,7 @@ ID: TASK-011
 Цель: реализовать рабочий WB API connection contour с protected secrets, status/check flow, safe API client policies and audit/techlog.
 
 Источник истины:
-- `tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
+- `docs/source/stage-inputs/tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
 
 Входные документы:
 - `AGENTS.md`
@@ -30,7 +30,7 @@ ID: TASK-011
 - `docs/adr/ADR_LOG.md`
 
 Разделы ТЗ для чтения:
-- `tz_stage_2.1.txt` §5.5, §10.1, §11, §15.4, §16.
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §5.5, §10.1, §11, §15.4, §16.
 
 Связанные GAP/ADR:
 - ADR-0016, ADR-0017, ADR-0019.
@@ -51,7 +51,7 @@ ID: TASK-011
 - `docs/testing/` or `docs/reports/` only for executor evidence/report files if the task process requires them.
 
 Запрещённые файлы / области изменения:
-- `itogovoe_tz_platforma_marketplace_codex.txt`, `tz_stage_2.1.txt`.
+- `itogovoe_tz_platforma_marketplace_codex.txt`, `docs/source/stage-inputs/tz_stage_2.1.txt`.
 - `docs/audit/AUDIT_REPORT_STAGE_2_1_WB_DOCUMENTATION.md`.
 - `apps/discounts/wb_excel/` and Stage 1 WB Excel calculation behavior.
 - `apps/discounts/ozon_excel/` and any future `apps/discounts/ozon_api/`.

@@ -1,6 +1,6 @@
 # STAGE_2_1_WB_SCOPE.md
 
-Трассировка: `tz_stage_2.1.txt` §2-§17; ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §2-§17; ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021.
 
 ## Назначение
 

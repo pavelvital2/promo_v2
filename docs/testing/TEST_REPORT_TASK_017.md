@@ -20,7 +20,7 @@ Checked Stage 2.1 WB API release readiness against:
 - `docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md`
 - `docs/gaps/GAP_REGISTER.md`
 - `docs/adr/ADR_LOG.md`, ADR-0016..ADR-0020 only
-- `tz_stage_2.1.txt` scoped sections: §5.5, §6.6, §9.2, §10.1, §11, §15.4, §16, §18
+- `docs/source/stage-inputs/tz_stage_2.1.txt` scoped sections: §5.5, §6.6, §9.2, §10.1, §11, §15.4, §16, §18
 
 Product logic was not changed. Real WB token files and real `test_files/secrets` were not read or printed. WB API checks remained mock/stub-based. Ozon API / Stage 2.2 was not touched.
 

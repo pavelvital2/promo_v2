@@ -185,7 +185,7 @@ ADR фиксирует архитектурное или проектное ре
 
 - Статус: accepted
 - Дата: 2026-04-26
-- Контекст: `tz_stage_2.1.txt` требует подготовить Stage 2.1 только для WB API и не смешивать его с будущим Ozon API.
+- Контекст: `docs/source/stage-inputs/tz_stage_2.1.txt` требует подготовить Stage 2.1 только для WB API и не смешивать его с будущим Ozon API.
 - Решение: Stage 2 разделён на 2.1 WB API и 2.2 Ozon API. Документы и implementation tasks Stage 2.1 покрывают только WB.
 - Последствия: Ozon API не реализуется в TASK-011..TASK-017; Excel Stage 1 остаётся штатным/резервным режимом.
 - Трассировка: `docs/stages/stage-2/STAGE_2_SCOPE.md`

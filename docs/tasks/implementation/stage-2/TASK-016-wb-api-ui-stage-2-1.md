@@ -6,7 +6,7 @@ ID: TASK-016
 Цель: реализовать UI мастер `WB -> Скидки -> API` для 2.1.1-2.1.4.
 
 Источник истины:
-- `tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
+- `docs/source/stage-inputs/tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
 
 Входные документы:
 - `AGENTS.md`
@@ -33,7 +33,7 @@ ID: TASK-016
 - `docs/adr/ADR_LOG.md`
 
 Разделы ТЗ для чтения:
-- `tz_stage_2.1.txt` §5.5, §6.6, §10.1, §11, §13, §15.4, §16.
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §5.5, §6.6, §10.1, §11, §13, §15.4, §16.
 
 Связанные GAP/ADR:
 - ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020.
@@ -54,7 +54,7 @@ ID: TASK-016
 - UI tests in the same paths.
 
 Запрещённые файлы / области изменения:
-- `itogovoe_tz_platforma_marketplace_codex.txt`, `tz_stage_2.1.txt`.
+- `itogovoe_tz_platforma_marketplace_codex.txt`, `docs/source/stage-inputs/tz_stage_2.1.txt`.
 - `docs/audit/AUDIT_REPORT_STAGE_2_1_WB_DOCUMENTATION.md`.
 - Stage 1 Excel UI semantics and availability for `WB -> Скидки -> Excel`.
 - Backend business logic for calculation/upload except invoking already implemented services.

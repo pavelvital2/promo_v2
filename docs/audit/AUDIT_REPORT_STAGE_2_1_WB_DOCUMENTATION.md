@@ -10,7 +10,7 @@ Implementation may start: no. Реализация TASK-011..TASK-017 должн
 
 ## Проверенные источники
 
-- `tz_stage_2.1.txt`
+- `docs/source/stage-inputs/tz_stage_2.1.txt`
 - `AGENTS.md`
 - `docs/README.md`
 - `docs/DOCUMENTATION_MAP.md`
@@ -54,7 +54,7 @@ References:
 - `docs/product/OPERATIONS_SPEC.md:175`
 - `docs/product/UI_SPEC.md:316`
 - `docs/product/UI_SPEC.md:333`
-- `tz_stage_2.1.txt` §6.6
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §6.6
 
 Problem:
 
@@ -115,7 +115,7 @@ References:
 - `docs/architecture/API_CONNECTIONS_SPEC.md:44`
 - `docs/architecture/DATA_MODEL.md:267`
 - `docs/product/WB_DISCOUNTS_API_SPEC.md:257`
-- `tz_stage_2.1.txt` §10.1
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §10.1
 
 Problem:
 
@@ -135,7 +135,7 @@ References:
 - `docs/product/WB_DISCOUNTS_API_SPEC.md:175`
 - `docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md:49`
 - `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md:46`
-- `tz_stage_2.1.txt` §9.2
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §9.2
 
 Problem:
 

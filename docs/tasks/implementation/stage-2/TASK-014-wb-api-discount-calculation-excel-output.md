@@ -6,7 +6,7 @@ ID: TASK-014
 Цель: рассчитать скидки по API-источникам через Stage 1 WB logic и сформировать итоговый Excel для ручной загрузки.
 
 Источник истины:
-- `tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
+- `docs/source/stage-inputs/tz_stage_2.1.txt`, без полного перечитывания вне указанных разделов.
 
 Входные документы:
 - `AGENTS.md`
@@ -33,7 +33,7 @@ ID: TASK-014
 - `docs/adr/ADR_LOG.md`
 
 Разделы ТЗ для чтения:
-- `tz_stage_2.1.txt` §5.5, §6.6, §10.1, §11, §15.3, §16.
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §5.5, §6.6, §10.1, §11, §15.3, §16.
 
 Связанные GAP/ADR:
 - ADR-0016, ADR-0017, ADR-0020.
@@ -54,7 +54,7 @@ ID: TASK-014
 - Tests in the same app paths and safe mock/golden fixtures without real secrets.
 
 Запрещённые файлы / области изменения:
-- `itogovoe_tz_platforma_marketplace_codex.txt`, `tz_stage_2.1.txt`.
+- `itogovoe_tz_platforma_marketplace_codex.txt`, `docs/source/stage-inputs/tz_stage_2.1.txt`.
 - `docs/audit/AUDIT_REPORT_STAGE_2_1_WB_DOCUMENTATION.md`.
 - Stage 1 WB Excel calculation outcome, formula order, parameter defaults or accepted control outputs.
 - Future `apps/discounts/wb_api/upload/` or WB write endpoint calls.

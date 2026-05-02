@@ -1,6 +1,6 @@
 # API_CONNECTIONS_SPEC.md
 
-Трассировка: `tz_stage_2.1.txt` §10-§11; `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md`; ADR-0017, ADR-0019, ADR-0024, ADR-0035.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §10-§11; `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md`; ADR-0017, ADR-0019, ADR-0024, ADR-0035.
 
 ## Назначение
 

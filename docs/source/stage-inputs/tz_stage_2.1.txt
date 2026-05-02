@@ -1,0 +1,1655 @@
+Ниже готовое **ТЗ для проектировщика-агента Codex** на подготовку исполнительной проектной документации по **Этапу 2.1 — WB API-контур скидок**.
+
+---
+
+# ТЗ проектировщику Codex: исполнительная документация Этапа 2.1 WB API
+
+## 1. Назначение задания
+
+Подготовить комплект **исполнительной проектной документации** для реализации Этапа **2.1 WB API** в проекте `promo_v2`.
+
+Это задание **не на реализацию кода**. Проектировщик должен подготовить такие документы, по которым оркестратор Codex затем сможет раздать реализацию отдельным агентам Codex, а аудитор сможет проверить полноту, непротиворечивость и соответствие ТЗ.
+
+Корень проекта на VPS:
+
+```text
+/home/pavel/projects/promo_v2/
+```
+
+Все пути в документации указывать от корня репозитория, например:
+
+```text
+docs/product/WB_DISCOUNTS_API_SPEC.md
+```
+
+Структура новой документации должна органично продолжать существующую структуру Этапа 1: `docs/stages/stage-1/`, `docs/tasks/implementation/stage-1/`, `docs/product/`, `docs/architecture/`, `docs/testing/`, `docs/gaps/`, `docs/adr/`.
+
+Проект уже использует task-scoped подход: агенты не читают всё итоговое ТЗ целиком, а получают минимальный пакет документов от оркестратора. Это правило нужно сохранить для Stage 2.1. В текущих правилах проекта прямо указано, что код продукта не пишется до отдельной задачи на реализацию и до аудита исполнительной проектной документации. ([GitHub][1])
+
+---
+
+## 2. Граница Этапа 2.1
+
+Этап 2.1 относится только к **WB**.
+
+Охват:
+
+```text
+2.1.1 Скачать по API цены WB,
+      сформировать Excel-файл с ценами,
+      дать его скачать и проверить,
+      занести скачанные товары в справочник товаров конкретного магазина.
+
+2.1.2 Скачать из календаря акций WB текущие акции,
+      занести акции и состав товаров по акциям в БД,
+      сформировать Excel-файлы акций,
+      дать их скачать и проверить.
+
+2.1.3 Выполнить расчёт скидок по данным 2.1.1 и 2.1.2,
+      сформировать итоговый Excel-файл,
+      пригодный для ручной загрузки в личном кабинете WB,
+      дать его скачать и проверить.
+
+2.1.4 Выполнить загрузку рассчитанных скидок в личный кабинет WB по API,
+      с фиксацией upload ID, статусов, ошибок, частичных ошибок и audit/techlog.
+```
+
+Не входит:
+
+```text
+2.2 Ozon API;
+автоматизация остатков;
+автоматизация заказов;
+автоматизация поставок;
+производственный модуль;
+закупки;
+изменение бизнес-формул WB Excel Этапа 1;
+удаление или замена Excel-режима;
+изменение Stage 1 accepted comparison artifacts.
+```
+
+Excel-режим WB Этапа 1 остаётся штатным и резервным режимом. API-режим добавляется как новый режим работы, а не как замена существующего Excel-сценария.
+
+---
+
+## 3. Базовая продуктовая логика Этапа 2.1
+
+Текущий ручной процесс WB:
+
+```text
+1. Пользователь скачивает из личного кабинета WB файл с ценами.
+2. Пользователь скачивает из календаря акций WB файлы акций.
+3. Система рассчитывает скидки.
+4. Система записывает результат в Excel-файл с ценами.
+5. Пользователь вручную загружает итоговый Excel в личный кабинет WB.
+```
+
+Этап 2.1 должен сохранить эту понятную модель, но заменить источники данных на API и добавить опциональную API-загрузку:
+
+```text
+2.1.1 API скачал цены
+      ↓
+      проверочный Excel-файл цен
+      ↓
+2.1.2 API скачал текущие акции
+      ↓
+      проверочные Excel-файлы акций
+      ↓
+2.1.3 расчёт скидок
+      ↓
+      итоговый Excel-файл для ручной загрузки в ЛК WB
+      ↓
+2.1.4 API-загрузка рассчитанных скидок в WB
+```
+
+Принципиальное ограничение:
+
+```text
+2.1.1 не меняет данные в WB.
+2.1.2 не меняет данные в WB.
+2.1.3 не меняет данные в WB.
+2.1.4 — единственный подэтап, который отправляет изменения в WB через API.
+```
+
+---
+
+## 4. Входные документы для проектировщика
+
+Проектировщик должен прочитать только task-scoped пакет, а не всё ТЗ целиком.
+
+### 4.1. Обязательные проектные документы
+
+```text
+AGENTS.md
+docs/README.md
+docs/DOCUMENTATION_MAP.md
+docs/orchestration/AGENTS.md
+docs/orchestration/DOCUMENTATION_UPDATE_PROTOCOL.md
+docs/orchestration/TASK_TEMPLATES.md
+docs/roles/READING_PACKAGES.md
+docs/stages/stage-1/PROJECT_DOCUMENTATION_PLAN.md
+docs/tasks/implementation/stage-1/IMPLEMENTATION_TASKS.md
+docs/product/WB_DISCOUNTS_EXCEL_SPEC.md
+docs/product/OPERATIONS_SPEC.md
+docs/product/UI_SPEC.md
+docs/product/PERMISSIONS_MATRIX.md
+docs/architecture/DATA_MODEL.md
+docs/architecture/FILE_CONTOUR.md
+docs/architecture/AUDIT_AND_TECHLOG_SPEC.md
+docs/architecture/DELETION_ARCHIVAL_POLICY.md
+docs/testing/TEST_PROTOCOL.md
+docs/testing/ACCEPTANCE_CHECKLISTS.md
+docs/gaps/GAP_REGISTER.md
+docs/adr/ADR_LOG.md
+```
+
+Существующая карта документации уже делит документы на `docs/product`, `docs/architecture`, `docs/stages`, `docs/tasks/implementation`, `docs/testing`, `docs/audit`, `docs/gaps`, `docs/adr` и другие каталоги; Stage 2.1 нужно встроить в эту же структуру. ([GitHub][2])
+
+### 4.2. Официальная документация WB API
+
+Использовать как обязательный внешний источник:
+
+```text
+https://dev.wildberries.ru/docs/openapi/work-with-products#tag/Ceny-i-skidki/paths/~1api~1v2~1list~1goods~1filter/get
+https://dev.wildberries.ru/docs/openapi/promotion
+```
+
+WB Prices and Discounts API содержит методы получения товаров с ценами, установки цен и скидок, получения статуса обработанных и необработанных загрузок, деталей загрузок и карантина цен. ([WB API][3])
+
+WB Promotions Calendar API содержит методы списка акций, деталей акций, списка товаров для участия в акции и загрузки товаров в акцию; для текущего Этапа 2.1 использовать его только для чтения календаря и формирования проверочных Excel-файлов акций, не для добавления товаров в акции. ([WB API][4])
+
+---
+
+## 5. Документы, которые должен подготовить проектировщик
+
+Проектировщик должен создать или обновить следующий комплект.
+
+### 5.1. Документы уровня этапа
+
+Создать:
+
+```text
+docs/stages/stage-2/STAGE_2_SCOPE.md
+docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md
+docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md
+```
+
+Назначение:
+
+```text
+STAGE_2_SCOPE.md
+  Общий Stage 2 split:
+  - 2.1 WB API;
+  - 2.2 Ozon API;
+  - запрет смешивать WB и Ozon в одной задаче;
+  - Excel остаётся штатным/резервным режимом.
+
+STAGE_2_1_WB_SCOPE.md
+  Полное описание WB API-контуров 2.1.1–2.1.4.
+
+STAGE_2_1_WB_ACCEPTANCE_TESTS.md
+  Приёмочные сценарии, контрольные наборы, API-mock сценарии,
+  сравнение с Stage 1 Excel-логикой, критерии готовности.
+```
+
+### 5.2. Продуктовые спецификации
+
+Создать:
+
+```text
+docs/product/WB_DISCOUNTS_API_SPEC.md
+docs/product/WB_API_PRICE_EXPORT_SPEC.md
+docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md
+```
+
+Назначение:
+
+```text
+WB_DISCOUNTS_API_SPEC.md
+  Общая бизнес-логика WB API-режима скидок:
+  - сценарий пользователя;
+  - связь 2.1.1–2.1.4;
+  - check/process;
+  - расчёт;
+  - итоговый Excel;
+  - API upload;
+  - статусы и ошибки.
+
+WB_API_PRICE_EXPORT_SPEC.md
+  Спецификация 2.1.1:
+  - получение цен;
+  - маппинг API → Excel;
+  - маппинг API → справочник товаров;
+  - snapshots;
+  - правила обработки size-based price cases.
+
+WB_API_PROMOTIONS_EXPORT_SPEC.md
+  Спецификация 2.1.2:
+  - получение текущих акций;
+  - определение "текущая акция";
+  - маппинг API → БД;
+  - маппинг API → Excel promo files;
+  - обработка regular/auto promotions;
+  - ограничения.
+```
+
+### 5.3. Архитектурные документы
+
+Обновить или создать:
+
+```text
+docs/architecture/API_CONNECTIONS_SPEC.md
+docs/architecture/DATA_MODEL.md
+docs/architecture/FILE_CONTOUR.md
+docs/architecture/AUDIT_AND_TECHLOG_SPEC.md
+```
+
+Если в проекте уже есть подходящий документ для API-подключений, использовать существующий путь. Если отдельного документа нет, создать `docs/architecture/API_CONNECTIONS_SPEC.md`.
+
+Обязательные темы:
+
+```text
+- WB API token / protected_secret_ref;
+- запрет хранения token/api_key в metadata;
+- статусы подключения;
+- проверка подключения;
+- история изменений подключения;
+- audit событий подключения;
+- techlog ошибок подключения;
+- связь connection block с store/account;
+- rate limit handling;
+- retries/backoff;
+- timeout policy;
+- external API request/response snapshots без раскрытия секретов;
+- redaction sensitive values.
+```
+
+В Stage 1 `ConnectionBlock` был подготовительным блоком для будущих API-подключений и не должен был использоваться в Stage 1. В Stage 2.1 проектировщик должен описать, как этот блок становится рабочим для WB API, какие ограничения снимаются, какие остаются, и какие миграции/документы нужны. ([GitHub][5])
+
+### 5.4. UI и права
+
+Обновить:
+
+```text
+docs/product/UI_SPEC.md
+docs/product/PERMISSIONS_MATRIX.md
+```
+
+Нужно добавить UI-раздел:
+
+```text
+Маркетплейсы
+  WB
+    Скидки
+      Excel
+      API
+        2.1.1 Цены
+        2.1.2 Текущие акции
+        2.1.3 Расчёт
+        2.1.4 Загрузка по API
+```
+
+Допускается, если проектировщик сочтёт UX лучше, оформить не как четыре вкладки, а как единый мастер:
+
+```text
+WB -> Скидки -> API
+  Шаг 1: Скачать цены
+  Шаг 2: Скачать текущие акции
+  Шаг 3: Рассчитать итоговый Excel
+  Шаг 4: Загрузить по API
+```
+
+Но проектировщик должен зафиксировать выбранную UI-модель в `UI_SPEC.md`, а не оставлять её на разработчика.
+
+Права нужно добавить минимум:
+
+```text
+wb.api.connection.view
+wb.api.connection.manage
+wb.api.prices.download
+wb.api.prices.file.download
+wb.api.promotions.download
+wb.api.promotions.file.download
+wb.api.discounts.calculate
+wb.api.discounts.result.download
+wb.api.discounts.upload
+wb.api.discounts.upload.confirm
+wb.api.operation.view
+```
+
+Все права должны сочетаться с object access по конкретному магазину/кабинету. Пользователь без доступа к магазину не видит операции, файлы, акции, товары и API-подключение этого магазина.
+
+### 5.5. Задачи реализации
+
+Создать:
+
+```text
+docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md
+docs/tasks/implementation/stage-2/TASK-011-wb-api-connections.md
+docs/tasks/implementation/stage-2/TASK-012-wb-api-prices-download.md
+docs/tasks/implementation/stage-2/TASK-013-wb-api-current-promotions-download.md
+docs/tasks/implementation/stage-2/TASK-014-wb-api-discount-calculation-excel-output.md
+docs/tasks/implementation/stage-2/TASK-015-wb-api-discount-upload.md
+docs/tasks/implementation/stage-2/TASK-016-wb-api-ui-stage-2-1.md
+docs/tasks/implementation/stage-2/TASK-017-wb-api-acceptance-and-release.md
+```
+
+`TASK-011` является инфраструктурной предпосылкой к 2.1.1–2.1.4. Остальные задачи должны маппиться на подэтапы:
+
+```text
+2.1.1 -> TASK-012
+2.1.2 -> TASK-013
+2.1.3 -> TASK-014
+2.1.4 -> TASK-015
+UI    -> TASK-016
+Acceptance/release -> TASK-017
+```
+
+Каждая задача должна содержать:
+
+```text
+ID;
+тип задачи;
+агент;
+цель;
+входные документы;
+разделы ТЗ для чтения;
+связанные GAP/ADR;
+разрешённые файлы;
+запрещённые файлы;
+ожидаемый результат;
+критерии завершённости;
+обязательные проверки;
+формат отчёта;
+получатель результата.
+```
+
+Формат должен соответствовать существующим task templates проекта. ([GitHub][6])
+
+### 5.6. Тестирование и трассировка
+
+Создать или обновить:
+
+```text
+docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md
+docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md
+docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md
+```
+
+Если проектировщик решит расширять общие `TEST_PROTOCOL.md`, `ACCEPTANCE_CHECKLISTS.md`, `TRACEABILITY_MATRIX.md`, он должен сделать это аккуратно, не ломая Stage 1.
+
+---
+
+## 6. Требования к 2.1.1 — получение цен WB по API
+
+### 6.1. Назначение
+
+Пользователь выбирает WB-магазин/кабинет и запускает действие:
+
+```text
+Скачать цены по API
+```
+
+Система должна:
+
+```text
+1. Проверить права пользователя.
+2. Проверить доступ пользователя к магазину.
+3. Проверить наличие активного WB API-подключения.
+4. Получить товары и цены WB через API.
+5. Сохранить snapshot полученных данных.
+6. Сформировать Excel-файл цен.
+7. Дать пользователю скачать Excel-файл.
+8. Обновить справочник товаров конкретного магазина.
+9. Создать operation/run/audit/techlog записи.
+```
+
+### 6.2. Основной API-метод
+
+Для получения всех товаров с ценами использовать:
+
+```text
+GET /api/v2/list/goods/filter
+```
+
+Документация WB указывает, что для получения всех товаров нужно не задавать article-фильтр, использовать `limit=1000`, управлять смещением через `offset` и повторять запросы до пустого массива. Метод возвращает `nmID`, `vendorCode`, массив `sizes`, `currencyIsoCode4217`, `discount`, `clubDiscount`, `editableSizePrice`, `isBadTurnover`; в `sizes` есть `sizeID`, `price`, `discountedPrice`, `clubDiscountedPrice`, `techSizeName`. ([WB API][3])
+
+Обязательные технические параметры:
+
+```text
+base URL:
+  https://discounts-prices-api.wildberries.ru
+
+endpoint:
+  /api/v2/list/goods/filter
+
+method:
+  GET
+
+auth:
+  HeaderApiKey
+
+pagination:
+  limit = 1000
+  offset = 0, 1000, 2000...
+  stop when listGoods is empty
+
+rate limit:
+  10 requests / 6 seconds, interval 600 ms, burst 5
+```
+
+Официальная документация указывает лимит категории Prices and Discounts: 10 запросов за 6 секунд, интервал 600 ms, burst 5. ([WB API][3])
+
+### 6.3. Excel-файл цен
+
+Сформированный файл должен быть пригоден для проверки пользователем и для дальнейшего расчёта 2.1.3.
+
+Минимальные обязательные колонки на основном листе:
+
+```text
+Артикул WB
+Текущая цена
+Новая скидка
+```
+
+Назначение колонок:
+
+```text
+Артикул WB
+  nmID из WB API.
+
+Текущая цена
+  price из API.
+
+Новая скидка
+  пустая колонка, куда 2.1.3 запишет рассчитанную скидку.
+```
+
+Дополнительные диагностические поля допускаются только если они не ломают совместимость с текущим WB Excel-парсером. Если проектировщик хочет добавить дополнительные поля, предпочтительный вариант — отдельный диагностический лист, например:
+
+```text
+_api_raw
+```
+
+или отдельный detail report, а не изменение основной схемы файла.
+
+### 6.4. Size-based pricing
+
+WB API возвращает `sizes[]` и признак `editableSizePrice`; отдельный метод размеров применяется для товаров, где доступна установка цен по размерам. ([WB API][3])
+
+Проектировщик должен явно описать поведение для товаров с несколькими размерами:
+
+```text
+1. Если у всех sizes одного nmID одинаковая price:
+   использовать эту price как "Текущая цена".
+
+2. Если sizes одного nmID имеют разные price:
+   не подбирать цену молча;
+   не использовать случайный первый размер;
+   зафиксировать строку как спорную для расчёта;
+   отразить случай в detail rows / warnings;
+   не допускать API upload по такой строке до отдельного утверждённого правила.
+```
+
+Если проектировщик считает нужным добавить новый reason/result code для таких строк, он должен оформить это через документацию и ADR, так как Stage 1 WB reason/result codes были закрытым перечнем и расширяются только через утверждённое изменение. ([GitHub][7])
+
+### 6.5. Обновление справочника товаров
+
+Для каждого полученного `nmID` необходимо создать или обновить товар в справочнике товаров магазина.
+
+Рекомендуемый маппинг:
+
+```text
+MarketplaceProduct.marketplace = "wb"
+MarketplaceProduct.store = выбранный StoreAccount
+MarketplaceProduct.sku = str(nmID)
+MarketplaceProduct.external_ids = {
+  "nmID": nmID,
+  "vendorCode": vendorCode,
+  "sizeIDs": [...],
+  "techSizeNames": [...],
+  "source": "wb_prices_api"
+}
+MarketplaceProduct.last_values = {
+  "price": ...,
+  "discount": ...,
+  "discountedPrice": ...,
+  "clubDiscount": ...,
+  "clubDiscountedPrice": ...,
+  "currencyIsoCode4217": ...,
+  "editableSizePrice": ...,
+  "isBadTurnover": ...
+}
+MarketplaceProduct.status = "active"
+MarketplaceProduct.last_seen_at = operation timestamp
+```
+
+Если title не приходит из Prices API, не выдумывать название товара. Поле `title` оставить пустым или заполнить только из отдельного официально подключённого API-источника, если проектировщик включит его в спецификацию.
+
+В текущей модели Stage 1 справочник товаров уже имеет `marketplace`, `store`, `external_ids`, `title`, `sku`, `barcode`, `status`, `last_values`, `first_detected_at`, `last_seen_at` и историю изменений. ([GitHub][8])
+
+### 6.6. Operation/file model
+
+2.1.1 создаёт:
+
+```text
+Run
+Operation
+FileObject kind=output
+FileVersion
+OperationOutputFile
+MarketplaceProduct / MarketplaceProductHistory
+AuditRecord
+TechLogRecord при ошибках
+```
+
+Проектировщик должен решить и зафиксировать в `DATA_MODEL.md` / `OPERATIONS_SPEC.md`, как Stage 2.1 классифицирует операции скачивания API-данных.
+
+Рекомендуемое решение:
+
+```text
+Operation.type остаётся check/process только для check/process-сценариев.
+Для Stage 2.1 добавить явный operation step / scenario step:
+  wb_api_prices_download
+  wb_api_promotions_download
+  wb_api_discount_calculation
+  wb_api_discount_upload
+```
+
+Если для этого требуется новое поле, например:
+
+```text
+Operation.step_code
+```
+
+или расширение `execution_context`, проектировщик должен описать это в `DATA_MODEL.md`, `OPERATIONS_SPEC.md`, migration notes и implementation tasks. Нельзя оставлять классификацию операций на усмотрение разработчика.
+
+---
+
+## 7. Требования к 2.1.2 — получение текущих акций WB
+
+### 7.1. Назначение
+
+Пользователь запускает действие:
+
+```text
+Скачать текущие акции WB
+```
+
+Система должна:
+
+```text
+1. Проверить права пользователя.
+2. Проверить доступ к магазину.
+3. Проверить активное WB API-подключение.
+4. Получить список текущих акций из календаря WB.
+5. Получить детали текущих акций.
+6. Получить товары по каждой текущей акции, где это применимо.
+7. Сохранить акции и строки товаров в БД.
+8. Сформировать Excel-файл по каждой акции.
+9. Дать пользователю скачать сформированные Excel-файлы.
+10. Создать operation/run/audit/techlog записи.
+```
+
+### 7.2. Определение текущей акции
+
+Проектировщик должен зафиксировать следующее определение:
+
+```text
+Текущая акция WB — акция, у которой:
+  startDateTime <= now_utc < endDateTime
+```
+
+`now_utc` — текущий момент в UTC на момент запуска операции.
+
+Нельзя использовать “ближайшие”, “будущие”, “доступные”, “последние” или “все акции” как замену текущих. Пользователь явно указал: **текущие, именно текущие**.
+
+### 7.3. API-методы календаря акций
+
+Использовать:
+
+```text
+GET /api/v1/calendar/promotions
+GET /api/v1/calendar/promotions/details
+GET /api/v1/calendar/promotions/nomenclatures
+```
+
+Метод списка акций возвращает список promotions с `id`, `name`, `startDateTime`, `endDateTime`, `type` и принимает `startDateTime`, `endDateTime`, `allPromo`, `limit`, `offset`. ([WB API][4])
+
+Метод деталей принимает до 100 уникальных `promotionIDs` и возвращает детальную информацию, включая описание, преимущества, даты, counts, percentage, type и ranging. ([WB API][4])
+
+Метод товаров акции возвращает товары, подходящие для участия в акции, и принимает `promotionID`, `inAction`, `limit`, `offset`; в ответе есть `id`, `inAction`, `price`, `currencyCode`, `planPrice`, `discount`, `planDiscount`. Метод не применяется к auto promotions. ([WB API][4])
+
+### 7.4. Правило выборки текущих акций
+
+Рекомендуемый технический алгоритм:
+
+```text
+1. Сформировать API window, который гарантированно покрывает now_utc:
+   startDateTime = now_utc - 24h
+   endDateTime   = now_utc + 24h
+
+2. Запросить promotions list с allPromo=true.
+
+3. Применить строгий локальный фильтр:
+   startDateTime <= now_utc < endDateTime.
+
+4. По отфильтрованным promotion IDs запросить details батчами до 100 IDs.
+
+5. Для каждой regular promotion запросить nomenclatures:
+   - inAction=true;
+   - inAction=false;
+   - с пагинацией limit=1000, offset до пустого массива.
+
+6. Для auto promotion:
+   - сохранить саму акцию и details;
+   - сформировать запись о том, что список товаров через nomenclatures недоступен;
+   - не выдумывать строки товаров;
+   - отразить это в UI и detail report.
+```
+
+Если проектировщик считает, что `allPromo=false` лучше соответствует пользовательскому сценарию, он должен вынести это как функциональный вопрос заказчику через оркестратора. По умолчанию для “текущих акций” использовать `allPromo=true`, чтобы не потерять текущие акции, которые уже идут, но не классифицируются WB как “available for participating”.
+
+### 7.5. Сохранение в БД
+
+Проектировщик должен добавить в `DATA_MODEL.md` модели или сущности для Stage 2.1:
+
+```text
+WBPromotion
+WBPromotionSnapshot
+WBPromotionProduct
+WBPromotionExportFile
+```
+
+Можно выбрать другие названия, но документация должна покрыть минимум:
+
+```text
+WBPromotion:
+  store_id
+  wb_promotion_id
+  name
+  type
+  start_datetime
+  end_datetime
+  status/current flag
+  last_seen_at
+  raw_payload_ref/snapshot_ref
+
+WBPromotionSnapshot:
+  operation_id
+  store_id
+  fetched_at
+  api_window_start
+  api_window_end
+  current_filter_timestamp
+  raw_response_safe_snapshot
+  promotions_count
+  current_promotions_count
+
+WBPromotionProduct:
+  promotion_id
+  nmID
+  inAction
+  price
+  currencyCode
+  planPrice
+  discount
+  planDiscount
+  source_snapshot_id
+  row_status
+
+WBPromotionExportFile:
+  promotion_id
+  operation_id
+  file_version_id
+```
+
+Секреты, API key, authorization headers и чувствительные детали не должны попадать в raw snapshots.
+
+### 7.6. Excel-файлы акций
+
+По каждой текущей regular promotion сформировать Excel-файл, совместимый с Stage 1 WB promo parser.
+
+Минимальные обязательные колонки:
+
+```text
+Артикул WB
+Плановая цена для акции
+Загружаемая скидка для участия в акции
+```
+
+Маппинг:
+
+```text
+Артикул WB
+  nomenclatures[].id
+
+Плановая цена для акции
+  nomenclatures[].planPrice
+
+Загружаемая скидка для участия в акции
+  nomenclatures[].planDiscount
+```
+
+Если `planPrice` или `planDiscount` отсутствует, строка считается невалидной для расчёта и должна быть отражена в detail rows.
+
+Для каждой акции допускается один файл:
+
+```text
+wb_promo_<promotionID>_<date>.xlsx
+```
+
+или единый zip/пакет файлов, если UI и file contour будут описаны. Если используется архив, проектировщик должен описать, как он хранится в `FileObject/FileVersion` и как скачивается.
+
+---
+
+## 8. Требования к 2.1.3 — расчёт скидок и итоговый Excel
+
+### 8.1. Назначение
+
+Пользователь запускает действие:
+
+```text
+Рассчитать скидки
+```
+
+Система должна:
+
+```text
+1. Взять последний или явно выбранный price export из 2.1.1.
+2. Взять последний или явно выбранный набор current promotion exports из 2.1.2.
+3. Применить существующую WB-логику расчёта скидок.
+4. Сформировать итоговый Excel-файл.
+5. Дать пользователю скачать итоговый Excel.
+6. Не отправлять изменения в WB.
+```
+
+### 8.2. Бизнес-логика расчёта
+
+Расчёт должен использовать ту же формулу и тот же порядок правил, что Stage 1 WB Excel:
+
+```text
+calculated_discount = ceil((1 - max_plan_price / current_price) * 100)
+
+final_discount_pre_threshold = MIN(min_discount, calculated_discount)
+
+1. Если артикул отсутствует во всех валидных файлах акций:
+   final_discount = wb_fallback_no_promo_percent
+
+2. Иначе если final_discount_pre_threshold > wb_threshold_percent:
+   final_discount = wb_fallback_over_threshold_percent
+
+3. Иначе:
+   final_discount = final_discount_pre_threshold
+```
+
+Запрещено менять порядок правил, использовать float, обрезать результат вне диапазона 0..100 или частично обрабатывать workbook при ошибке диапазона. Stage 1 WB spec уже фиксирует decimal + ceil, закрытый набор WB reason/result codes и ошибку `wb_discount_out_of_range` при выходе за диапазон. ([GitHub][7])
+
+### 8.3. Архитектурное требование
+
+Проектировщик должен потребовать выделения общего расчётного ядра WB, если оно ещё не выделено.
+
+Запрещено:
+
+```text
+- дублировать формулу отдельно для Excel mode и API mode;
+- иметь две расходящиеся реализации WB расчёта;
+- менять Stage 1 Excel-поведение;
+- считать API-режим новым бизнес-правилом.
+```
+
+Правильная модель:
+
+```text
+WB calculation core
+  ↑
+  Excel input adapter
+  API-generated Excel / API snapshot adapter
+  ↓
+WB output writer
+```
+
+### 8.4. Итоговый Excel
+
+Итоговый Excel должен:
+
+```text
+- быть сформирован на основе price Excel из 2.1.1;
+- записывать результат в колонку "Новая скидка";
+- быть пригодным для ручной загрузки в личном кабинете WB;
+- сохранять порядок строк;
+- не разрушать формулы;
+- не менять запрещённые колонки;
+- иметь checksum;
+- храниться как FileObject/FileVersion;
+- быть связан с operation.
+```
+
+Если WB личный кабинет требует специальный формат, отличный от минимального Stage 1 price workbook, проектировщик должен зафиксировать точную схему файла. Нельзя оставлять “пригодный для загрузки” без формального определения.
+
+### 8.5. Актуальность данных
+
+Для 2.1.3 check/process актуальность должна учитывать:
+
+```text
+- выбранный store/account;
+- выбранный price export operation/file version/snapshot;
+- выбранный promotions export operation/file versions/snapshots;
+- applied WB parameters;
+- calculation logic version;
+- current promotion filter timestamp;
+- WB API data snapshot checksum.
+```
+
+Если пользователь перескачал цены или акции, старый расчёт не считается автоматически актуальным.
+
+---
+
+## 9. Требования к 2.1.4 — загрузка скидок WB по API
+
+### 9.1. Назначение
+
+Пользователь запускает действие:
+
+```text
+Загрузить скидки по API
+```
+
+Система должна:
+
+```text
+1. Проверить права пользователя.
+2. Проверить object access к магазину.
+3. Проверить активное WB API-подключение.
+4. Проверить, что есть успешный расчёт 2.1.3.
+5. Показать пользователю явное подтверждение API-загрузки.
+6. Выполнить pre-upload drift check.
+7. Отправить рассчитанные скидки в WB API.
+8. Сохранить upload ID.
+9. Проверить статус загрузки.
+10. Получить детали ошибок при наличии.
+11. Отразить результат в operation, detail rows, audit и techlog.
+```
+
+### 9.2. API-метод загрузки
+
+Использовать:
+
+```text
+POST /api/v2/upload/task
+```
+
+WB API описывает этот метод как установку цен и скидок. В теле запроса передаётся `data`, максимум 1000 products, в каждом элементе `nmID`, `price`, `discount`; цена и скидка не могут быть одновременно пустыми. ([WB API][3])
+
+Рекомендуемый payload для Stage 2.1.4:
+
+```json
+{
+  "data": [
+    {
+      "nmID": 123,
+      "discount": 30
+    }
+  ]
+}
+```
+
+Проектировщик должен проверить и зафиксировать в спецификации, допускает ли WB API отправку только `discount` без `price`.
+
+Рекомендуемое правило безопасности:
+
+```text
+Если API допускает discount-only payload:
+  отправлять только nmID + discount,
+  чтобы не перезаписать цену, которая могла измениться после расчёта.
+
+Если API требует price:
+  выполнять pre-upload drift check;
+  брать price только из актуального WB API snapshot;
+  при расхождении текущей API price с расчётным snapshot блокировать upload
+  и требовать повторить 2.1.1–2.1.3.
+```
+
+Нельзя молча отправлять старую цену из расчётного Excel, если текущая цена в WB изменилась после скачивания.
+
+### 9.3. Batching
+
+Так как метод принимает максимум 1000 products, проектировщик должен описать batching:
+
+```text
+batch size <= 1000;
+каждый batch имеет payload checksum;
+каждый batch получает uploadID;
+каждый uploadID хранится отдельно;
+operation summary агрегирует batch statuses;
+частичная ошибка одного batch не должна скрывать результат других batch.
+```
+
+### 9.4. Pre-upload drift check
+
+Перед API-загрузкой система должна повторно получить по API данные по товарам, которые будут загружаться.
+
+Для этого использовать:
+
+```text
+POST /api/v2/list/goods/filter
+```
+
+с `nmList`, батчами до 1000 nmID. Документация WB указывает, что этот метод возвращает данные по нескольким артикулам и принимает массив `nmList` от 1 до 1000 items. ([WB API][3])
+
+Проверить:
+
+```text
+- товар существует;
+- price не изменился относительно расчётного snapshot;
+- товар не стал size-conflict;
+- текущая скидка может быть обновлена;
+- товар не исключён из загрузки по ошибкам расчёта.
+```
+
+Если обнаружен drift:
+
+```text
+API upload запрещён;
+operation получает error;
+UI показывает список товаров с расхождением;
+пользователь должен повторить скачивание цен/акций и расчёт.
+```
+
+### 9.5. Проверка статуса загрузки
+
+После отправки upload task нельзя считать операцию успешной по первому HTTP 200.
+
+WB API указывает upload statuses:
+
+```text
+3 — processed, no errors, prices and discounts were updated;
+4 — canceled;
+5 — processed, but some products have errors; other products were updated;
+6 — processed, but all products have errors;
+1 — processing for promo calendar-related upload;
+status 2 отсутствует.
+```
+
+Ошибки по товарам можно получить через processed upload details или unprocessed upload details. ([WB API][3])
+
+Проектировщик должен описать polling/status check contract:
+
+```text
+1. После POST сохранить uploadID.
+2. Проверять processed upload state:
+   GET /api/v2/history/tasks?uploadID=...
+3. Если upload в processing/unprocessed state:
+   проверять:
+   GET /api/v2/buffer/tasks?uploadID=...
+4. При ошибках товаров получать details:
+   GET /api/v2/history/goods/task
+   GET /api/v2/buffer/goods/task
+5. Сохранять статусы и errorText в безопасный snapshot.
+```
+
+### 9.6. Mapping статусов в Operation
+
+Рекомендуемый mapping:
+
+```text
+WB status 3:
+  Operation.status = completed_success
+
+WB status 5:
+  Operation.status = completed_with_warnings
+  UI message = "Частично загружено: часть товаров обновлена, часть с ошибками"
+  detail rows фиксируют success/error по каждому товару
+
+WB status 6:
+  Operation.status = completed_with_error
+  UI message = "Загрузка не применена по всем товарам из-за ошибок"
+
+WB status 4:
+  Operation.status = completed_with_error
+  UI message = "Загрузка отменена WB"
+
+HTTP/API auth/rate/timeout/application failure:
+  Operation.status = interrupted_failed или completed_with_error
+  в зависимости от того, был ли uploadID создан
+
+WB 208 already exists:
+  не отправлять повторно payload вслепую;
+  сохранить факт duplicate/alreadyExists;
+  попытаться получить статус существующего uploadID, если он доступен;
+  если uploadID не получен, показать пользователю безопасную ошибку и зафиксировать techlog.
+```
+
+### 9.7. Quarantine
+
+WB API указывает, что если новая цена со скидкой минимум в 3 раза меньше старой, товар может попасть в карантин цены, и ошибка будет доступна в методах статуса загрузки; отдельный метод quarantine goods возвращает информацию о товарах в карантине. ([WB API][3])
+
+Проектировщик должен описать:
+
+```text
+- как выявлять quarantine-related errors;
+- как отображать их в UI;
+- какой reason/result code использовать;
+- как отражать это в detail rows;
+- как не скрывать частично применённые изменения.
+```
+
+---
+
+## 10. Требования к API-подключению WB
+
+### 10.1. Secret handling
+
+API token хранить только через protected secret reference.
+
+Запрещено:
+
+```text
+- хранить токен в metadata;
+- хранить токен в audit;
+- хранить токен в techlog safe_message;
+- выводить токен в UI;
+- записывать authorization header в raw snapshots;
+- логировать token/api_key/password/secret-like значения.
+```
+
+Текущий `ConnectionBlock` уже содержит `protected_secret_ref` и проверку, запрещающую secret-like ключи в metadata; Stage 2.1 должен развить этот блок до рабочего подключения. ([GitHub][9])
+
+### 10.2. Статусы подключения
+
+Проектировщик должен описать статусы:
+
+```text
+not_configured
+configured
+active
+check_failed
+disabled
+archived
+```
+
+Или другой набор, но он должен покрывать:
+
+```text
+- подключения нет;
+- подключение сохранено, но не проверено;
+- подключение активно;
+- проверка подключения упала;
+- подключение отключено пользователем/админом;
+- подключение архивировано.
+```
+
+### 10.3. Проверка подключения
+
+Проверка подключения WB должна:
+
+```text
+- выполнять безопасный read-only API call;
+- не менять данные в WB;
+- фиксировать дату проверки;
+- фиксировать результат;
+- писать audit action;
+- писать techlog при ошибках;
+- не раскрывать секреты.
+```
+
+Для WB Stage 2.1 read-only проверкой может быть небольшой запрос к Prices API с минимальным limit, например:
+
+```text
+GET /api/v2/list/goods/filter?limit=1&offset=0
+```
+
+Если проектировщик выберет другой endpoint, он должен обосновать это в `API_CONNECTIONS_SPEC.md`.
+
+---
+
+## 11. Требования к операциям, audit и techlog
+
+Stage 2.1 должен сохранить существующие инварианты:
+
+```text
+- operation после завершения immutable;
+- повторная попытка создаёт новую operation;
+- output file version не перезаписывается;
+- applied parameters snapshot сохраняется;
+- audit и techlog разделены;
+- sensitive details видны только по отдельному праву;
+- object access обязателен;
+- operation card показывает summary, files, details, statuses.
+```
+
+Существующий `OPERATIONS_SPEC.md` фиксирует operation/run, check/process, статусы, актуальность check, карточку операции и запрет редактирования завершённой операции. ([GitHub][10])
+
+Новые audit action codes минимум:
+
+```text
+wb_api_connection_created
+wb_api_connection_updated
+wb_api_connection_checked
+wb_api_prices_download_started
+wb_api_prices_download_completed
+wb_api_prices_file_downloaded
+wb_api_promotions_download_started
+wb_api_promotions_download_completed
+wb_api_promotions_file_downloaded
+wb_api_discount_calculation_started
+wb_api_discount_calculation_completed
+wb_api_discount_result_downloaded
+wb_api_discount_upload_confirmed
+wb_api_discount_upload_started
+wb_api_discount_upload_completed
+wb_api_discount_upload_failed
+```
+
+Новые techlog event types минимум:
+
+```text
+wb_api_auth_failed
+wb_api_rate_limited
+wb_api_timeout
+wb_api_response_invalid
+wb_api_prices_download_failed
+wb_api_promotions_download_failed
+wb_api_upload_failed
+wb_api_upload_status_poll_failed
+wb_api_upload_partial_errors
+wb_api_quarantine_detected
+wb_api_secret_redaction_violation
+```
+
+Проектировщик должен добавить эти коды в `AUDIT_AND_TECHLOG_SPEC.md` или предложить другой закрытый каталог.
+
+---
+
+## 12. Требования к файлам
+
+Stage 2.1 должен использовать существующий файловый контур:
+
+```text
+FileObject
+FileVersion
+OperationInputFile
+OperationOutputFile
+checksum_sha256
+retention_until
+physical_status
+download rights
+```
+
+В существующей документации физические файлы хранятся в серверном файловом хранилище, PostgreSQL хранит metadata, checksum, version links и retention. Повторная загрузка/генерация создаёт новую версию, а завершённая operation остаётся связанной с конкретной file version. ([GitHub][11])
+
+Проектировщик должен расширить file scenario catalog:
+
+```text
+wb_discounts_api_price_export
+wb_discounts_api_promotion_export
+wb_discounts_api_result_excel
+wb_discounts_api_detail_report
+wb_discounts_api_upload_report
+```
+
+И описать:
+
+```text
+- какие файлы являются output;
+- какие файлы являются input для последующих шагов;
+- как связывать 2.1.1 output с 2.1.3 input;
+- как связывать 2.1.2 outputs с 2.1.3 input;
+- как связывать 2.1.3 result с 2.1.4 upload;
+- как скачивать файлы;
+- как работает retention;
+- как отображать недоступность файла после retention.
+```
+
+---
+
+## 13. Требования к UI
+
+Проектировщик должен описать пользовательский сценарий полностью.
+
+### 13.1. Экран WB API
+
+Минимальная структура:
+
+```text
+Маркетплейсы -> WB -> Скидки -> API
+```
+
+На экране должны быть блоки:
+
+```text
+1. Магазин/кабинет
+2. Состояние API-подключения
+3. Шаг 1: Цены
+4. Шаг 2: Текущие акции
+5. Шаг 3: Расчёт
+6. Шаг 4: API-загрузка
+7. Последние операции
+8. Ссылки на скачивание файлов
+9. Ошибки/warnings
+```
+
+### 13.2. 2.1.1 UI
+
+Действия:
+
+```text
+Скачать цены по API
+Скачать Excel цен
+Открыть operation
+Открыть справочник товаров
+```
+
+Показывать:
+
+```text
+- дата/время скачивания;
+- количество товаров;
+- количество строк Excel;
+- количество size-conflict товаров;
+- checksum файла;
+- статус операции;
+- кто запустил.
+```
+
+### 13.3. 2.1.2 UI
+
+Действия:
+
+```text
+Скачать текущие акции
+Скачать Excel по акции
+Скачать все Excel акции, если реализован zip/package
+Открыть operation
+```
+
+Показывать:
+
+```text
+- timestamp фильтра current promotions;
+- количество текущих акций;
+- количество regular promotions;
+- количество auto promotions;
+- количество строк товаров по акциям;
+- какие акции не имеют выгруженных товаров из-за ограничений WB API;
+- ссылки на файлы.
+```
+
+### 13.4. 2.1.3 UI
+
+Действия:
+
+```text
+Рассчитать скидки
+Скачать итоговый Excel
+Открыть operation
+```
+
+Показывать:
+
+```text
+- выбранный price export;
+- выбранный набор promo exports;
+- параметры WB;
+- количество рассчитанных строк;
+- количество ошибок;
+- количество warnings;
+- ссылку на итоговый Excel;
+- ссылку на detail report.
+```
+
+### 13.5. 2.1.4 UI
+
+Перед загрузкой обязательно показать confirmation screen:
+
+```text
+Вы собираетесь загрузить скидки в личный кабинет WB по API.
+Магазин: ...
+Количество товаров: ...
+Расчёт: OP-...
+Итоговый файл: FILE-...
+Дата расчёта: ...
+```
+
+Пользователь должен явно подтвердить:
+
+```text
+Я понимаю, что скидки будут отправлены в WB по API.
+```
+
+Без подтверждения API upload запрещён.
+
+Показывать после загрузки:
+
+```text
+- uploadID / batch uploadIDs;
+- итоговый статус;
+- success goods count;
+- error goods count;
+- partial errors;
+- quarantine-related errors;
+- ссылки на upload report/detail rows;
+- ссылку на operation.
+```
+
+---
+
+## 14. Требования к reason/result codes
+
+Проектировщик должен расширить каталог WB codes для API-режима через документацию и ADR.
+
+Минимальные новые коды:
+
+```text
+wb_api_price_download_success
+wb_api_price_download_failed
+wb_api_price_row_valid
+wb_api_price_row_size_conflict
+wb_api_price_row_invalid
+wb_api_promotion_current
+wb_api_promotion_not_current_filtered
+wb_api_promotion_regular
+wb_api_promotion_auto_no_nomenclatures
+wb_api_promotion_product_valid
+wb_api_promotion_product_invalid
+wb_api_calculated_from_api_sources
+wb_api_upload_ready
+wb_api_upload_blocked_by_drift
+wb_api_upload_sent
+wb_api_upload_success
+wb_api_upload_partial_error
+wb_api_upload_all_error
+wb_api_upload_canceled
+wb_api_upload_quarantine
+wb_api_upload_status_unknown
+```
+
+Если проектировщик считает этот перечень избыточным, он может предложить минимальный закрытый перечень, но должен:
+
+```text
+- не смешивать Stage 1 Excel codes и Stage 2.1 API codes без явного правила;
+- сохранить читаемость detail rows;
+- обеспечить покрытие тестами;
+- оформить изменение через ADR.
+```
+
+---
+
+## 15. Acceptance criteria Stage 2.1
+
+### 15.1. 2.1.1 accepted, если
+
+```text
+- пользователь с правами может скачать цены WB по API;
+- пользователь без прав не может скачать;
+- object access работает;
+- товары получены с пагинацией до пустого массива;
+- сформирован Excel с обязательными колонками;
+- Excel можно скачать;
+- товары занесены/обновлены в справочник магазина;
+- history товара создана;
+- operation создана;
+- audit создан;
+- techlog создаётся при ошибках;
+- секреты не раскрыты;
+- rate limits соблюдаются;
+- size-conflict cases не обрабатываются молча.
+```
+
+### 15.2. 2.1.2 accepted, если
+
+```text
+- система скачивает именно текущие акции по правилу start <= now < end;
+- детали акций сохраняются;
+- regular promotions получают товары через nomenclatures;
+- auto promotions не ломают операцию, а фиксируются как ограниченные;
+- сформированы Excel promo files с обязательными колонками;
+- Excel files можно скачать;
+- данные акций сохранены в БД;
+- operation/audit/techlog работают;
+- allPromo/window/current-filter documented and tested.
+```
+
+### 15.3. 2.1.3 accepted, если
+
+```text
+- расчёт использует ту же WB-логику, что Stage 1;
+- формула и порядок правил не изменены;
+- используются decimal + ceil;
+- итоговый Excel записывает "Новая скидка";
+- итоговый Excel пригоден для ручной загрузки в ЛК WB;
+- output file скачивается;
+- detail rows показывают причины;
+- ошибки блокируют дальнейший upload;
+- snapshot параметров сохранён;
+- повторный расчёт создаёт новую operation/file version.
+```
+
+### 15.4. 2.1.4 accepted, если
+
+```text
+- API upload возможен только после успешного расчёта;
+- есть explicit confirmation;
+- pre-upload drift check выполняется;
+- drift блокирует upload;
+- payload бьётся на batch <= 1000 товаров;
+- uploadID сохраняется;
+- status polling выполняется;
+- statuses 3/4/5/6 корректно маппятся;
+- partial errors отображаются;
+- quarantine errors отображаются;
+- 208 already exists обработан безопасно;
+- 429/rate limit обработан через backoff;
+- API failures не раскрывают секреты;
+- audit и techlog созданы;
+- operation immutable после завершения.
+```
+
+---
+
+## 16. Обязательные запреты
+
+Проектировщик должен явно включить эти запреты в Stage 2.1 docs и implementation tasks:
+
+```text
+Нельзя писать код до аудита проектной документации.
+
+Нельзя изменять Stage 1 WB Excel бизнес-логику.
+
+Нельзя удалять или заменять Excel-режим.
+
+Нельзя смешивать WB 2.1 и Ozon 2.2 в одной implementation task.
+
+Нельзя выполнять API upload в шагах 2.1.1, 2.1.2 или 2.1.3.
+
+Нельзя считать API upload успешным по первому HTTP 200 без проверки статуса WB.
+
+Нельзя хранить API token в metadata, audit, techlog, snapshots или UI.
+
+Нельзя подбирать цену по размеру молча, если у nmID разные prices по sizes.
+
+Нельзя отправлять старую price в API upload, если текущая price изменилась после расчёта.
+
+Нельзя добавлять reason/result codes без документации и ADR.
+
+Нельзя оставлять UX/API ambiguities на разработчика.
+```
+
+---
+
+## 17. Обязательные GAP/ADR решения
+
+Проектировщик должен проверить, нужны ли новые ADR/GAP.
+
+Минимально ожидаемые ADR:
+
+```text
+ADR-0016: Stage 2 split — 2.1 WB API, 2.2 Ozon API.
+ADR-0017: WB API source-to-Excel flow before API upload.
+ADR-0018: WB current promotions definition.
+ADR-0019: WB API upload safety: confirmation + drift check.
+ADR-0020: WB API reason/result codes.
+```
+
+Если проектировщик обнаружит спорный функциональный вопрос, он должен оформить GAP и передать через оркестратора заказчику.
+
+Потенциальные GAP-кандидаты:
+
+```text
+- что делать с WB товарами, у которых разные цены по размерам;
+- включать ли в расчёт auto promotions, если WB API не отдаёт nomenclatures;
+- нужен ли пользователю единый zip всех promo Excel-файлов или отдельное скачивание по акции;
+- разрешать ли загрузку только части товаров при partial errors;
+- считать ли товары с price drift абсолютным блокером upload или подтверждаемым warning.
+```
+
+Для текущего проектирования рекомендуемые решения такие:
+
+```text
+size price conflict -> блокировать строку для upload до отдельного правила;
+auto promotion without nomenclatures -> сохранить акцию, не создавать выдуманные строки;
+promo files -> поддержать отдельные файлы, zip/package как optional enhancement;
+partial errors -> фиксировать как completed_with_warnings, потому что часть товаров уже обновлена WB;
+price drift -> блокер upload, требуется пересчёт.
+```
+
+---
+
+## 18. Ожидаемый итог работы проектировщика
+
+В конце проектировщик должен передать отчёт:
+
+```md
+Что сделано:
+  ...
+
+Созданные документы:
+  ...
+
+Обновлённые документы:
+  ...
+
+Связанные требования ТЗ:
+  ...
+
+Использованные внешние источники:
+  - WB Prices and Discounts API
+  - WB Promotions Calendar API
+
+Связанные ADR:
+  ...
+
+Связанные GAP:
+  ...
+
+Что запрещено реализаторам:
+  ...
+
+Готовность к аудиту:
+  ready / not ready
+
+Оставшиеся вопросы заказчику:
+  ...
+```
+
+Критерий завершённости задания проектировщика:
+
+```text
+Документация Stage 2.1 достаточна, чтобы:
+  - оркестратор раздал TASK-011...TASK-017 агентам Codex;
+  - разработчик не домысливал API flow;
+  - UI-агент не домысливал интерфейс;
+  - тестировщик написал тесты;
+  - аудитор проверил полноту;
+  - заказчик видел, где API только скачивает, где рассчитывает, а где реально меняет данные в WB.
+```
+
+---
+
+## 19. Рекомендуемый короткий prompt для проектировщика Codex
+
+```text
+Ты — проектировщик исполнительной документации проекта promo_v2.
+
+Рабочая директория:
+  /home/pavel/projects/promo_v2/
+
+Задача:
+  Подготовить исполнительную проектную документацию для Stage 2.1 WB API:
+    2.1.1 скачать цены WB по API, сформировать Excel цен, обновить справочник товаров;
+    2.1.2 скачать текущие акции WB из календаря, сохранить в БД, сформировать Excel акций;
+    2.1.3 рассчитать скидки по API-источникам и сформировать итоговый Excel для ручной загрузки в ЛК WB;
+    2.1.4 загрузить рассчитанные скидки в WB по API.
+
+Не писать код продукта.
+Не менять итоговое ТЗ.
+Не менять Stage 1 Excel-логику.
+Не удалять Excel-режим.
+Не смешивать WB Stage 2.1 с Ozon Stage 2.2.
+
+Обязательные источники:
+  AGENTS.md
+  docs/README.md
+  docs/DOCUMENTATION_MAP.md
+  docs/orchestration/AGENTS.md
+  docs/orchestration/DOCUMENTATION_UPDATE_PROTOCOL.md
+  docs/orchestration/TASK_TEMPLATES.md
+  docs/roles/READING_PACKAGES.md
+  docs/stages/stage-1/PROJECT_DOCUMENTATION_PLAN.md
+  docs/tasks/implementation/stage-1/IMPLEMENTATION_TASKS.md
+  docs/product/WB_DISCOUNTS_EXCEL_SPEC.md
+  docs/product/OPERATIONS_SPEC.md
+  docs/product/UI_SPEC.md
+  docs/product/PERMISSIONS_MATRIX.md
+  docs/architecture/DATA_MODEL.md
+  docs/architecture/FILE_CONTOUR.md
+  docs/architecture/AUDIT_AND_TECHLOG_SPEC.md
+  docs/testing/TEST_PROTOCOL.md
+  docs/testing/ACCEPTANCE_CHECKLISTS.md
+  docs/gaps/GAP_REGISTER.md
+  docs/adr/ADR_LOG.md
+
+Официальные WB API источники:
+  https://dev.wildberries.ru/docs/openapi/work-with-products#tag/Ceny-i-skidki/paths/~1api~1v2~1list~1goods~1filter/get
+  https://dev.wildberries.ru/docs/openapi/promotion
+
+Создать/обновить минимум:
+  docs/stages/stage-2/STAGE_2_SCOPE.md
+  docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md
+  docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md
+  docs/product/WB_DISCOUNTS_API_SPEC.md
+  docs/product/WB_API_PRICE_EXPORT_SPEC.md
+  docs/product/WB_API_PROMOTIONS_EXPORT_SPEC.md
+  docs/architecture/API_CONNECTIONS_SPEC.md
+  docs/architecture/DATA_MODEL.md
+  docs/architecture/FILE_CONTOUR.md
+  docs/architecture/AUDIT_AND_TECHLOG_SPEC.md
+  docs/product/UI_SPEC.md
+  docs/product/PERMISSIONS_MATRIX.md
+  docs/tasks/implementation/stage-2/IMPLEMENTATION_TASKS.md
+  docs/tasks/implementation/stage-2/TASK-011-wb-api-connections.md
+  docs/tasks/implementation/stage-2/TASK-012-wb-api-prices-download.md
+  docs/tasks/implementation/stage-2/TASK-013-wb-api-current-promotions-download.md
+  docs/tasks/implementation/stage-2/TASK-014-wb-api-discount-calculation-excel-output.md
+  docs/tasks/implementation/stage-2/TASK-015-wb-api-discount-upload.md
+  docs/tasks/implementation/stage-2/TASK-016-wb-api-ui-stage-2-1.md
+  docs/tasks/implementation/stage-2/TASK-017-wb-api-acceptance-and-release.md
+  docs/testing/STAGE_2_1_WB_TEST_PROTOCOL.md
+  docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md
+  docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md
+
+Обязательные проектные решения:
+  - current promotion = startDateTime <= now_utc < endDateTime;
+  - 2.1.1/2.1.2/2.1.3 не меняют данные в WB;
+  - только 2.1.4 выполняет API upload;
+  - API upload требует explicit confirmation;
+  - перед API upload обязателен drift check;
+  - price drift блокирует upload;
+  - upload success определяется через WB status polling, не через первый HTTP 200;
+  - API secrets хранятся только через protected_secret_ref;
+  - reason/result codes Stage 2.1 фиксируются закрытым перечнем и через ADR.
+
+Результат:
+  Подготовить документацию и отчёт проектировщика.
+  Если обнаружен функциональный или UX-пробел, зафиксировать GAP и передать через оркестратора заказчику.
+```

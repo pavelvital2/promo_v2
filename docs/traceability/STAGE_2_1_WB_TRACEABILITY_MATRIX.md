@@ -1,6 +1,6 @@
 # STAGE_2_1_WB_TRACEABILITY_MATRIX.md
 
-Трассировка: `tz_stage_2.1.txt` §2-§18.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §2-§18.
 
 | Requirement | Документ | Tests/Acceptance | ADR/GAP |
 | --- | --- | --- | --- |

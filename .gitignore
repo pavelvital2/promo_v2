@@ -41,6 +41,7 @@ run/
 test_files/
 *.log
 tmp/
+temp_docs/
 temp/
 *.tmp
 backups/

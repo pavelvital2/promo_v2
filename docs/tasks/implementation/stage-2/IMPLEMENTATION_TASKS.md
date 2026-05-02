@@ -1,6 +1,6 @@
 # IMPLEMENTATION_TASKS.md
 
-Трассировка: `tz_stage_2.1.txt` §5, §16-§18; `docs/orchestration/TASK_TEMPLATES.md`.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §5, §16-§18; `docs/orchestration/TASK_TEMPLATES.md`.
 
 ## Назначение
 

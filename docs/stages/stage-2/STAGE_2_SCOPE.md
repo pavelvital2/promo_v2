@@ -1,6 +1,6 @@
 # STAGE_2_SCOPE.md
 
-Трассировка: `tz_stage_2.1.txt` §2, §16-§18; `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md`; ADR-0016.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §2, §16-§18; `docs/tasks/implementation/stage-2/TASK-018-DESIGN-STAGE-2-2-OZON-API.md`; ADR-0016.
 
 ## Назначение
 

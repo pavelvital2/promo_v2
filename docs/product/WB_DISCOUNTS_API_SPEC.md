@@ -1,6 +1,6 @@
 # WB_DISCOUNTS_API_SPEC.md
 
-Трассировка: `tz_stage_2.1.txt` §3, §8-§9, §11, §13-§16; ADR-0017, ADR-0019, ADR-0020.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §3, §8-§9, §11, §13-§16; ADR-0017, ADR-0019, ADR-0020.
 
 ## Назначение
 

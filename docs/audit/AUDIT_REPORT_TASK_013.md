@@ -26,7 +26,7 @@ Verdict: PASS
 - `docs/testing/STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md`
 - `docs/testing/TEST_REPORT_TASK_013.md`
 - `docs/testing/TEST_REPORT_TASK_013_RECHECK.md`
-- `tz_stage_2.1.txt` scoped sections `5.5`, `6.6`, `7`, `10.1`, `11`, `15.2`, `16`
+- `docs/source/stage-inputs/tz_stage_2.1.txt` scoped sections `5.5`, `6.6`, `7`, `10.1`, `11`, `15.2`, `16`
 - `apps/discounts/wb_api/client.py`
 - `apps/discounts/wb_api/promotions/`
 - `apps/operations/models.py`

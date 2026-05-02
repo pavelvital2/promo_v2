@@ -6,12 +6,15 @@
 
 Общее правило для всех пакетов: итоговое ТЗ `itogovoe_tz_platforma_marketplace_codex.txt` не читается целиком по умолчанию. Оркестратор указывает только релевантные разделы ТЗ. При спорном или критичном требовании аудитор сверяет исходное ТЗ.
 
+Для быстрого входа в проект перед профильным пакетом читать `docs/PROJECT_NAVIGATOR.md`, если задача не ограничена уже выданным task-scoped контекстом.
+
 ## Оркестратор
 
 Обязательно:
 
 - `AGENTS.md`
 - `docs/README.md`
+- `docs/PROJECT_NAVIGATOR.md`
 - `docs/DOCUMENTATION_MAP.md`
 - `docs/orchestration/AGENTS.md`
 - `docs/orchestration/ORCHESTRATION.md`
@@ -33,6 +36,7 @@
 
 - `AGENTS.md`
 - `docs/README.md`
+- `docs/PROJECT_NAVIGATOR.md`
 - `docs/DOCUMENTATION_MAP.md`
 - `docs/orchestration/AGENTS.md`
 - `docs/orchestration/DOCUMENTATION_UPDATE_PROTOCOL.md`
@@ -51,6 +55,7 @@
 
 - `AGENTS.md`
 - `docs/README.md`
+- `docs/PROJECT_NAVIGATOR.md`
 - `docs/DOCUMENTATION_MAP.md`
 - `docs/orchestration/AGENTS.md`
 - `docs/audit/AUDIT_PROTOCOL.md`
@@ -173,7 +178,7 @@
 
 Условно: `docs/product/UI_SPEC.md` для UI-facing задач, `docs/traceability/STAGE_2_1_WB_TRACEABILITY_MATRIX.md` для audit/release задач.
 
-ТЗ: только разделы `tz_stage_2.1.txt`, указанные в конкретном TASK-011..TASK-017. Не читать всё итоговое ТЗ целиком. WB Stage 2.1 не смешивается с Ozon Stage 2.2.
+ТЗ: только разделы `docs/source/stage-inputs/tz_stage_2.1.txt`, указанные в конкретном TASK-011..TASK-017. Не читать всё итоговое ТЗ целиком. WB Stage 2.1 не смешивается с Ozon Stage 2.2.
 
 ## Разработчик Ozon API Stage 2.2
 
@@ -222,7 +227,7 @@
 - `docs/gaps/GAP_REGISTER.md`
 - `docs/adr/ADR_LOG.md`
 
-ТЗ: `tz_stage_2.1.txt` §13, §15-§16 только по указанию task. Любой новый UX/functionality gap веб-панели фиксируется в `docs/gaps/GAP_REGISTER.md` и передаётся оркестратору.
+ТЗ: `docs/source/stage-inputs/tz_stage_2.1.txt` §13, §15-§16 только по указанию task. Любой новый UX/functionality gap веб-панели фиксируется в `docs/gaps/GAP_REGISTER.md` и передаётся оркестратору.
 
 ## Разработчик Product Core Stage 3.0
 

@@ -1,6 +1,6 @@
 # STAGE_2_1_WB_ACCEPTANCE_CHECKLISTS.md
 
-Трассировка: `tz_stage_2.1.txt` §15.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §15.
 
 ## Общий чек-лист
 

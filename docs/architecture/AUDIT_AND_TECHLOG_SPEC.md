@@ -139,7 +139,7 @@ Severity может уточняться реализацией только в 
 
 ## Stage 2.1 WB API audit actions
 
-Трассировка: `tz_stage_2.1.txt` §10-§11; ADR-0019, ADR-0020.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §10-§11; ADR-0019, ADR-0020.
 
 | Action code | Когда создаётся | Entity | Связи |
 | --- | --- | --- | --- |

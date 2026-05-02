@@ -1,6 +1,6 @@
 # WB_API_PROMOTIONS_EXPORT_SPEC.md
 
-Трассировка: `tz_stage_2.1.txt` §7; ADR-0018, ADR-0020, ADR-0021.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §7; ADR-0018, ADR-0020, ADR-0021.
 
 ## Назначение
 

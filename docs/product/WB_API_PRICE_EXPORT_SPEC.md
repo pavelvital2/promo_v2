@@ -1,6 +1,6 @@
 # WB_API_PRICE_EXPORT_SPEC.md
 
-Трассировка: `tz_stage_2.1.txt` §6; ADR-0017, ADR-0020.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §6; ADR-0017, ADR-0020.
 
 ## Назначение
 

@@ -89,7 +89,7 @@ No new blocking regressions found in:
 ## Проверенные источники
 
 - `docs/audit/AUDIT_REPORT_STAGE_2_1_WB_DOCUMENTATION.md`
-- `tz_stage_2.1.txt` §5.5, §6.6, §9.2, §10.1, §11, §15.4, §16, §19
+- `docs/source/stage-inputs/tz_stage_2.1.txt` §5.5, §6.6, §9.2, §10.1, §11, §15.4, §16, §19
 - `AGENTS.md`
 - `docs/README.md`
 - `docs/orchestration/AGENTS.md`

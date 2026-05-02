@@ -9,6 +9,15 @@
 | `docs/source/README.md` | Объясняет, где лежат исходные TXT и как использовать ТЗ | При старте, аудите, споре |
 | `itogovoe_tz_platforma_marketplace_codex.txt` | Источник истины | Только указанные разделы или аудит критичных требований |
 | `promt_start_project.txt` | Исходные правила оркестрации | Оркестратор/аудитор при проверке процесса |
+| `docs/source/stage-inputs/` | Входные stage-материалы, которые использовались для проектирования уже выполненных этапов | При аудите/исторической сверке конкретного этапа |
+
+## Project Navigation
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/PROJECT_NAVIGATOR.md` | Единая навигационная карта проекта для новых специалистов, оркестратора и агентов |
+| `docs/project/CURRENT_STATUS.md` | Короткий актуальный статус проекта перед следующим этапом |
+| `docs/project/PROJECT_GLOSSARY.md` | Словарь терминов проекта |
 
 ## Orchestration
 
@@ -117,6 +126,12 @@
 | `docs/audit/AUDIT_REPORT_TASK_PC_001_DATA_MODEL.md` .. `docs/audit/AUDIT_REPORT_TASK_PC_009_TESTS_ACCEPTANCE.md` | Implementation/test audit reports for TASK-PC-001..009 |
 | `docs/reports/STAGE_3_PRODUCT_CORE_IMPLEMENTATION_REPORT.md` | TASK-PC-010 documentation/runbook closeout report |
 
+## Documentation Tasks
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/tasks/implementation/documentation/TASK-DOC-001-project-navigator.md` | Создание project navigator, current status, glossary и уборка входных материалов |
+
 ## Control Documents
 
 | Каталог | Документы |
@@ -134,3 +149,5 @@
 Все пути в документации указываются repo-root-relative, например `docs/product/UI_SPEC.md`. Это намеренно: документы читаются агентами из разных подпапок, а оркестратор выдаёт пакеты как набор путей от корня проекта.
 
 Если при работе нужен документ вне пакета, агент запрашивает уточнение у оркестратора или фиксирует gap. Самостоятельное чтение всего ТЗ вместо запроса task-scoped разделов не допускается.
+
+Загруженные пользователем временные материалы, черновики и экспортированные обсуждения хранятся в `temp_docs/` до принятия решения об их статусе. Материалы, признанные источниками для проектирования/аудита этапов, переносятся в `docs/source/` или профильный каталог `docs/tasks/`.

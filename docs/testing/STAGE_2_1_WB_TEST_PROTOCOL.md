@@ -1,6 +1,6 @@
 # STAGE_2_1_WB_TEST_PROTOCOL.md
 
-Трассировка: `tz_stage_2.1.txt` §15; `docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md`.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §15; `docs/stages/stage-2/STAGE_2_1_WB_ACCEPTANCE_TESTS.md`.
 
 ## Назначение
 

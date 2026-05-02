@@ -98,7 +98,7 @@ Backup policy этапа 1:
 
 ## Stage 2.1 WB API file scenarios
 
-Трассировка: `tz_stage_2.1.txt` §12.
+Трассировка: `docs/source/stage-inputs/tz_stage_2.1.txt` §12.
 
 Stage 2.1 использует тот же `FileObject/FileVersion/OperationInputFile/OperationOutputFile`, checksum, retention и download rights. Физические файлы остаются 3 дня, metadata и operation history сохраняются.
 

@@ -50,7 +50,10 @@ This decision is formalized in `docs/adr/ADR_LOG.md` as ADR-0021.
 
 Start with:
 
+- `docs/PROJECT_NAVIGATOR.md` - high-level project navigator and onboarding map;
 - `docs/DOCUMENTATION_MAP.md` - documentation navigation map;
+- `docs/project/CURRENT_STATUS.md` - current project status;
+- `docs/project/PROJECT_GLOSSARY.md` - project glossary;
 - `docs/stages/stage-2/STAGE_2_SCOPE.md` - Stage 2 split and boundaries;
 - `docs/stages/stage-2/STAGE_2_1_WB_SCOPE.md` - executable Stage 2.1 WB scope;
 - `docs/stages/stage-3-product-core/STAGE_3_PRODUCT_CORE_SCOPE.md` - Stage 3 Product Core boundaries;

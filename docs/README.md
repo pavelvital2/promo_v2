@@ -7,16 +7,18 @@
 ## Быстрый маршрут чтения
 
 1. Прочитать корневой `AGENTS.md`.
-2. Прочитать `docs/orchestration/AGENTS.md`.
-3. Найти свой пакет в `docs/roles/READING_PACKAGES.md`.
-4. Читать только документы из задачи/пакета и связанные записи `docs/gaps/GAP_REGISTER.md` / `docs/adr/ADR_LOG.md`.
-5. При споре или критичном требовании аудитор сверяет с исходным ТЗ.
+2. Прочитать `docs/PROJECT_NAVIGATOR.md`.
+3. Прочитать `docs/orchestration/AGENTS.md`.
+4. Найти свой пакет в `docs/roles/READING_PACKAGES.md`.
+5. Читать только документы из задачи/пакета и связанные записи `docs/gaps/GAP_REGISTER.md` / `docs/adr/ADR_LOG.md`.
+6. При споре или критичном требовании аудитор сверяет с исходным ТЗ.
 
 ## Каталоги
 
 | Каталог | Назначение | Владелец |
 | --- | --- | --- |
 | `docs/source/` | Ссылки на исходное ТЗ и стартовый prompt | Оркестратор, аудитор |
+| `docs/project/` | Текущий статус, глоссарий и project-level навигация | Оркестратор, техрайтер |
 | `docs/orchestration/` | Правила агентов, оркестрация, шаблоны, handoff, parallel rules, documentation protocol | Оркестратор |
 | `docs/roles/` | Матрица ролей и пакеты чтения | Оркестратор |
 | `docs/architecture/` | Архитектура, модель данных, файловый контур, audit/techlog, структура проекта, удаление/архивация | Проектировщик архитектуры |
@@ -28,6 +30,7 @@
 | `docs/tasks/implementation/stage-2/` | Task-scoped задачи реализации Stage 2.1 WB API | Оркестратор реализации |
 | `docs/tasks/implementation/stage-0/` | Task-scoped пакеты будущей UI-реализации Stage 0 | Оркестратор реализации |
 | `docs/tasks/implementation/stage-3-product-core/` | Task-scoped задачи реализации CORE-1 Product Core Foundation | Оркестратор реализации |
+| `docs/tasks/implementation/documentation/` | Документационные задачи по навигации, структуре и handoff | Оркестратор, техрайтер |
 | `docs/gaps/` | Реестр gaps | Оркестратор, проектировщик |
 | `docs/adr/` | Журнал архитектурных решений | Проектировщик архитектуры |
 | `docs/audit/` | Audit protocol и отчёты аудита | Аудитор |

@@ -45,7 +45,7 @@ Product code was not changed by this audit. Only this audit report was created. 
   - `templates/stores/store_card.html`
   - `apps/stores/templates/stores/store_card.html`
 
-`tz_stage_2.1.txt` and the full final TZ were not bulk-read.
+`docs/source/stage-inputs/tz_stage_2.1.txt` and the full final TZ were not bulk-read.
 
 ## Findings
 

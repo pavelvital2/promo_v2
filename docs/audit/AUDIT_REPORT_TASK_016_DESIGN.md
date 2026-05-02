@@ -23,7 +23,7 @@ Product code was not changed. This audit did not commit or push anything.
   - `docs/gaps/GAP_REGISTER.md`
   - `docs/adr/ADR_LOG.md`, ADR-0016..ADR-0020
 
-`tz_stage_2.1.txt` was not bulk-read. Narrow source-of-truth verification was not needed because the task-scoped documentation was internally consistent.
+`docs/source/stage-inputs/tz_stage_2.1.txt` was not bulk-read. Narrow source-of-truth verification was not needed because the task-scoped documentation was internally consistent.
 
 ## Findings
 
@@ -39,7 +39,7 @@ Impact: non-blocking. The implementation contract remains clear, and the checkli
 | --- | --- | --- |
 | Handoff is implementable and complete without undocumented UX/functional assumptions. | PASS | Required routes, views/services, templates/forms, master content, state gates and operation list/card changes are specified in handoff lines 36-378. Service signatures were checked against existing code and match. |
 | UX/functionality gaps are not invented. | PASS | Handoff states documentation is sufficient and no new blocking GAP is required; `GAP_REGISTER.md` says no new Stage 2.1 GAP is open. No invented alternate UX such as future/all promotions or direct upload is introduced. |
-| Does not require full TZ reread. | PASS | Handoff read list is task-scoped and does not instruct agents to read all `tz_stage_2.1.txt`; root rules and reading package also forbid full default TZ reading. |
+| Does not require full TZ reread. | PASS | Handoff read list is task-scoped and does not instruct agents to read all `docs/source/stage-inputs/tz_stage_2.1.txt`; root rules and reading package also forbid full default TZ reading. |
 | Does not mix tester/auditor work. | PASS with non-blocking remark | No auditor work is assigned. The tester checklist wording is noted above but is not a blocker. |
 | Scope only WB Stage 2.1, no Ozon API Stage 2.2. | PASS | Handoff covers only 2.1.1-2.1.4 WB API steps and explicitly forbids Ozon API routes/UI. Matches ADR-0016. |
 | Required UI states/gates/permissions/classifiers/download links/upload confirmation covered. | PASS | Handoff covers object access, `active` connection gate, per-action rights, `step_code` list/card classifier, file download permissions, exact upload phrase, drift, partial errors and quarantine. |
