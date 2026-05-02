@@ -123,7 +123,9 @@ Handoff: source matrix, official-docs evidence for added endpoints, fixtures, te
 
 Role: Developer.
 
-Goal: implement exact normalized article linkage, imported/draft auto-create and mapping-table behavior approved for CORE-2.
+Goal: implement the narrowed API exact valid article linkage slice: exact normalized API article linkage plus imported/draft auto-create under the resolved `GAP-CORE2-006` policy.
+
+Scope note: external mapping table / `visual_external` table workflow is deferred to a separate future task by `GAP-CORE2-007` and is not part of TASK-PC2-003.
 
 Input docs: package `TASK-PC2-003`.
 
@@ -138,17 +140,18 @@ Prohibited changes:
 - fuzzy/title/image matching;
 - automatic confirmed mapping outside approved policy;
 - CORE-2 vendorCode/offer_id mutation or other marketplace card-field writes;
-- applying external mapping table without preview/diff/conflicts and explicit confirmation.
+- mapping-table preview/apply service, upload/apply UI, `visual_external` table workflow or file/table contract decisions in TASK-PC2-003;
+- applying external mapping table without preview/diff/conflicts and explicit confirmation in any future task.
 
 Implementation steps:
 
 1. Implement fixed structured internal SKU validator for the patch/chevron dictionary.
 2. Implement exact trimmed valid API article comparison.
 3. Link existing active variant as `matched` with audit/history.
-4. Auto-create `InternalProduct` + imported/draft `ProductVariant` when a valid API article has no variant and no conflict.
-5. Implement invalid/non-unified listing-only handling and UI action states.
-6. Implement mapping table preview/diff/conflict/apply flow with explicit confirmation.
-7. Keep conflict cases unconfirmed.
+4. Auto-create/select `InternalProduct` parent and create imported/draft `ProductVariant` when a valid API article has no variant and no conflict, using the field policy resolved in `GAP-CORE2-006`.
+5. On repeated same `internal_sku`, link to the existing variant; if a later marketplace title differs, do not overwrite first product/variant names, store the new title on `MarketplaceListing.title`, keep listing `matched`, and set `ProductVariant.review_state=needs_review`.
+6. Implement invalid/non-unified listing-only handling.
+7. Keep conflict cases unconfirmed and do not create new product/variant rows when `internal_sku` resolution is unsafe.
 
 Tests:
 
@@ -158,16 +161,19 @@ Tests:
 - duplicate conflict;
 - no fuzzy/partial/title match;
 - API auto-create imported/draft behavior;
-- mapping table preview/apply;
+- repeated same `internal_sku` across store/marketplace links to the same variant;
+- title mismatch for same `internal_sku` preserves first product/variant names and marks variant `needs_review`;
+- impossible `internal_sku` conflict creates no new product/variant and leaves safe `conflict`/review state;
 - audit/history.
 
 Audit criteria:
 
 - ADR-0043 and ADR-0045 followed;
 - no hidden business assumption;
-- resolved `GAP-CORE2-001` decision reflected.
+- resolved `GAP-CORE2-001` and `GAP-CORE2-006` decisions reflected;
+- `GAP-CORE2-007` deferred scope respected: no mapping-table/`visual_external` workflow implemented in TASK-PC2-003.
 
-Handoff: chosen policy, tests, mapping examples, remaining risks.
+Handoff: narrowed API linkage policy, tests, mapping examples, excluded future mapping-table workflow, remaining risks.
 
 ## TASK-PC2-004 Operation Row FK Enrichment
 

@@ -801,6 +801,28 @@ class ProductCoreSyncFoundationTests(TestCase):
             last_source=ListingSource.MIGRATION,
         )
 
+    def _structured_variant(
+        self,
+        internal_sku,
+        *,
+        product_code=None,
+        title="Structured variant",
+        status=None,
+        product_status=None,
+    ):
+        product = InternalProduct.objects.create(
+            internal_code=product_code or f"prod-{internal_sku}",
+            name=title,
+            product_type=InternalProduct.ProductType.FINISHED_GOOD,
+            status=product_status or ProductStatus.ACTIVE,
+        )
+        return ProductVariant.objects.create(
+            product=product,
+            internal_sku=internal_sku,
+            name=title,
+            status=status or ProductStatus.ACTIVE,
+        )
+
     def test_sync_run_start_complete_and_duplicate_active_guard(self):
         sync_run = start_marketplace_sync_run(
             marketplace=Marketplace.WB,
@@ -991,6 +1013,391 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertEqual(listing.last_values["price_with_discount"], "100.00")
         self.assertEqual(PriceSnapshot.objects.filter(sync_run=sync_run, listing=listing).count(), 1)
 
+    def test_api_exact_valid_article_links_existing_variant_with_history_and_audit(self):
+        internal_sku = "nash_kit2_rg_pict0001"
+        variant = self._structured_variant(internal_sku)
+
+        sync_run = sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "api-link-1",
+                    "vendorCode": internal_sku,
+                    "derived_price": "123.45",
+                    "currency": "RUB",
+                }
+            ],
+            requested_by=self.manager,
+        )
+
+        listing = MarketplaceListing.objects.get(store=self.store, external_primary_id="api-link-1")
+        history = ProductMappingHistory.objects.get(listing=listing)
+        self.assertEqual(listing.internal_variant, variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.MATCHED)
+        self.assertEqual(history.action, ProductMappingHistory.MappingAction.MAP)
+        self.assertEqual(history.source_context["basis"], "api_exact_valid_internal_sku")
+        self.assertEqual(history.source_context["outcome"], "existing_variant_linked")
+        self.assertEqual(history.sync_run, sync_run)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.MARKETPLACE_LISTING_MAPPED,
+                entity_id=str(history.pk),
+                store=self.store,
+                source_context="api",
+            ).exists()
+        )
+
+    def test_api_article_matching_is_trim_only_not_case_hyphen_or_partial(self):
+        internal_sku = "chev_pz_kit2_text0001"
+        variant = self._structured_variant(internal_sku)
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "trim-match",
+                    "vendorCode": f"  {internal_sku}  ",
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                },
+                {
+                    "nmID": "case-no-match",
+                    "vendorCode": internal_sku.upper(),
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                },
+                {
+                    "nmID": "hyphen-no-match",
+                    "vendorCode": internal_sku.replace("_", "-"),
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                },
+                {
+                    "nmID": "partial-no-match",
+                    "vendorCode": internal_sku[:-1],
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                },
+            ],
+        )
+
+        trim_listing = MarketplaceListing.objects.get(external_primary_id="trim-match")
+        self.assertEqual(trim_listing.internal_variant, variant)
+        self.assertEqual(trim_listing.mapping_status, MarketplaceListing.MappingStatus.MATCHED)
+        for external_primary_id in ["case-no-match", "hyphen-no-match", "partial-no-match"]:
+            with self.subTest(external_primary_id=external_primary_id):
+                listing = MarketplaceListing.objects.get(external_primary_id=external_primary_id)
+                self.assertIsNone(listing.internal_variant)
+                self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.UNMATCHED)
+
+    def test_api_valid_article_auto_creates_imported_draft_with_field_policy(self):
+        internal_sku = "nash_mvd_pict0001"
+        sync_run = sync_ozon_elastic_action_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="auto-create",
+            source_group="active",
+            rows=[
+                {
+                    "product_id": "auto-create-1",
+                    "offer_id": internal_sku,
+                    "name": "First marketplace title",
+                    "action_price": "120.00",
+                }
+            ],
+            requested_by=self.manager,
+        )
+
+        listing = MarketplaceListing.objects.get(store=self.ozon_store, external_primary_id="auto-create-1")
+        product = InternalProduct.objects.get(internal_code=internal_sku)
+        variant = ProductVariant.objects.get(internal_sku=internal_sku)
+        self.assertEqual(product.name, "First marketplace title")
+        self.assertEqual(product.product_type, InternalProduct.ProductType.FINISHED_GOOD)
+        self.assertEqual(product.status, ProductStatus.ACTIVE)
+        self.assertIsNone(product.category)
+        self.assertEqual(product.comments, "")
+        self.assertEqual(product.attributes["structure"], "mvd")
+        self.assertEqual(product.attributes["content_type"], "pict")
+        self.assertEqual(variant.product, product)
+        self.assertEqual(variant.name, "First marketplace title")
+        self.assertEqual(variant.status, ProductStatus.ACTIVE)
+        self.assertEqual(variant.review_state, ProductVariant.ReviewState.IMPORTED_DRAFT)
+        self.assertEqual(variant.import_source_context["basis"], "api_exact_valid_internal_sku")
+        self.assertEqual(listing.internal_variant, variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.MATCHED)
+        self.assertEqual(sync_run.summary["api_article_mapping_count"], 1)
+        self.assertTrue(
+            AuditRecord.objects.filter(
+                action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+                entity_id=str(variant.pk),
+                source_context="api",
+            ).exists()
+        )
+
+    def test_api_reuses_existing_parent_when_no_variant_exists(self):
+        internal_sku = "chev_back_mvd_text0001"
+        parent = InternalProduct.objects.create(
+            internal_code=internal_sku,
+            name="Existing shell",
+            product_type=InternalProduct.ProductType.FINISHED_GOOD,
+            status=ProductStatus.ACTIVE,
+        )
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[{"nmID": "reuse-parent", "vendorCode": internal_sku, "derived_price": "1.00", "currency": "RUB"}],
+        )
+
+        variant = ProductVariant.objects.get(internal_sku=internal_sku)
+        self.assertEqual(variant.product, parent)
+        self.assertEqual(InternalProduct.objects.filter(internal_code=internal_sku).count(), 1)
+
+    def test_api_repeated_same_sku_reuses_variant_and_title_mismatch_marks_review(self):
+        internal_sku = "nash_kit2_rg_pict0002"
+        sync_ozon_elastic_action_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="same-sku-1",
+            source_group="active",
+            rows=[
+                {
+                    "product_id": "same-sku-ozon-1",
+                    "offer_id": internal_sku,
+                    "name": "Original marketplace title",
+                    "action_price": "120.00",
+                }
+            ],
+        )
+        variant = ProductVariant.objects.get(internal_sku=internal_sku)
+        product = variant.product
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "same-sku-wb-1",
+                    "vendorCode": internal_sku,
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                }
+            ],
+        )
+        sync_ozon_elastic_action_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="same-sku-2",
+            source_group="active",
+            rows=[
+                {
+                    "product_id": "same-sku-ozon-2",
+                    "offer_id": internal_sku,
+                    "name": "Later different title",
+                    "action_price": "121.00",
+                }
+            ],
+        )
+
+        variant.refresh_from_db()
+        product.refresh_from_db()
+        wb_listing = MarketplaceListing.objects.get(external_primary_id="same-sku-wb-1")
+        ozon_listing = MarketplaceListing.objects.get(external_primary_id="same-sku-ozon-2")
+        self.assertEqual(ProductVariant.objects.filter(internal_sku=internal_sku).count(), 1)
+        self.assertEqual(InternalProduct.objects.filter(internal_code=internal_sku).count(), 1)
+        self.assertEqual(wb_listing.internal_variant, variant)
+        self.assertEqual(ozon_listing.internal_variant, variant)
+        self.assertEqual(ozon_listing.title, "Later different title")
+        self.assertEqual(product.name, "Original marketplace title")
+        self.assertEqual(variant.name, "Original marketplace title")
+        self.assertEqual(variant.review_state, ProductVariant.ReviewState.NEEDS_REVIEW)
+
+    def test_api_blank_invalid_and_title_only_rows_remain_listing_only(self):
+        internal_sku = "nash_kit2_rg_pict0003"
+        self._structured_variant(internal_sku, title="Title Only Should Not Match")
+
+        sync_ozon_elastic_action_rows_to_product_core(
+            store=self.ozon_store,
+            action_id="listing-only",
+            source_group="active",
+            rows=[
+                {
+                    "product_id": "blank-article",
+                    "offer_id": "",
+                    "name": "Title Only Should Not Match",
+                    "action_price": "10.00",
+                },
+                {
+                    "product_id": "legacy-article",
+                    "offer_id": "LEGACY-001",
+                    "name": "Title Only Should Not Match",
+                    "action_price": "10.00",
+                },
+                {
+                    "product_id": "internal-space",
+                    "offer_id": "nash_kit2_rg_ pict0003",
+                    "name": "Title Only Should Not Match",
+                    "action_price": "10.00",
+                },
+            ],
+        )
+
+        for external_primary_id in ["blank-article", "legacy-article", "internal-space"]:
+            with self.subTest(external_primary_id=external_primary_id):
+                listing = MarketplaceListing.objects.get(external_primary_id=external_primary_id)
+                self.assertIsNone(listing.internal_variant)
+                self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.UNMATCHED)
+        self.assertFalse(InternalProduct.objects.filter(internal_code="LEGACY-001").exists())
+
+    def test_api_archived_variant_conflict_does_not_auto_create_or_overwrite(self):
+        internal_sku = "chev_pz_kit2_text0002"
+        archived_variant = self._structured_variant(
+            internal_sku,
+            product_code=f"archived-{internal_sku}",
+            status=ProductStatus.ARCHIVED,
+        )
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "archived-conflict",
+                    "vendorCode": internal_sku,
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                }
+            ],
+        )
+
+        listing = MarketplaceListing.objects.get(external_primary_id="archived-conflict")
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+        self.assertEqual(ProductVariant.objects.filter(internal_sku=internal_sku).count(), 1)
+        self.assertEqual(ProductVariant.objects.get(internal_sku=internal_sku), archived_variant)
+
+    def test_api_inactive_variant_conflict_does_not_auto_link_or_auto_create(self):
+        internal_sku = "chev_pz_kit2_text0003"
+        inactive_variant = self._structured_variant(
+            internal_sku,
+            product_code=f"inactive-variant-{internal_sku}",
+            status=ProductStatus.INACTIVE,
+        )
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "inactive-variant-conflict",
+                    "vendorCode": internal_sku,
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                }
+            ],
+        )
+
+        listing = MarketplaceListing.objects.get(external_primary_id="inactive-variant-conflict")
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+        self.assertEqual(ProductVariant.objects.filter(internal_sku=internal_sku).count(), 1)
+        self.assertEqual(ProductVariant.objects.get(internal_sku=internal_sku), inactive_variant)
+
+    def test_api_inactive_product_with_active_variant_conflict_does_not_auto_link(self):
+        internal_sku = "nash_mvd_pict0004"
+        variant = self._structured_variant(
+            internal_sku,
+            product_code=f"inactive-product-{internal_sku}",
+            product_status=ProductStatus.INACTIVE,
+        )
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "inactive-product-variant-conflict",
+                    "vendorCode": internal_sku,
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                }
+            ],
+        )
+
+        listing = MarketplaceListing.objects.get(external_primary_id="inactive-product-variant-conflict")
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+        self.assertEqual(ProductVariant.objects.filter(internal_sku=internal_sku).count(), 1)
+        self.assertEqual(ProductVariant.objects.get(internal_sku=internal_sku), variant)
+
+    def test_api_inactive_parent_without_variant_conflict_does_not_auto_create(self):
+        internal_sku = "chev_back_mvd_text0003"
+        parent = InternalProduct.objects.create(
+            internal_code=internal_sku,
+            name="Inactive parent",
+            product_type=InternalProduct.ProductType.FINISHED_GOOD,
+            status=ProductStatus.INACTIVE,
+        )
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "inactive-parent-conflict",
+                    "vendorCode": internal_sku,
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                }
+            ],
+        )
+
+        listing = MarketplaceListing.objects.get(external_primary_id="inactive-parent-conflict")
+        self.assertIsNone(listing.internal_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+        self.assertEqual(InternalProduct.objects.filter(internal_code=internal_sku).count(), 1)
+        self.assertEqual(InternalProduct.objects.get(internal_code=internal_sku), parent)
+        self.assertFalse(ProductVariant.objects.filter(internal_sku=internal_sku).exists())
+
+    def test_api_existing_different_listing_mapping_is_conflict_not_overwritten(self):
+        first_sku = "nash_mvd_pict0002"
+        second_sku = "chev_back_mvd_text0002"
+        first_variant = self._structured_variant(first_sku)
+        second_variant = self._structured_variant(second_sku)
+        listing = MarketplaceListing.objects.create(
+            marketplace=Marketplace.WB,
+            store=self.store,
+            external_primary_id="prelinked-conflict",
+            seller_article=first_sku,
+            internal_variant=second_variant,
+            mapping_status=MarketplaceListing.MappingStatus.MATCHED,
+            last_source=ListingSource.MIGRATION,
+        )
+
+        sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {
+                    "nmID": "prelinked-conflict",
+                    "vendorCode": first_sku,
+                    "derived_price": "10.00",
+                    "currency": "RUB",
+                }
+            ],
+        )
+
+        listing.refresh_from_db()
+        self.assertEqual(listing.internal_variant, second_variant)
+        self.assertNotEqual(listing.internal_variant, first_variant)
+        self.assertEqual(listing.mapping_status, MarketplaceListing.MappingStatus.CONFLICT)
+
+    def test_duplicate_valid_article_rows_are_excluded_from_auto_create_and_link(self):
+        internal_sku = "nash_mvd_pict0003"
+        sync_run = sync_wb_price_rows_to_product_core(
+            store=self.store,
+            rows=[
+                {"nmID": "dup-valid-1", "vendorCode": internal_sku, "derived_price": "1.00", "currency": "RUB"},
+                {"nmID": "dup-valid-2", "vendorCode": internal_sku, "derived_price": "2.00", "currency": "RUB"},
+            ],
+        )
+
+        self.assertEqual(sync_run.summary["duplicate_external_article_count"], 1)
+        self.assertEqual(sync_run.summary["api_article_mapping_count"], 0)
+        self.assertFalse(MarketplaceListing.objects.filter(external_primary_id__startswith="dup-valid").exists())
+        self.assertFalse(InternalProduct.objects.filter(internal_code=internal_sku).exists())
+        self.assertFalse(ProductVariant.objects.filter(internal_sku=internal_sku).exists())
+
     def test_wb_price_adapter_uses_duplicate_active_sync_guard(self):
         start_marketplace_sync_run(
             marketplace=Marketplace.WB,
@@ -1140,9 +1547,19 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertTrue(MarketplaceListing.objects.filter(store=self.store, external_primary_id="303").exists())
         self.assertTrue(
             TechLogRecord.objects.filter(
-                event_type=TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID,
+                event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+                severity=TechLogSeverity.ERROR,
                 store=self.store,
             ).exists()
+        )
+        techlog_record = TechLogRecord.objects.get(
+            event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+            store=self.store,
+        )
+        self.assertEqual(techlog_record.severity, TechLogSeverity.ERROR)
+        self.assertEqual(
+            techlog_record.event_type,
+            TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
         )
 
     def test_wb_price_duplicate_same_article_same_primary_id_is_skipped(self):
@@ -1198,7 +1615,8 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertFalse(PromotionSnapshot.objects.filter(sync_run=sync_run).exists())
         self.assertTrue(
             TechLogRecord.objects.filter(
-                event_type=TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID,
+                event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+                severity=TechLogSeverity.ERROR,
                 store=self.store,
             ).exists()
         )
@@ -1220,6 +1638,13 @@ class ProductCoreSyncFoundationTests(TestCase):
         self.assertEqual(sync_run.summary["skipped_rows_count"], 2)
         self.assertFalse(MarketplaceListing.objects.filter(store=self.ozon_store, external_primary_id="9011").exists())
         self.assertFalse(PromotionSnapshot.objects.filter(sync_run=sync_run).exists())
+        self.assertTrue(
+            TechLogRecord.objects.filter(
+                event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+                severity=TechLogSeverity.ERROR,
+                store=self.ozon_store,
+            ).exists()
+        )
 
     def test_adapter_redaction_rejects_secret_like_summaries(self):
         with self.assertRaises(ValueError):

@@ -6,11 +6,15 @@
 
 ## Назначение
 
-Define exact normalized article matching, external mapping table behavior and conflict behavior for linking `MarketplaceListing` to `ProductVariant`.
+Define exact normalized article matching, deferred external mapping table behavior and conflict behavior for linking `MarketplaceListing` to `ProductVariant`.
+
+For the narrowed TASK-PC2-003 implementation slice, this specification allows only API exact valid article linkage and API imported/draft auto-create. External mapping table / `visual_external` workflow is deferred to a separate future task and must not be implemented in TASK-PC2-003.
 
 ## Business Key
 
 `ProductVariant.internal_sku` is the company-side business key for normalized article matching.
+
+For current CORE-2 linkage logic, `internal_sku` is unique product/variant identity: one valid internal article equals one unique `ProductVariant`. Auto-created parent `InternalProduct.internal_code` must use the same `internal_sku`.
 
 ## Internal SKU Format
 
@@ -52,11 +56,13 @@ Marketplace product ids remain technical source keys. They can identify a listin
 
 ## Matching Modes
 
-CORE-2 supports three matching modes:
+CORE-2 design recognizes three matching modes:
 
 1. normalized seller article already present via approved API;
-2. mapping table from the external normalization tool;
+2. mapping table from the external normalization tool, deferred out of narrowed TASK-PC2-003;
 3. manual mapping fallback.
+
+TASK-PC2-003 implements only mode 1 plus API auto-create/imported_draft. Mode 2 requires a future task with its own file/table contract, preview/apply UI or service scope, permissions, audit and tests.
 
 ### API Article Auto-Match
 
@@ -87,10 +93,30 @@ Blank values are not matchable.
 | Multiple variants match same article | `conflict`; no auto-link. |
 | Existing listing already linked to another variant with same article conflict | `conflict`; no auto-link. |
 | Variant/product archived | Do not auto-link; manual review only if UI allows archived visibility by permission. |
-| No variant match, but API article is valid internal SKU format and no conflict exists | Auto-create `InternalProduct` + `ProductVariant` as imported/draft, link listing, set mapping `matched`, write audit/history. |
-| Article is invalid/non-unified | Create/update `MarketplaceListing` only. No automatic `InternalProduct`/`ProductVariant`. UI offers `visual_external`, mapping table or manual mapping. |
+| No variant match, but API article is valid internal SKU format and no conflict exists | Auto-create/select the safe `InternalProduct` parent and create `ProductVariant` as imported/draft under the customer-approved shell policy below; link listing, set mapping `matched`, write audit/history. |
+| Article is invalid/non-unified | Create/update `MarketplaceListing` only. No automatic `InternalProduct`/`ProductVariant`. Mapping-table and `visual_external` actions are future workflow, not part of narrowed TASK-PC2-003. |
 
 `matched` records the listing-to-variant link state. For auto-created variants, the variant itself remains imported/draft until review; UI and exports must not label it as a manually confirmed active business product.
+
+Auto-created parent shell policy for API article auto-create:
+
+- `InternalProduct.internal_code = internal_sku`;
+- `InternalProduct.name` is the marketplace title from the first load where this valid article is found; if title is blank, fallback to `internal_sku`;
+- `InternalProduct.product_type = finished_good`;
+- `InternalProduct.status = active`;
+- `InternalProduct.category = null`;
+- human-readable traits/categories computed from the article are stored in `InternalProduct.attributes`;
+- automatic category tree creation is prohibited;
+- `InternalProduct.comments = ""`;
+- `ProductVariant.internal_sku = internal_sku`;
+- `ProductVariant.name` uses the same first-title/fallback rule;
+- `ProductVariant.status = active`;
+- `ProductVariant.review_state = imported_draft`;
+- source context records API sync/source, article basis and whether the parent was newly created or safely reused.
+
+If a single active/non-archived `InternalProduct.internal_code = internal_sku` already exists and no `ProductVariant` exists, create the imported/draft variant under that product; do not create a second `InternalProduct`. If parent/variant selection is not uniquely safe, do not create a product or variant and use the conflict rules below.
+
+When the same `internal_sku` later appears from another store/marketplace, link the listing to the existing `ProductVariant`; do not create a duplicate product or variant. If the later marketplace title differs from the first stored `InternalProduct`/`ProductVariant` title, do not overwrite those names, store the new value only on `MarketplaceListing.title`, keep the listing link `matched`, and set `ProductVariant.review_state = needs_review` for operator review. The system must not infer semantic meaning from the title difference.
 
 ## Multi-Store / Multi-Marketplace Links
 
@@ -100,7 +126,9 @@ Duplicate external articles within the same marketplace/store are considered imp
 
 ## External Mapping Table Mode
 
-CORE-2 supports a dedicated mapping-table workflow from the external normalization tool. This is not a hidden side effect of Excel discount workflows.
+CORE-2 recognizes a dedicated mapping-table workflow from the external normalization tool. This is not a hidden side effect of Excel discount workflows.
+
+Implementation status: deferred out of narrowed TASK-PC2-003. No mapping table preview/apply service, upload/apply UI, file schema, table persistence object or `visual_external` table workflow may be added in TASK-PC2-003. A future task must define the row/file contract and implementation scope before this mode is built.
 
 Required behavior:
 
@@ -131,7 +159,7 @@ Barcode:
 
 ## ProductVariant Auto-Create Policy
 
-Customer decision 2026-05-02 approves Option B:
+Customer decision 2026-05-02 approves Option B for API exact valid article linkage:
 
 ```text
 Create ProductVariant as imported/draft from exact normalized article
@@ -146,6 +174,7 @@ Required interpretation for Option B:
 
 - auto-created variant is not an active confirmed business product by default;
 - listing mapping status is set to `matched`, while the variant review state remains `imported_draft`;
+- auto-created `InternalProduct` follows the shell field policy in "Existing Variant Match";
 - history/audit must preserve that the link was system-created from valid API article or explicitly confirmed mapping table row, not manually confirmed;
 - UI must show imported/draft state clearly;
 - audit records the source sync run and article basis;
@@ -173,6 +202,8 @@ Set or retain `mapping_status=conflict` when:
 
 - multiple variants match the same normalized article;
 - one listing has conflicting existing mapping;
+- an existing database state makes the same `internal_sku` resolve to more than one active/non-archived product/variant candidate;
+- an archived/disallowed parent or variant with the same `internal_sku` prevents safe unique selection;
 - same external id resolves to multiple listings in same store/marketplace due to data inconsistency;
 - same external article appears more than once within the same marketplace/store in an API response;
 - normalized article matches an archived/disallowed variant and an active variant simultaneously;
@@ -180,6 +211,8 @@ Set or retain `mapping_status=conflict` when:
 - mapping table row changes an existing mapping without explicit confirmed apply.
 
 Conflict cases never auto-confirm and never auto-create a confirmed mapping.
+
+If the unique exact variant is selected but the incoming marketplace title differs from the stored product/variant name, this is not a mapping conflict by itself. Keep the link `matched`, retain the original product/variant names, update `MarketplaceListing.title`, and mark the `ProductVariant` as `needs_review`.
 
 ## Prohibited Matching
 

@@ -1,6 +1,6 @@
 # CORE_2_ACCEPTANCE_CHECKLIST.md
 
-Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; `TASK-PC2-002` closed / ready for commit after test and audit PASS. Full CORE-2 remains in progress and is not release-complete.
+Статус: исполнительная проектная документация CORE-2, обновлена после AUDIT PASS по решениям заказчика; `TASK-PC2-002` and `TASK-PC2-003` closed / ready for commit after test and audit PASS. Full CORE-2 remains in progress and is not release-complete.
 
 Трассировка: `docs/tasks/design/product-core/TZ_CORE_2_PRODUCT_CORE_INTEGRATION_FOR_CODEX_DESIGNER.md` §§14-16, §11.13.
 
@@ -30,8 +30,9 @@
 | Task | Status | Evidence |
 | --- | --- | --- |
 | `TASK-PC2-002 Marketplace Listing Sync Integration` | CLOSED / READY FOR COMMIT | Test PASS in `docs/testing/TEST_REPORT_TASK_PC2_002_MARKETPLACE_LISTING_SYNC.md`; audit PASS in `docs/audit/AUDIT_REPORT_TASK_PC2_002_MARKETPLACE_LISTING_SYNC.md`; closeout report in `docs/reports/TASK_PC2_002_MARKETPLACE_LISTING_SYNC_REPORT.md`. |
+| `TASK-PC2-003 Normalized Article Linkage And Auto-Create` | CLOSED / READY FOR COMMIT | Narrowed API exact valid article linkage + auto-create/imported_draft only. Design handoff in `docs/reports/TASK_PC2_003_DESIGN_HANDOFF.md`; test PASS in `docs/testing/TEST_REPORT_TASK_PC2_003_API_ARTICLE_LINKAGE.md`; audit PASS in `docs/audit/AUDIT_REPORT_TASK_PC2_003_API_ARTICLE_LINKAGE.md`; closeout report in `docs/reports/TASK_PC2_003_API_ARTICLE_LINKAGE_REPORT.md`. External mapping table / `visual_external` remains deferred. |
 
-Only `TASK-PC2-002` is marked closed here. Full CORE-2 remains in progress and is not marked release-complete.
+Only `TASK-PC2-002` and the narrowed `TASK-PC2-003` API slice are marked closed here. Full CORE-2 remains in progress and is not marked release-complete.
 
 | Area | PASS/FAIL |
 | --- | --- |

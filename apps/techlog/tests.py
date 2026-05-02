@@ -16,6 +16,7 @@ from apps.operations.services import create_check_operation
 from apps.stores.models import StoreAccount
 from apps.techlog.models import (
     SystemNotification,
+    TECHLOG_EVENT_SEVERITY_BASELINE,
     TechLogEventType,
     TechLogHandledStatus,
     TechLogRecord,
@@ -103,6 +104,29 @@ class TechLogTask006Tests(TestCase):
             record.delete()
         with self.assertRaises(ProtectedError):
             TechLogRecord.objects.filter(pk=record.pk).delete()
+
+    def test_marketplace_sync_data_integrity_event_uses_error_baseline(self):
+        self.assertEqual(
+            TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+            "marketplace_sync.data_integrity_error",
+        )
+        self.assertEqual(
+            TECHLOG_EVENT_SEVERITY_BASELINE[
+                TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR
+            ],
+            TechLogSeverity.ERROR,
+        )
+
+        record = create_techlog_record(
+            severity=TechLogSeverity.WARNING,
+            event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
+            source_component="tests",
+            operation=self.operation,
+            safe_message="Source data integrity warning.",
+        )
+
+        self.assertEqual(record.event_type, TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR)
+        self.assertEqual(record.severity, TechLogSeverity.ERROR)
 
     def test_techlog_rejects_ozon_client_id_safe_contour(self):
         with self.assertRaises(ValueError):

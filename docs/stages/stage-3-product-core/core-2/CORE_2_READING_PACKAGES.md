@@ -61,7 +61,7 @@ Read:
 - `docs/architecture/AUDIT_AND_TECHLOG_SPEC.md`
 - `apps/product_core/services.py`
 
-GAP/ADR: ADR-0043, ADR-0045, GAP-CORE2-001 resolved decision, GAP-CORE2-005 resolved decision.
+GAP/ADR: ADR-0043, ADR-0045, GAP-CORE2-001 resolved decision, GAP-CORE2-005 resolved decision with TASK-PC2-003 scope update, GAP-CORE2-006 resolved decision, GAP-CORE2-007 deferred/future task and non-blocking for the narrowed API linkage slice.
 
 ## TASK-PC2-004 Operation Row FK Enrichment
 

@@ -15,9 +15,11 @@ from apps.audit.services import create_audit_record
 from apps.discounts.wb_api.redaction import assert_no_secret_like_values
 from apps.identity_access.services import has_permission, has_store_access
 from apps.stores.models import StoreAccount
+from apps.techlog.models import TechLogEventType
 from apps.techlog.services import create_techlog_record
 
 from .models import (
+    InternalProduct,
     ListingSource,
     ListingHistory,
     Marketplace,
@@ -26,10 +28,12 @@ from .models import (
     PriceSnapshot,
     ProductIdentifier,
     ProductMappingHistory,
+    ProductStatus,
     ProductVariant,
     PromotionSnapshot,
     SalesPeriodSnapshot,
     StockSnapshot,
+    validate_core2_internal_sku,
 )
 
 
@@ -582,6 +586,469 @@ def _string_value(value) -> str:
     return "" if value in (None, "") else str(value).strip()
 
 
+def _valid_api_internal_sku(value: str) -> str:
+    internal_sku = (value or "").strip()
+    if not internal_sku:
+        return ""
+    try:
+        validate_core2_internal_sku(internal_sku)
+    except ValidationError:
+        return ""
+    return internal_sku
+
+
+def _article_traits(internal_sku: str) -> dict:
+    tokens = internal_sku.split("_")
+    final_token = tokens[-1]
+    content_type = "text" if final_token.startswith("text") else "pict"
+    suffix = final_token.removeprefix(content_type)
+    traits = {
+        "source": "core2_internal_sku",
+        "internal_sku": internal_sku,
+        "product_type_token": tokens[0],
+        "content_type": content_type,
+        "numeric_suffix": suffix,
+    }
+    optional_tokens = tokens[1:-1]
+    purposes = {"pz", "back"}
+    structures = {"mvd", "fsin", "rg", "fso", "fsb", "fssp"}
+    for token in optional_tokens:
+        if token in purposes:
+            traits["purpose"] = token
+        elif token.startswith("kit"):
+            traits["kit"] = token
+        elif token in structures:
+            traits["structure"] = token
+    return traits
+
+
+def _api_linkage_source_context(
+    *,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    internal_sku: str,
+    outcome: str,
+    variant: ProductVariant | None = None,
+    product: InternalProduct | None = None,
+    extra: dict | None = None,
+) -> dict:
+    context = {
+        "basis": "api_exact_valid_internal_sku",
+        "outcome": outcome,
+        "source": sync_run.source,
+        "sync_run_id": sync_run.pk,
+        "operation_id": sync_run.operation_id,
+        "marketplace": sync_run.marketplace,
+        "store_id": sync_run.store_id,
+        "listing_id": listing.pk,
+        "listing_external_primary_id": listing.external_primary_id,
+        "seller_article": listing.seller_article,
+        "trimmed_article": internal_sku,
+        "variant_id": variant.pk if variant else None,
+        "product_id": product.pk if product else None,
+    }
+    if extra:
+        context.update(extra)
+    assert_no_secret_like_values(context, field_name="api product mapping source_context")
+    return context
+
+
+def _create_api_mapping_history(
+    *,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    action: str,
+    previous_variant: ProductVariant | None,
+    new_variant: ProductVariant | None,
+    previous_mapping_status: str,
+    source_context: dict,
+    reason_comment: str,
+) -> ProductMappingHistory:
+    assert_no_secret_like_values(source_context, field_name="api product mapping source_context")
+    assert_no_secret_like_values(reason_comment, field_name="api product mapping reason_comment")
+    history = ProductMappingHistory.objects.create(
+        listing=listing,
+        action=action,
+        mapping_status_after=listing.mapping_status,
+        changed_at=timezone.now(),
+        previous_variant=previous_variant,
+        new_variant=new_variant,
+        changed_by=sync_run.requested_by,
+        sync_run=sync_run,
+        operation=sync_run.operation,
+        source=sync_run.source,
+        source_context=source_context,
+        reason_comment=reason_comment,
+    )
+    create_audit_record(
+        action_code=_mapping_action_audit_code(action),
+        entity_type="ProductMappingHistory",
+        entity_id=str(history.pk),
+        user=sync_run.requested_by,
+        store=listing.store,
+        operation=sync_run.operation,
+        safe_message=f"Marketplace listing API mapping action recorded: {action}.",
+        before_snapshot={
+            "listing_id": listing.pk,
+            "variant_id": previous_variant.pk if previous_variant else None,
+            "mapping_status": previous_mapping_status,
+        },
+        after_snapshot={
+            "listing_id": listing.pk,
+            "variant_id": listing.internal_variant_id,
+            "mapping_status": listing.mapping_status,
+            "mapping_action": action,
+            "mapping_source_context": source_context,
+            "reason_comment": reason_comment,
+        },
+        source_context=AuditSourceContext.API,
+    )
+    return history
+
+
+def _mark_api_listing_conflict(
+    *,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    internal_sku: str,
+    outcome: str,
+    extra: dict | None = None,
+) -> ProductMappingHistory | None:
+    if listing.mapping_status == MarketplaceListing.MappingStatus.CONFLICT:
+        return None
+    previous_variant = listing.internal_variant
+    previous_mapping_status = listing.mapping_status
+    listing.mapping_status = MarketplaceListing.MappingStatus.CONFLICT
+    listing.full_clean()
+    listing.save(update_fields=["mapping_status", "updated_at"])
+    context = _api_linkage_source_context(
+        sync_run=sync_run,
+        listing=listing,
+        internal_sku=internal_sku,
+        outcome=outcome,
+        variant=previous_variant,
+        product=previous_variant.product if previous_variant else None,
+        extra=extra,
+    )
+    return _create_api_mapping_history(
+        sync_run=sync_run,
+        listing=listing,
+        action=ProductMappingHistory.MappingAction.CONFLICT_MARKER,
+        previous_variant=previous_variant,
+        new_variant=previous_variant,
+        previous_mapping_status=previous_mapping_status,
+        source_context=context,
+        reason_comment="API exact internal SKU resolution is unsafe; automatic mapping was not applied.",
+    )
+
+
+def _safe_existing_api_variant(internal_sku: str) -> tuple[str, ProductVariant | None, dict]:
+    variants = list(
+        ProductVariant.objects.select_for_update()
+        .select_related("product")
+        .filter(internal_sku=internal_sku)
+    )
+    safe_variants = [
+        variant
+        for variant in variants
+        if variant.status == ProductStatus.ACTIVE
+        and variant.product.status == ProductStatus.ACTIVE
+    ]
+    unsafe_variant_ids = [
+        variant.pk
+        for variant in variants
+        if variant.status != ProductStatus.ACTIVE
+        or variant.product.status != ProductStatus.ACTIVE
+    ]
+    if len(safe_variants) == 1 and not unsafe_variant_ids:
+        return "unique", safe_variants[0], {}
+    if len(safe_variants) == 0 and not unsafe_variant_ids:
+        return "missing", None, {}
+    return (
+        "conflict",
+        None,
+        {
+            "safe_variant_ids": [variant.pk for variant in safe_variants],
+            "unsafe_variant_ids": unsafe_variant_ids,
+        },
+    )
+
+
+def _safe_parent_for_api_auto_create(
+    *,
+    internal_sku: str,
+    title: str,
+    sync_run: MarketplaceSyncRun,
+) -> tuple[str, InternalProduct | None, bool, dict]:
+    products = list(InternalProduct.objects.select_for_update().filter(internal_code=internal_sku))
+    safe_products = [product for product in products if product.status == ProductStatus.ACTIVE]
+    unsafe_product_ids = [product.pk for product in products if product.status != ProductStatus.ACTIVE]
+    if len(safe_products) == 1 and not unsafe_product_ids:
+        return "unique", safe_products[0], False, {}
+    if len(safe_products) > 1 or unsafe_product_ids:
+        return (
+            "conflict",
+            None,
+            False,
+            {
+                "safe_product_ids": [product.pk for product in safe_products],
+                "unsafe_product_ids": unsafe_product_ids,
+            },
+        )
+    product_name = title or internal_sku
+    product = InternalProduct(
+        internal_code=internal_sku,
+        name=product_name,
+        product_type=InternalProduct.ProductType.FINISHED_GOOD,
+        category=None,
+        status=ProductStatus.ACTIVE,
+        attributes=_article_traits(internal_sku),
+        comments="",
+        created_by=sync_run.requested_by,
+        updated_by=sync_run.requested_by,
+    )
+    product.full_clean()
+    product.save()
+    create_audit_record(
+        action_code=AuditActionCode.PRODUCT_CORE_CREATED,
+        entity_type="InternalProduct",
+        entity_id=str(product.pk),
+        user=sync_run.requested_by,
+        store=sync_run.store,
+        operation=sync_run.operation,
+        safe_message="Internal product auto-created from valid API article.",
+        after_snapshot={
+            "product_id": product.pk,
+            "internal_code": internal_sku,
+            "source": sync_run.source,
+            "sync_run_id": sync_run.pk,
+        },
+        source_context=AuditSourceContext.API,
+    )
+    return "created", product, True, {}
+
+
+def _create_api_imported_draft_variant(
+    *,
+    product: InternalProduct,
+    internal_sku: str,
+    title: str,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    parent_created: bool,
+) -> ProductVariant:
+    variant_name = title or internal_sku
+    source_context = _api_linkage_source_context(
+        sync_run=sync_run,
+        listing=listing,
+        internal_sku=internal_sku,
+        outcome="auto_created",
+        product=product,
+        extra={
+            "parent_created": parent_created,
+            "review_state": ProductVariant.ReviewState.IMPORTED_DRAFT,
+        },
+    )
+    variant = ProductVariant(
+        product=product,
+        internal_sku=internal_sku,
+        name=variant_name,
+        status=ProductStatus.ACTIVE,
+        review_state=ProductVariant.ReviewState.IMPORTED_DRAFT,
+        import_source_context=source_context,
+    )
+    variant.full_clean()
+    variant.save()
+    create_audit_record(
+        action_code=AuditActionCode.PRODUCT_VARIANT_CREATED,
+        entity_type="ProductVariant",
+        entity_id=str(variant.pk),
+        user=sync_run.requested_by,
+        store=sync_run.store,
+        operation=sync_run.operation,
+        safe_message="Product variant imported draft auto-created from valid API article.",
+        after_snapshot={
+            "variant_id": variant.pk,
+            "product_id": product.pk,
+            "internal_sku": internal_sku,
+            "review_state": variant.review_state,
+            "source": sync_run.source,
+            "sync_run_id": sync_run.pk,
+        },
+        source_context=AuditSourceContext.API,
+    )
+    return variant
+
+
+def _api_title_mismatch_requires_review(variant: ProductVariant, title: str) -> bool:
+    incoming_title = (title or "").strip()
+    if not incoming_title:
+        return False
+    return incoming_title not in {variant.name, variant.product.name}
+
+
+def _mark_variant_title_mismatch_review(
+    *,
+    variant: ProductVariant,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+    internal_sku: str,
+) -> None:
+    if variant.review_state == ProductVariant.ReviewState.NEEDS_REVIEW:
+        return
+    before_state = variant.review_state
+    variant.review_state = ProductVariant.ReviewState.NEEDS_REVIEW
+    context = _api_linkage_source_context(
+        sync_run=sync_run,
+        listing=listing,
+        internal_sku=internal_sku,
+        outcome="title_mismatch_needs_review",
+        variant=variant,
+        product=variant.product,
+        extra={
+            "previous_review_state": before_state,
+            "marketplace_title": listing.title,
+            "variant_name_preserved": variant.name,
+            "product_name_preserved": variant.product.name,
+        },
+    )
+    variant.import_source_context = {
+        **(variant.import_source_context or {}),
+        "latest_title_mismatch_review": context,
+    }
+    variant.full_clean()
+    variant.save(update_fields=["review_state", "import_source_context", "updated_at"])
+    create_audit_record(
+        action_code=AuditActionCode.MARKETPLACE_LISTING_MAPPING_REVIEW_MARKED,
+        entity_type="ProductVariant",
+        entity_id=str(variant.pk),
+        user=sync_run.requested_by,
+        store=listing.store,
+        operation=sync_run.operation,
+        safe_message="Product variant marked needs review due to API title mismatch.",
+        before_snapshot={
+            "variant_id": variant.pk,
+            "review_state": before_state,
+        },
+        after_snapshot={
+            "variant_id": variant.pk,
+            "review_state": variant.review_state,
+            "source_context": context,
+        },
+        source_context=AuditSourceContext.API,
+    )
+
+
+@transaction.atomic
+def api_link_listing_by_valid_article(
+    *,
+    sync_run: MarketplaceSyncRun,
+    listing: MarketplaceListing,
+) -> ProductMappingHistory | None:
+    internal_sku = _valid_api_internal_sku(listing.seller_article)
+    if not internal_sku:
+        return None
+
+    if listing.internal_variant_id and listing.internal_variant.internal_sku != internal_sku:
+        return _mark_api_listing_conflict(
+            sync_run=sync_run,
+            listing=listing,
+            internal_sku=internal_sku,
+            outcome="existing_listing_variant_conflict",
+            extra={"existing_variant_id": listing.internal_variant_id},
+        )
+
+    resolution, variant, conflict_context = _safe_existing_api_variant(internal_sku)
+    parent_created = False
+    parent = variant.product if variant else None
+    created_variant = False
+    if resolution == "conflict":
+        return _mark_api_listing_conflict(
+            sync_run=sync_run,
+            listing=listing,
+            internal_sku=internal_sku,
+            outcome="variant_resolution_conflict",
+            extra=conflict_context,
+        )
+    if resolution == "missing":
+        parent_resolution, parent, parent_created, parent_context = _safe_parent_for_api_auto_create(
+            internal_sku=internal_sku,
+            title=listing.title.strip(),
+            sync_run=sync_run,
+        )
+        if parent_resolution == "conflict" or parent is None:
+            return _mark_api_listing_conflict(
+                sync_run=sync_run,
+                listing=listing,
+                internal_sku=internal_sku,
+                outcome="parent_resolution_conflict",
+                extra=parent_context,
+            )
+        variant = _create_api_imported_draft_variant(
+            product=parent,
+            internal_sku=internal_sku,
+            title=listing.title.strip(),
+            sync_run=sync_run,
+            listing=listing,
+            parent_created=parent_created,
+        )
+        created_variant = True
+
+    if variant is None:
+        return None
+
+    previous_variant = listing.internal_variant
+    previous_mapping_status = listing.mapping_status
+    if previous_variant_id := listing.internal_variant_id:
+        if previous_variant_id != variant.pk:
+            return _mark_api_listing_conflict(
+                sync_run=sync_run,
+                listing=listing,
+                internal_sku=internal_sku,
+                outcome="existing_listing_variant_conflict",
+                extra={
+                    "existing_variant_id": previous_variant_id,
+                    "candidate_variant_id": variant.pk,
+                },
+            )
+
+    listing.internal_variant = variant
+    listing.mapping_status = MarketplaceListing.MappingStatus.MATCHED
+    listing.full_clean()
+    listing.save(update_fields=["internal_variant", "mapping_status", "updated_at"])
+    if _api_title_mismatch_requires_review(variant, listing.title):
+        _mark_variant_title_mismatch_review(
+            variant=variant,
+            sync_run=sync_run,
+            listing=listing,
+            internal_sku=internal_sku,
+        )
+        variant.refresh_from_db()
+    context = _api_linkage_source_context(
+        sync_run=sync_run,
+        listing=listing,
+        internal_sku=internal_sku,
+        outcome="auto_created" if created_variant else "existing_variant_linked",
+        variant=variant,
+        product=parent or variant.product,
+        extra={
+            "parent_created": parent_created,
+            "variant_created": created_variant,
+            "review_state": variant.review_state,
+        },
+    )
+    return _create_api_mapping_history(
+        sync_run=sync_run,
+        listing=listing,
+        action=ProductMappingHistory.MappingAction.MAP,
+        previous_variant=previous_variant,
+        new_variant=variant,
+        previous_mapping_status=previous_mapping_status,
+        source_context=context,
+        reason_comment="API exact valid internal SKU matched listing to variant.",
+    )
+
+
 def _decimal_or_none(value):
     if value in (None, ""):
         return None
@@ -628,8 +1095,8 @@ def _record_source_data_integrity_warning(
     affected_count: int,
 ) -> None:
     create_techlog_record(
-        severity="warning",
-        event_type="marketplace_sync.response_invalid",
+        severity="error",
+        event_type=TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR,
         source_component="apps.product_core.sync",
         operation=sync_run.operation,
         store=sync_run.store,
@@ -638,7 +1105,7 @@ def _record_source_data_integrity_warning(
             "affected rows were skipped."
         ),
         entity_type="MarketplaceSyncRun",
-        entity_id=sync_run.pk,
+        entity_id=str(sync_run.pk),
         sensitive_details_ref="redacted:marketplace-sync-source-data-integrity",
     )
     sync_run.summary = {
@@ -787,6 +1254,7 @@ def sync_wb_price_rows_to_product_core(
         duplicate_articles = _detect_duplicate_articles(normalized_rows)
         skipped_count = 0
         listing_count = 0
+        mapping_count = 0
         snapshot_count = 0
         warning_count = 0
         for row in normalized_rows:
@@ -805,6 +1273,8 @@ def sync_wb_price_rows_to_product_core(
                 seller_article=row["seller_article"],
             )
             listing_count += 1
+            if api_link_listing_by_valid_article(sync_run=sync_run, listing=listing):
+                mapping_count += 1
             if row["price"] is not None and row["currency"]:
                 create_price_snapshot(
                     sync_run=sync_run,
@@ -837,6 +1307,7 @@ def sync_wb_price_rows_to_product_core(
                 "approved_source": WB_PRICES_ENDPOINT_CODE,
                 "rows_count": len(normalized_rows),
                 "listings_upserted_count": listing_count,
+                "api_article_mapping_count": mapping_count,
                 "price_snapshots_count": snapshot_count,
                 "skipped_rows_count": skipped_count,
                 "duplicate_external_article_count": len(duplicate_articles),
@@ -930,6 +1401,7 @@ def sync_wb_regular_promotion_rows_to_product_core(
         duplicate_articles = _detect_duplicate_articles(normalized_rows)
         skipped_count = 0
         matched_listing_count = 0
+        mapping_count = 0
         snapshot_count = 0
         warning_count = 0
         missing_listing_match_count = 0
@@ -953,6 +1425,8 @@ def sync_wb_regular_promotion_rows_to_product_core(
                 warning_count += 1
                 continue
             matched_listing_count += 1
+            if api_link_listing_by_valid_article(sync_run=sync_run, listing=listing):
+                mapping_count += 1
             create_promotion_snapshot(
                 sync_run=sync_run,
                 listing=listing,
@@ -987,6 +1461,7 @@ def sync_wb_regular_promotion_rows_to_product_core(
                 "rows_count": len(normalized_rows),
                 "listings_upserted_count": 0,
                 "listings_matched_count": matched_listing_count,
+                "api_article_mapping_count": mapping_count,
                 "promotion_snapshots_count": snapshot_count,
                 "skipped_rows_count": skipped_count,
                 "missing_listing_match_count": missing_listing_match_count,
@@ -1091,6 +1566,7 @@ def sync_ozon_elastic_action_rows_to_product_core(
         duplicate_articles = _detect_duplicate_articles(normalized_rows)
         skipped_count = 0
         listing_count = 0
+        mapping_count = 0
         snapshot_count = 0
         warning_count = 0
         for row in normalized_rows:
@@ -1110,6 +1586,8 @@ def sync_ozon_elastic_action_rows_to_product_core(
                 title=row["title"],
             )
             listing_count += 1
+            if api_link_listing_by_valid_article(sync_run=sync_run, listing=listing):
+                mapping_count += 1
             create_promotion_snapshot(
                 sync_run=sync_run,
                 listing=listing,
@@ -1143,6 +1621,7 @@ def sync_ozon_elastic_action_rows_to_product_core(
                 "not_full_catalog": True,
                 "rows_count": len(normalized_rows),
                 "listings_upserted_count": listing_count,
+                "api_article_mapping_count": mapping_count,
                 "promotion_snapshots_count": snapshot_count,
                 "skipped_rows_count": skipped_count,
                 "duplicate_external_article_count": len(duplicate_articles),

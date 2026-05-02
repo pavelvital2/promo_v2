@@ -149,6 +149,10 @@ class TechLogEventType(models.TextChoices):
         "marketplace_sync.response_invalid",
         "Marketplace sync response invalid",
     )
+    MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR = (
+        "marketplace_sync.data_integrity_error",
+        "Marketplace sync data integrity error",
+    )
     MARKETPLACE_SYNC_SECRET_REDACTION_VIOLATION = (
         "marketplace_sync.secret_redaction_violation",
         "Marketplace sync secret redaction violation",
@@ -210,6 +214,7 @@ TECHLOG_EVENT_SEVERITY_BASELINE = {
     TechLogEventType.MARKETPLACE_SYNC_RATE_LIMITED: TechLogSeverity.WARNING,
     TechLogEventType.MARKETPLACE_SYNC_TIMEOUT: TechLogSeverity.WARNING,
     TechLogEventType.MARKETPLACE_SYNC_RESPONSE_INVALID: TechLogSeverity.ERROR,
+    TechLogEventType.MARKETPLACE_SYNC_DATA_INTEGRITY_ERROR: TechLogSeverity.ERROR,
     TechLogEventType.MARKETPLACE_SYNC_SECRET_REDACTION_VIOLATION: TechLogSeverity.CRITICAL,
     TechLogEventType.PRODUCT_CORE_MIGRATION_STARTED: TechLogSeverity.INFO,
     TechLogEventType.PRODUCT_CORE_MIGRATION_COMPLETED: TechLogSeverity.INFO,
